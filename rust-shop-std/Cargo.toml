@@ -1,0 +1,31 @@
+[package]
+name = "rust-shop-std"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+#syn库中已提供了派生宏输入项的封装——DeriveInput
+#关于过程宏，这四篇介绍的不错
+#https://zhuanlan.zhihu.com/p/342408254
+#https://zhuanlan.zhihu.com/p/342664529
+#https://zhuanlan.zhihu.com/p/343170504
+#https://zhuanlan.zhihu.com/p/344701514
+# 由于派生宏的使用场景相对固定（目前只能作用于struct、enum、union），syn库中已提供了派生宏输入项的封装——DeriveInput
+syn = "1.0"
+
+#用quote!宏生成TokenStream
+quote = "1.0"
+#日期
+chrono = "0.4"
+thiserror = "1.0"
+anyhow = "1.0.65"
+validator = "0.16.0"
+validator_derive = "0.16.0"
+
+[dev-dependencies]
+trybuild = { version = "1.0", features = ["diff"] }
+
+[lib]
+proc-macro = true

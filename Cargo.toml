@@ -1,0 +1,72 @@
+[package]
+name = "rust-shop"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+hyper = { version ="0.14.20", features = ["full"] }
+hyper-tls = "0.5.0"
+async-trait = "0.1"
+route-recognizer = "0.3.1"
+#json
+serde = "1.0"
+serde_json = "1.0"
+serde_urlencoded = "0.7.1"
+serde_yaml = "0.9.13"
+schemars = "0.8.10"
+lazy_static = "1.4.0"
+#form
+form_urlencoded = "1.1.0"
+#jwt
+jsonwebtoken = "8.1.1"
+#diesel = { version = "2.0.0", features = ["mysql"] }
+#dotenvy = "0.15"
+#文件上传解析
+multer = "2.0.4"
+uuid = {version ="1.1.2" , features = [
+    "v4",                # Lets you generate random UUIDs
+    "fast-rng",          # Use a faster (but still sufficiently random) RNG
+    "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
+]}
+#orm
+sqlx = { version = "0.6", features = [ "runtime-tokio-rustls","mysql","chrono" ] }
+tokio = { version = "1.21.1", features = [ "full" ] }
+log4rs = "1.1.1"
+log = "0.4.17"
+#日期
+chrono = {version= "0.4",features  = ["serde"]}
+time = "0.3.14"
+criterion = "0.4.0"
+#静态文件
+hyper-staticfile = {version = "0.9.1",path = "hyper-staticfile" }
+rust-shop-std = { version = "0.1" , path = "rust-shop-std" }
+
+
+rs-snowflake = "0.6.0"
+
+anyhow = "1.0.65"
+thiserror = "1.0.37"
+
+ahash = "0.8.0"
+validator = "0.16.0"
+
+
+[dev-dependencies]
+tokio-test = "*"
+
+[workspace]
+members = [
+    "hyper-staticfile",
+    "rust-shop-std",
+    "validator",
+    "validator_derive",
+    "validator_types"
+]
+
+#rust版本：stable（稳定版），beta（测试版），nightly（每日构建版）
+#切换到特定版本
+#rustup default 版本单词
+#如：
+#rustup default nightly

@@ -1,0 +1,32 @@
+[package]
+name = "hyper-staticfile"
+version = "0.9.1"
+authors = ["hyper-staticfile contributors"]
+description = "Static file serving for Hyper 0.14"
+repository = "https://github.com/stephank/hyper-staticfile"
+license = "MIT"
+readme = "README.md"
+documentation = "https://docs.rs/hyper-staticfile"
+keywords = ["hyper", "web", "http", "file", "static"]
+categories = ["web-programming::http-server"]
+edition = "2018"
+
+[dependencies]
+futures-util = "0.3.1"
+http = "0.2.0"
+httpdate = "1.0.1"
+http-range = "0.1.4"
+hyper = { version = "0.14.0", features = ["stream"] }
+mime_guess = "2.0.1"
+percent-encoding = "2.1.0"
+rand = "0.8.4"
+tokio = { version = "1.0.0", features = ["fs"] }
+url = "2.1.0"
+
+[dev-dependencies]
+hyper = { version = "0.14.0", features = ["http1", "server", "tcp"] }
+tempdir = "0.3.7"
+tokio = { version = "1.0.0", features = ["macros", "rt-multi-thread"] }
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3.6", features = ["winbase"] }
