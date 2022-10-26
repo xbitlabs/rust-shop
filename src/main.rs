@@ -1,45 +1,98 @@
+#![feature(try_trait_v2)]
 
+pub mod api;
+pub mod service;
+pub mod entity;
+pub mod utils;
+mod vo;
+mod filter;
+mod request;
+mod config;
+mod core;
+mod state;
+mod extensions;
+
+
+use std::any::Any;
+use std::convert::Infallible;
 use std::net::SocketAddr;
-use crate::{AccessLog, Middleware, Next, RequestCtx, Response, ResponseBuilder, Server};
-use crate::controller::index_controller::IndexController;
+use hyper::{Body, Request, StatusCode};
+use lazy_static::lazy_static;
+use log::info;
+use crate::core::{AccessLogFilter, Filter, MysqlPoolManager, Next, RequestCtx, RequestStateProvider, ResponseBuilder, EndpointResult, Server};
+use crate::api::index_controller::IndexController;
+use snowflake::SnowflakeIdGenerator;
+use std::sync::Mutex;
+use sqlx::{MySql, Pool};
 
-pub struct  AuthMiddleware;
+
+
+lazy_static::lazy_static! {
+    pub static ref ID_GENERATOR : Mutex<SnowflakeIdGenerator> = Mutex::new(SnowflakeIdGenerator::new(1, 1));
+}
+
+pub struct  AuthFilter;
 
 #[async_trait::async_trait]
-impl Middleware for AuthMiddleware {
-    async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> Response {
-        ResponseBuilder::with_html("无权限")
+impl Filter for AuthFilter {
+    async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<hyper::Response<hyper::Body>> {
+        let endpoint_result:EndpointResult<String> = EndpointResult::server_error("无权限".to_string());
+        Ok(ResponseBuilder::with_endpoint_result(&endpoint_result))
+    }
+}
+
+
+use crate::api::auth_controller::AuthController;
+use crate::api::static_file_controller::StaticFileController;
+use crate::api::upload_controller::UploadController;
+use crate::config::load_config::{APP_CONFIG, load_conf};
+use crate::extensions::Extensions;
+use crate::state::State;
+use crate::utils::db::get_connection_pool;
+
+pub struct MysqlPoolStateProvider;
+
+impl <'a> RequestStateProvider for  MysqlPoolStateProvider{
+    fn get_state(&self, server: &Server, req: &Request<Body>) -> Box<dyn Any + Send + Sync> {
+        let pool_state : &State<Pool<MySql>> = server.get_extension().unwrap();
+        Box::new(MysqlPoolManager::new(pool_state.clone()))
+    }
+}
+impl Drop for MysqlPoolStateProvider{
+    fn drop(&mut self) {
+        println!("释放MysqlPoolStateProvider");
     }
 }
 
 #[tokio::main]
-async fn main() {
-    let addr: SocketAddr = "127.0.0.1:5000".parse().unwrap();
+async fn main() ->anyhow::Result<()>{
+
+    log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
+    info!("booting up");
+
+    let addr: SocketAddr = format!("127.0.0.1:{}",&APP_CONFIG.server.port).parse().unwrap();
 
     let mut srv = Server::new();
 
-    srv.middleware(AccessLog);
-    //srv.middleware(AuthMiddleware);
+    srv.filter(AccessLogFilter);
 
-    srv.get("/", |_req| async move {
-        hyper::Response::builder()
-            .status(hyper::StatusCode::OK)
-            .body(hyper::Body::from("Welcome!"))
-            .unwrap()
-    });
-    srv.get("/hello/:name", hello);
-    srv.post("/post", post);
-    srv.post("/test",IndexController::index);
+    let conn_pool = get_connection_pool().await?;
+    srv.extension(State::new(conn_pool.clone()));
+
+    let mysql_pool_state_provider : Box<dyn RequestStateProvider + Sync + Send> = Box::new(MysqlPoolStateProvider);
+    srv.request_state(mysql_pool_state_provider);
+
+    srv.post("/", IndexController::index);
+    //登录
+    srv.post("/login", AuthController::login);
+    srv.post("/logout", AuthController::logout);
+    srv.post("/refresh_token",AuthController::refresh_token);
+    //上传
+    srv.post("/upload",UploadController::upload);
+    //静态文件
+    srv.get("/static/:day/:file",StaticFileController::handle);
     srv.run(addr).await.unwrap();
-}
 
-async fn hello(ctx: RequestCtx) -> Response {
-    let name = ctx.router_params.find("name").unwrap_or("world");
-
-    ResponseBuilder::with_text(format!("Hello {}!", name))
-}
-async fn post(ctx: RequestCtx) -> Response {
-    let name = ctx.router_params.find("name").unwrap_or("world");
-
-    ResponseBuilder::with_text(format!("Hello {}!", name))
+    info!("server shutdown!");
+    Ok(())
 }

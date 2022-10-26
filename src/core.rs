@@ -1,26 +1,34 @@
-pub mod extensions;
-pub mod state;
-pub mod utils;
-
-use hyper::{Body, StatusCode};
+use std::any::{Any, TypeId};
+use std::borrow::{Borrow, BorrowMut};
+use std::cell::RefCell;
+use hyper::{Body, Request, Response, StatusCode};
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fmt::{Display, Formatter};
 use std::future::Future;
 use std::net::SocketAddr;
+use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
+use anyhow::anyhow;
+use chrono::NaiveDateTime;
+use criterion::Criterion;
 
 use route_recognizer::{Params, Router as MethodRouter};
 
 use hyper::service::{make_service_fn, service_fn};
+use lazy_static::lazy_static;
 use log::{error, info};
-use sqlx::{Acquire, MySql, Pool, Transaction};
+use serde::{Deserialize, Serialize};
+use sqlx::{Acquire, Error, MySql, MySqlPool, Pool, Transaction};
 use tokio::task_local;
+use crate::config::load_config::APP_CONFIG;
+use crate::core::EndpointResultCode::{AccessDenied, ClientError, ServerError, SUCCESS, Unauthorized};
 use crate::extensions::Extensions;
-use crate::RustShopResponseCode::{AccessDenied, ClientError, ServerError, SUCCESS, Unauthorized};
+use crate::MysqlPoolStateProvider;
 use crate::state::State;
-use crate::utils::db::get_connection_pool;
+use rust_shop_std::FormParser;
 
 macro_rules! register_method {
     ($method_name: ident, $method_def: expr) => {
@@ -30,61 +38,24 @@ macro_rules! register_method {
     };
 }
 
-#[derive(Debug)]
-pub struct RustShopError(String);
-
-impl RustShopError {
-    pub fn new(msg: impl ToString) -> Self {
-        RustShopError(msg.to_string())
-    }
-}
-
-
-impl From<sqlx::Error> for RustShopError {
-    fn from(error: sqlx::Error) -> Self {
-        RustShopError::new(error)
-    }
-}
-
-impl From<serde_json::Error> for RustShopError {
-    fn from(error: serde_json::Error) -> Self {
-        RustShopError::new(error)
-    }
-}
-impl From<hyper::Error> for RustShopError{
-    fn from(error: hyper::Error) -> Self {
-        RustShopError::new(error)
-    }
-}
-
-impl Display for RustShopError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f,"{}", self)
-    }
-}
-
-impl std::error::Error for RustShopError{
-
-}
-
-impl From<jsonwebtoken::errors::Error> for RustShopError{
-    fn from(error: jsonwebtoken::errors::Error) -> Self {
-        RustShopError::new(error)
-    }
-}
-
-
 pub struct RequestCtx {
-    pub request: hyper::Request<Body>,
+    pub request: Request<Body>,
     pub router_params: Params,
     pub remote_addr: SocketAddr,
     pub query_params: HashMap<String, String>,
-    pub request_state: State<MysqlPoolManager>,
+    pub request_states: Extensions,
+    pub current_user:Option<Box<dyn UserDetails + Send>>,
+    pub app_context:Arc<Extensions>,
 }
 
+//处理http请求过程中状态保持
+//pub type RequestStateProvider = dyn Fn() -> State<T> + Send + Sync;
+pub trait RequestStateProvider{
+    fn get_state(&self, server: &Server, req: &Request<Body>) ->Box<dyn Any + Send + Sync>;
+}
 
 #[derive(serde::Serialize, serde::Deserialize)]
-pub enum RustShopResponseCode {
+pub enum EndpointResultCode {
     SUCCESS,
     ServerError,
     ClientError,
@@ -92,24 +63,24 @@ pub enum RustShopResponseCode {
     Unauthorized
 }
 #[derive(serde::Serialize, serde::Deserialize)]
-pub struct RustShopResponse<T>
+pub struct EndpointResult<T>
     where T:
-    serde::Serialize
+    Serialize
 {
-    code: RustShopResponseCode,
+    code: EndpointResultCode,
     msg:String,
     payload:Option<T>
 }
 
-impl <T:serde::Serialize> RustShopResponse<T> {
-    pub fn new()-> RustShopResponse<T>{
-        RustShopResponse {
+impl <T:Serialize> EndpointResult<T> {
+    pub fn new()-> EndpointResult<T>{
+        EndpointResult {
             code:SUCCESS,
             msg:"".to_string(),
             payload:None
         }
     }
-    pub fn set_code(&mut self,code: RustShopResponseCode){
+    pub fn set_code(&mut self,code: EndpointResultCode){
         self.code = code;
     }
     pub fn set_msg(&mut self,msg:String){
@@ -118,36 +89,71 @@ impl <T:serde::Serialize> RustShopResponse<T> {
     pub fn set_payload(&mut self,payload:Option<T>){
         self.payload = payload;
     }
-    pub fn ok(msg: String, payload:T) ->Self{
-        RustShopResponse {
+    pub fn ok(msg: String) ->Self{
+        EndpointResult {
+            code:SUCCESS,
+            msg,
+            payload:None
+        }
+    }
+    pub fn ok_with_payload(msg: String, payload:T) ->Self{
+        EndpointResult {
             code:SUCCESS,
             msg,
             payload:Some(payload)
         }
     }
-    pub fn server_error(msg:String,payload:T)->Self{
-        RustShopResponse {
+    pub fn server_error(msg:String)->Self{
+        EndpointResult {
+            code:ServerError,
+            msg,
+            payload:Default::default()
+        }
+    }
+    pub fn server_error_with_payload(msg:String,payload:T)->Self{
+        EndpointResult {
             code:ServerError,
             msg,
             payload:Some(payload)
         }
     }
-    pub fn client_error(msg:String,payload:T)->Self{
-        RustShopResponse {
+    pub fn client_error(msg:String)->Self{
+        EndpointResult {
+            code:ClientError,
+            msg,
+            payload:None
+        }
+    }
+    pub fn client_error_with_payload(msg:String,payload:T)->Self{
+        EndpointResult {
             code:ClientError,
             msg,
             payload:Some(payload)
         }
     }
-    pub fn access_denied(msg:String,payload:T)->Self{
-        RustShopResponse {
+    pub fn access_denied(msg:String)->Self{
+        EndpointResult {
+            code: AccessDenied,
+            msg,
+            payload:None
+        }
+    }
+    pub fn access_denied_with_payload(msg:String,payload:T)->Self{
+        EndpointResult {
             code: AccessDenied,
             msg,
             payload:Some(payload)
         }
     }
-    pub fn unauthorized(msg:String,payload:T)->Self{
-        RustShopResponse {
+    pub fn unauthorized(msg:String)->Self{
+        EndpointResult {
+            code: Unauthorized,
+            msg,
+            payload:None
+        }
+    }
+    pub fn unauthorized_with_payload(msg:String,payload:T)->Self{
+        EndpointResult {
             code: Unauthorized,
             msg,
             payload:Some(payload)
@@ -158,46 +164,46 @@ impl <T:serde::Serialize> RustShopResponse<T> {
 pub struct ResponseBuilder;
 
 impl ResponseBuilder {
-    pub fn with_text(text: String,code: RustShopResponseCode) -> hyper::Response<Body> {
-        let mut rust_shop_response = RustShopResponse::new();
-        rust_shop_response.set_msg(text);
-        rust_shop_response.set_code(code);
-        rust_shop_response.set_payload(Some(""));
+    pub fn with_text(text: String, code: EndpointResultCode) -> Response<Body> {
+        let mut endpoint_result = EndpointResult::new();
+        endpoint_result.set_msg(text);
+        endpoint_result.set_code(code);
+        endpoint_result.set_payload(Some(""));
 
-        ResponseBuilder::with_rust_shop_response(&rust_shop_response)
+        ResponseBuilder::with_endpoint_result(&endpoint_result)
     }
-    pub fn with_text_and_payload<T>(text: String,payload:T,code: RustShopResponseCode) -> hyper::Response<Body>
+    pub fn with_text_and_payload<T>(text: String, payload:T, code: EndpointResultCode) -> Response<Body>
         where T:
         serde::Serialize
     {
-        let mut rust_shop_response = RustShopResponse::new();
-        rust_shop_response.set_msg(text);
-        rust_shop_response.set_code(code);
-        rust_shop_response.set_payload(Some(payload));
-        ResponseBuilder::with_rust_shop_response(&rust_shop_response)
+        let mut endpoint_result = EndpointResult::new();
+        endpoint_result.set_msg(text);
+        endpoint_result.set_code(code);
+        endpoint_result.set_payload(Some(payload));
+        ResponseBuilder::with_endpoint_result(&endpoint_result)
     }
 
-    pub fn with_rust_shop_response<T>(obj: &RustShopResponse<T>) -> hyper::Response<Body>
+    pub fn with_endpoint_result<T>(obj: &EndpointResult<T>) -> Response<Body>
         where T:
         serde::Serialize
     {
         let json = serde_json::to_string(obj);
-        let mut status = hyper::StatusCode::OK;
+        let mut status = StatusCode::OK;
         match obj.code {
             ServerError=>{
-                status = hyper::StatusCode::INTERNAL_SERVER_ERROR;
+                status = StatusCode::INTERNAL_SERVER_ERROR;
             }
             SUCCESS =>{
-                status = hyper::StatusCode::OK;
+                status = StatusCode::OK;
             }
             ClientError=>{
-                status = hyper::StatusCode::BAD_REQUEST
+                status = StatusCode::BAD_REQUEST
             }
             AccessDenied=>{
-                status = hyper::StatusCode::FORBIDDEN
+                status = StatusCode::FORBIDDEN
             }
             Unauthorized=>{
-                status = hyper::StatusCode::UNAUTHORIZED
+                status = StatusCode::UNAUTHORIZED
             }
         }
         hyper::Response::builder()
@@ -211,7 +217,7 @@ impl ResponseBuilder {
             .body(hyper::Body::from(json.unwrap()))
             .unwrap()
     }
-    pub fn with_status(status: StatusCode) -> hyper::Response<Body> {
+    pub fn with_status(status: StatusCode) -> Response<Body> {
         hyper::Response::builder()
             .status(status)
             .body(Body::empty())
@@ -221,7 +227,7 @@ impl ResponseBuilder {
 
 #[async_trait::async_trait]
 pub trait HTTPHandler: Send + Sync + 'static {
-    async fn handle(&self, ctx: RequestCtx) -> Result<hyper::Response<Body>,RustShopError>;
+    async fn handle(&self, ctx: RequestCtx) -> anyhow::Result<Response<Body>>;
 }
 
 type BoxHTTPHandler = Box<dyn HTTPHandler>;
@@ -230,9 +236,9 @@ type BoxHTTPHandler = Box<dyn HTTPHandler>;
 impl<F: Send + Sync + 'static, Fut> HTTPHandler for F
 where
     F: Fn(RequestCtx) -> Fut,
-    Fut: Future<Output = Result<hyper::Response<Body>,RustShopError>> + Send + 'static,
+    Fut: Future<Output = anyhow::Result<Response<Body>>> + Send + 'static,
 {
-    async fn handle(&self, ctx: RequestCtx) -> Result<hyper::Response<Body>,RustShopError> {
+    async fn handle(&self, ctx: RequestCtx) -> anyhow::Result<Response<Body>> {
         self(ctx).await
     }
 }
@@ -241,7 +247,7 @@ type Router = HashMap<String, MethodRouter<BoxHTTPHandler>>;
 
 #[async_trait::async_trait]
 pub trait Filter: Send + Sync + 'static {
-    async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> Result<hyper::Response<Body>,RustShopError>;
+    async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>>;
 }
 
 #[allow(missing_debug_implementations)]
@@ -252,7 +258,7 @@ pub struct Next<'a> {
 
 impl<'a> Next<'a> {
     /// Asynchronously execute the remaining filter chain.
-    pub async fn run(mut self, ctx: RequestCtx) -> Result<hyper::Response<Body>,RustShopError> {
+    pub async fn run(mut self, ctx: RequestCtx) -> anyhow::Result<Response<Body>> {
         if let Some((current, next)) = self.next_filter.split_first() {
             self.next_filter = next;
             current.handle(ctx, self).await
@@ -262,11 +268,22 @@ impl<'a> Next<'a> {
     }
 }
 
+pub struct RequestStateResolver;
+
+impl  RequestStateResolver {
+    pub fn get<'a, T: 'a + 'static>(ctx: &'a RequestCtx) -> &'a T
+    {
+        let state: Option<&Box<dyn Any + Send + Sync>> = ctx.request_states.get();
+        let state: Option<&T> = state.unwrap().downcast_ref();
+        state.unwrap()
+    }
+}
+
 pub struct AccessLogFilter;
 
 #[async_trait::async_trait]
 impl Filter for AccessLogFilter {
-    async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> Result<hyper::Response<Body>,RustShopError> {
+    async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<hyper::Response<Body>> {
         let start = Instant::now();
         let method = ctx.request.method().to_string();
         let path = ctx.request.uri().path().to_string();
@@ -285,22 +302,232 @@ impl Filter for AccessLogFilter {
     }
 }
 
-pub struct MysqlPoolManager{
-    tran:Option<Transaction<'static,MySql>>,
-    pool_state:&'static State<Pool<MySql>>
+pub trait  LoadUserService{
+    fn load_user_by_username(&self,username:String)-> dyn UserDetails;
+}
+//登录主体
+pub trait Principal{
+    fn get_name(&self)->&String;
+}
+pub struct Username{
+    pub the_username:String,
 }
 
-impl MysqlPoolManager {
-    pub fn new(pool_state:&'static State<Pool<MySql>>)->Self{
+impl Username {
+    pub fn new(the_username:String)->Self{
+        Username{
+            the_username
+        }
+    }
+}
+impl Principal for Username{
+    fn get_name(&self) -> &String {
+        &self.the_username
+    }
+}
+
+//登录凭证
+pub trait Credentials{
+    fn get_credentials(&self)->&String;
+}
+pub struct Password{
+    pub the_password:String,
+}
+
+impl Password {
+    pub fn new(the_password:String)->Self{
+        Password{
+            the_password
+        }
+    }
+}
+impl Credentials for Password {
+    fn get_credentials(&self) -> &String {
+        &self.the_password
+    }
+}
+//登录凭证，如用户名、密码
+pub trait AuthenticationToken{
+    fn get_principal(&self)->&Box<dyn Principal>;
+    fn get_credentials(&self)->&Box<dyn Credentials>;
+}
+//登录的用户信息
+pub trait UserDetails{
+    fn get_id(&self)->&i64;
+    fn get_username(&self)->&String;
+    fn get_authorities(&self)->&Vec<String>;
+    fn is_enable(&self)->&bool;
+}
+
+//登录认证结果
+pub trait Authentication {
+    fn get_authentication_token(&self)->&(dyn AuthenticationToken);
+    fn get_authorities(&self)->&Vec<String>;
+
+    fn is_authenticated(&self)->&bool;
+    fn set_authenticated(&mut self,is_authenticated:bool);
+
+    fn set_details(&mut self,details:Option<Box<dyn UserDetails>>);
+    fn get_details(&self)-> &Option<Box<dyn UserDetails>>;
+}
+pub struct UsernamePasswordAuthenticationToken{
+    pub username:Box<dyn Principal>,
+    pub password:Box<dyn Credentials>,
+    /*pub authentication_token: Box<dyn AuthenticationToken>,*/
+    pub details:Option<Box<dyn UserDetails>>,
+    pub authorities:Vec<String>,
+    pub authenticated:bool,
+}
+impl UsernamePasswordAuthenticationToken{
+    pub fn unauthenticated(username:String,password:String)->UsernamePasswordAuthenticationToken{
+        UsernamePasswordAuthenticationToken{
+            username:Box::new(Username{
+                the_username : username
+            }),
+            password:Box::new(Password{
+                the_password:password
+            }),
+            details: None,
+            authorities: vec![],
+            authenticated: false
+        }
+    }
+    pub fn authenticated(username:String,password:String,authorities:Vec<String>)->UsernamePasswordAuthenticationToken{
+        UsernamePasswordAuthenticationToken{
+            username:Box::new(Username{
+                the_username : username
+            }),
+            password:Box::new(Password{
+                the_password:password
+            }),
+            details: None,
+            authorities,
+            authenticated: true
+        }
+    }
+}
+impl AuthenticationToken for UsernamePasswordAuthenticationToken{
+    fn get_principal(&self) -> &Box<dyn Principal> {
+        &self.username
+    }
+
+    fn get_credentials(&self) -> &Box<dyn Credentials> {
+        &self.password
+    }
+}
+impl Authentication for  UsernamePasswordAuthenticationToken{
+    fn get_authentication_token(&self) -> &(dyn AuthenticationToken) {
+        self
+    }
+    fn get_authorities(&self) -> &Vec<String> {
+        &self.authorities
+    }
+
+    fn is_authenticated(&self) -> &bool {
+        &self.authenticated
+    }
+
+    fn set_authenticated(&mut self,is_authenticated: bool) {
+        self.authenticated = is_authenticated;
+    }
+
+    fn set_details(&mut self, details:Option<Box<dyn UserDetails>>) {
+        self.details =details;
+    }
+
+    fn get_details(&self) -> &Option<Box<dyn UserDetails>> {
+        &self.details
+    }
+}
+#[async_trait::async_trait]
+pub trait AuthenticationProvider{
+    async fn authenticate(&self,authentication_token: dyn AuthenticationToken) -> anyhow::Result<Box<dyn Authentication>>;
+}
+pub struct AuthenticationProviderManager{
+    pub providers:HashMap<TypeId,Box<dyn AuthenticationProvider + Send + Sync + 'static>>
+}
+
+impl AuthenticationProviderManager {
+    pub fn new()->Self{
+        AuthenticationProviderManager{
+            providers:HashMap::new(),
+        }
+    }
+    pub fn add(&mut self, authentication_token_type_id:TypeId, provider: Box<dyn AuthenticationProvider + Send + Sync>){
+        self.providers.entry(authentication_token_type_id).or_insert_with(||{
+            provider
+        });
+    }
+    pub fn get(&self,authentication_token_type_id:&TypeId)->Option<&Box<dyn AuthenticationProvider + Send + Sync>>{
+        self.providers.get(authentication_token_type_id)
+    }
+}
+
+pub struct AuthenticationProcessingFilter{
+
+}
+#[async_trait::async_trait]
+impl Filter for AuthenticationProcessingFilter{
+    async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>> {
+        todo!()
+    }
+}
+pub struct UsernamePasswordAuthenticationFilter{
+
+}
+
+#[derive(FormParser,serde::Deserialize,serde::Serialize,Debug)]
+pub struct UsernamePassword{
+    pub username:String,
+    pub password:String,
+}
+#[async_trait::async_trait]
+impl Filter for UsernamePasswordAuthenticationFilter{
+    async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>> {
+        let username_password_form_parser : UsernamePasswordFormParser = UsernamePassword::build_form_parser();
+        let username_password:UsernamePassword = username_password_form_parser.parse(ctx.request).await?;
+        let authentication_token = UsernamePasswordAuthenticationToken::unauthenticated(username_password.username,username_password.password);
+        todo!()
+    }
+}
+pub struct AuthenticationSuccessHandler{
+
+}
+#[async_trait::async_trait]
+impl Filter for AuthenticationSuccessHandler{
+    async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>> {
+        todo!()
+    }
+}
+pub struct AuthenticationFailureHandler{
+
+}
+#[async_trait::async_trait]
+impl Filter for AuthenticationFailureHandler{
+    async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>> {
+        todo!()
+    }
+}
+pub trait SecurityFilter{
+
+}
+
+pub struct MysqlPoolManager<'a>{
+    tran:Option<Transaction<'a,MySql>>,
+    pool_state:Option<State<Pool<MySql>>>
+}
+
+impl <'a> MysqlPoolManager<'a> {
+    pub fn new(pool_state:State<Pool<MySql>>) ->Self{
         MysqlPoolManager{
-            pool_state,
+            pool_state : Some(pool_state),
             tran:None
         }
     }
     pub fn get_pool(&self) -> &Pool<MySql> {
-        self.pool_state.get_ref()
+        self.pool_state.as_ref().unwrap().as_ref()
     }
-    pub async fn begin(&mut self)->Result<&Transaction<'static,MySql>,RustShopError>{
+    pub async fn begin(&mut self)->anyhow::Result<&Transaction<'a,MySql>>{
         return if self.tran.is_some() {
             let tran = &self.tran.as_ref().unwrap();
             Ok(tran)
@@ -313,21 +540,35 @@ impl MysqlPoolManager {
     }
 }
 
+impl <'a> Drop for MysqlPoolManager<'a> {
+    fn drop(&mut self) {
+        println!("释放MysqlPoolManager");
+    }
+}
+
 pub struct Server {
     router: Router,
     filters: Vec<Arc<dyn Filter>>,
     extensions: Extensions,
+    request_state_providers:Extensions,
 }
 
 impl Server {
     pub fn new() -> Self {
+        //let auth_provider_manager = AuthenticationProviderManager::new();
+        let mut extensions = Extensions::new();
+        extensions.insert(State::new(AuthenticationProviderManager::new()));
+
         Server {
             router: HashMap::new(),
             filters: Vec::new(),
-            extensions: Extensions::new(),
+            extensions,
+            request_state_providers : Extensions::new(),
         }
     }
-
+    pub fn get_extension<T:'static + Sync + Send>(&self) ->Option<&State<T>>{
+        self.extensions.get()
+    }
     pub fn register(
         &mut self,
         method: impl ToString,
@@ -354,34 +595,31 @@ impl Server {
     pub fn filter(&mut self, filter: impl Filter) {
         self.filters.push(Arc::new(filter));
     }
-    pub fn app_data<U: 'static>(&mut self, ext: U)  {
+    pub fn extension<U: 'static + Send + Sync>(&mut self, ext: U)  {
         self.extensions.insert(ext);
     }
-    pub async fn run(self, addr: SocketAddr) -> Result<(), RustShopError> {
-        let Self {
-            router,
-            filters,
-            extensions
-        } = self;
+    pub fn request_state<U: 'static + Send + Sync>(&mut self, ext: U)  {
+        self.request_state_providers.insert(ext);
+    }
+    pub async fn run(self, addr: SocketAddr) -> anyhow::Result<()> {
+        let Self = {
 
-        let router = Arc::new(router);
-        let filters = Arc::new(filters);
+        } = self
+        let _self = Arc::new(self);
+        let extensions = Arc::new(&_self.extensions);
 
         let make_svc = make_service_fn(|conn: &hyper::server::conn::AddrStream| {
-            let router = router.clone();
-            let filters = filters.clone();
             let remote_addr = conn.remote_addr();
+            let _self = _self.clone();
 
-            async move {
-                Ok::<_, Infallible>(service_fn(move |req: hyper::Request<Body>| {
-                    let router = router.clone();
-                    let filters = filters.clone();
-
+                async move {
+                Ok::<_, Infallible>(service_fn(move |req: Request<Body>| {
+                    let _self = _self.clone();
                     async move {
                         let method = &req.method().as_str().to_uppercase();
 
                         let mut router_params = Params::new();
-                        let endpoint = match router.get(method) {
+                        let endpoint = match _self.router.get(method) {
                             Some(router) => match router.recognize(req.uri().path()) {
                                 Ok(m) => {
                                     router_params = m.params().clone();
@@ -394,7 +632,7 @@ impl Server {
 
                         let next = Next {
                             endpoint,
-                            next_filter: &filters,
+                            next_filter: &_self.filters,
                         };
 
                         let mut query_params = HashMap::new();
@@ -404,26 +642,35 @@ impl Server {
                                 .into_owned()
                                 .collect::<HashMap<String, String>>();
                         };
+
                         let url = req.uri().to_string();
-                        let request_state = Extensions::new();
-                        //request_state.insert(State::new())
-                        let pool = get_connection_pool().await?;
+
+                        let mut request_states = Extensions::new();
+
+                        for state_provider in _self.request_state_providers.iter() {
+                            let provider : Option<&Box<dyn RequestStateProvider + Sync + Send>> = _self.request_state_providers.get();
+                            let state = provider.unwrap().get_state(&_self, &req);
+                            request_states.insert(state);
+                        }
                         let ctx = RequestCtx {
                             request: req,
                             router_params,
                             remote_addr,
                             query_params,
-                            request_state : State::new(MysqlPoolManager::new(&pool))
+                            request_states,
+                            current_user:None,
+                            app_context : _self.extensions.clone()
                         };
+
                         let resp_result = next.run(ctx).await;
                         match resp_result {
                             Ok(resp)=>{
-                                Ok::<_, RustShopError>(resp)
+                                Ok::<_, anyhow::Error>(resp)
                             }
                             Err(error)=>{
-                                error!("处理请求异常{}：{}",url, error.0);
-                                let rust_shop_response = RustShopResponse::server_error("内部服务器错误".to_string(),"");
-                                Ok::<_, RustShopError>(ResponseBuilder::with_rust_shop_response(&rust_shop_response))
+                                error!("处理请求异常{}：{}",url, error);
+                                let endpoint_result:EndpointResult<String> = EndpointResult::server_error("内部服务器错误".to_string());
+                                Ok::<_, anyhow::Error>(ResponseBuilder::with_endpoint_result(&endpoint_result))
                             }
                         }
 
@@ -436,28 +683,14 @@ impl Server {
 
         server
             .await
-            .map_err(|e| RustShopError::new(format!("server run error: {:?}", e)))?;
+            .map_err(|e| anyhow!(format!("server run error: {:?}", e)))?;
 
         Ok(())
     }
 
-    async fn handle_not_found(_ctx: RequestCtx) -> Result<hyper::Response<Body>,RustShopError> {
-        Ok(ResponseBuilder::with_status(hyper::StatusCode::NOT_FOUND))
+    async fn handle_not_found(_ctx: RequestCtx) -> anyhow::Result<Response<Body>> {
+        Ok(ResponseBuilder::with_status(StatusCode::NOT_FOUND))
     }
-    /*    async fn parse_form_params(body: Body) ->HashMap<String,String>{
-        let b = hyper::body::to_bytes(body).await;
-        match b {
-            Ok(bytes)=>{
-                form_urlencoded::parse(bytes.as_ref())
-                    .into_owned()
-                    .collect::<HashMap<String, String>>()
-            }
-            Err(e)=>{
-                HashMap::new()
-            }
-        }
-
-    }*/
 }
 
 impl Default for Server {
@@ -465,3 +698,77 @@ impl Default for Server {
         Self::new()
     }
 }
+use hyper::body::Buf;
+use schemars::_private::NoSerialize;
+use serde_json::Value;
+
+pub async fn parse_request_json<T>(req:Request<Body>)->anyhow::Result<T>
+    where for<'a> T:
+    serde::Deserialize<'a>
+{
+    let whole_body = hyper::body::aggregate(req).await?;
+    // Decode as JSON...
+    let mut read_result: Result<T, serde_json::Error> = serde_json::from_reader(whole_body.reader());
+    match read_result {
+        Ok(result) => {
+            Ok(result)
+        }
+        Err(error) => {
+            Err(anyhow!(error))
+        }
+    }
+}
+/*pub fn parse_request_params<T>(ctx:RequestCtx)->anyhow::Result<T>{
+    Ok(())
+}*/
+pub async fn parse_form_params(req:Request<Body>)->HashMap<String,String>{
+    let url = req.uri().to_string();
+    let b = hyper::body::to_bytes(req).await;
+    if b.is_err() {
+        error!("解析form参数异常{}：{}",url,b.err().unwrap());
+        return HashMap::new();
+    }
+    let params = form_urlencoded::parse(b.unwrap().as_ref())
+        .into_owned()
+        .collect::<HashMap<String, String>>();
+    params
+}
+macro_rules! zoom_and_enhance {
+    (struct $name:ident { $($fname:ident : $ftype:ty),* }) => {
+     struct $name {
+      $($fname : $ftype),*
+     }
+
+     impl $name {
+      fn field_names() -> &'static [&'static str] {
+       static NAMES: &'static [&'static str] = &[$(stringify!($fname)),*];
+       NAMES
+      }
+     }
+    }
+}
+
+zoom_and_enhance! {
+    struct Export {
+        first_name: String,
+        last_name: String,
+        gender: String,
+        date_of_birth: String,
+        address: String
+    }
+}
+
+#[test]
+fn test() {
+    let map:HashMap<String,String> = HashMap::new();
+    let value = map.get("key");
+    if value.is_some() {
+        let result = value.unwrap().parse::<i64>();
+        if result.is_err() {
+            let result = result.unwrap();
+        }
+    }
+    let s  = "sss";
+    println!("{:?}", Export::field_names());
+}
+

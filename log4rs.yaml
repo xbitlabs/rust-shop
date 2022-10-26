@@ -1,0 +1,23 @@
+refresh_rate: 30 seconds
+appenders:
+  stdout:
+    kind: console
+  requests:
+    kind: file
+    path: "log/rust-shop.log"
+    encoder:
+      pattern: "{d} - {m}{n}"
+root:
+  level: debug
+  appenders:
+    - requests
+    - stdout
+loggers:
+  app::backend::db:
+    level: debug
+  app::requests:
+    level: debug
+    appenders:
+      - requests
+      - stdout
+    additive: false
