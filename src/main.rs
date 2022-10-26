@@ -22,7 +22,7 @@ use log::info;
 use crate::core::{AccessLogFilter, Filter, MysqlPoolManager, Next, RequestCtx, RequestStateProvider, ResponseBuilder, EndpointResult, Server};
 use crate::api::index_controller::IndexController;
 use snowflake::SnowflakeIdGenerator;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use sqlx::{MySql, Pool};
 
 
@@ -53,8 +53,8 @@ use crate::utils::db::get_connection_pool;
 pub struct MysqlPoolStateProvider;
 
 impl <'a> RequestStateProvider for  MysqlPoolStateProvider{
-    fn get_state(&self, server: &Server, req: &Request<Body>) -> Box<dyn Any + Send + Sync> {
-        let pool_state : &State<Pool<MySql>> = server.get_extension().unwrap();
+    fn get_state(&self, extensions: &Arc<Extensions>, req: &Request<Body>) -> Box<dyn Any + Send + Sync> {
+        let pool_state : &State<Pool<MySql>> = extensions.get().unwrap();
         Box::new(MysqlPoolManager::new(pool_state.clone()))
     }
 }
