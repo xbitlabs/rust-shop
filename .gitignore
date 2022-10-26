@@ -1,1 +1,7 @@
 /target
+/.idea/.gitignore
+/.idea/misc.xml
+/.idea/modules.xml
+/rust-shop.iml
+/log/rust-shop.log
+/.idea/vcs.xml
