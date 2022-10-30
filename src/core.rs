@@ -15,6 +15,7 @@ use std::time::Instant;
 use anyhow::anyhow;
 use chrono::NaiveDateTime;
 use criterion::Criterion;
+use bcrypt::{DEFAULT_COST, hash, verify};
 
 use route_recognizer::{Params, Router as MethodRouter};
 
@@ -303,91 +304,48 @@ impl Filter for AccessLogFilter {
     }
 }
 
-pub trait  LoadUserService{
-    fn load_user_by_username(&self,username:String)-> dyn UserDetails;
+#[async_trait::async_trait]
+pub trait  LoadUserService
+{
+    async fn load_user_by_username(&self, username: &String) -> anyhow::Result<Box<dyn UserDetails + Send + Sync>>;
 }
-//登录主体
-pub trait Principal{
-    fn get_name(&self)->&String;
+//获取登陆凭证
+#[async_trait::async_trait]
+pub trait AuthenticationTokenResolver<T>
+    where T:
+    AuthenticationToken
+{
+    async fn resolve(&self,ctx:RequestCtx)->anyhow::Result<T>;
 }
-pub struct DefaultPrincipal{
-    name:String
+pub struct UsernamePasswordAuthenticationTokenResolver{
+
 }
-impl DefaultPrincipal{
-    pub fn new(name:String)->Self{
-        DefaultPrincipal{
-            name
+#[async_trait::async_trait]
+impl AuthenticationTokenResolver<UsernamePasswordAuthenticationToken> for UsernamePasswordAuthenticationTokenResolver{
+    async fn resolve(&self, ctx:RequestCtx) -> anyhow::Result<UsernamePasswordAuthenticationToken> {
+        let params:HashMap<String,String> = parse_form_params(ctx.request).await;
+        let username = params.get("username");
+        if username.is_none() {
+            return Err(anyhow!("必须传入username字段"));
         }
-    }
-}
-impl Principal for DefaultPrincipal {
-    fn get_name(&self) -> &String {
-        &self.name
-    }
-}
-pub struct Username{
-    pub the_username:String,
-}
-
-impl Username {
-    pub fn new(the_username:String)->Self{
-        Username{
-            the_username
+        let password = params.get("password");
+        if password.is_none() {
+            return Err(anyhow!("必须传入password字段"));
         }
-    }
-}
-impl Principal for Username{
-    fn get_name(&self) -> &String {
-        &self.the_username
+        Ok(UsernamePasswordAuthenticationToken::new(username.unwrap().to_string(),password.unwrap().to_string()))
     }
 }
 
-//登录凭证
-pub trait Credentials{
-    fn get_credentials(&self)->&String;
-}
-pub struct DefaultCredentials{
-    credentials:String,
-}
-
-impl DefaultCredentials {
-    pub fn new(credentials:String)->Self{
-        DefaultCredentials{
-            credentials
-        }
-    }
-}
-
-impl Credentials for DefaultCredentials {
-    fn get_credentials(&self) -> &String {
-        &self.credentials
-    }
-}
-pub struct Password{
-    pub the_password:String,
-}
-
-impl Password {
-    pub fn new(the_password:String)->Self{
-        Password{
-            the_password
-        }
-    }
-}
-impl Credentials for Password {
-    fn get_credentials(&self) -> &String {
-        &self.the_password
-    }
-}
 //登录凭证，如用户名、密码
 pub trait AuthenticationToken{
-    fn get_principal(&self)->Box<&dyn Principal>;
-    fn get_credentials(&self)->Box<&dyn Credentials>;
+    fn get_principal(&self)->&(dyn Any + Send + Sync);
+    fn get_credentials(&self)->&(dyn Any + Send + Sync);
 }
 //登录的用户信息
 pub trait UserDetails{
     fn get_id(&self)->&i64;
     fn get_username(&self)->&String;
+    fn get_password(&self)->&String;
     fn get_authorities(&self)->&Vec<String>;
     fn is_enable(&self)->&bool;
 }
@@ -400,18 +358,18 @@ pub trait Authentication {
     fn set_authorities(&mut self,authorities:Vec<String>);
 
     fn is_authenticated(&self)->&bool;
-    fn set_authenticated(&mut self,is_authenticated:bool);
+    fn set_authenticated(&mut self,authenticated:bool);
 
     fn set_details(&mut self,details:Box<dyn Any  + Send + Sync>);
-    fn get_details(&self)-> &Box<dyn UserDetails  + Send + Sync>;
+    fn get_details(&self)-> &Box<dyn Any  + Send + Sync>;
 }
 pub struct DefaultAuthenticationToken{
-    principal:DefaultPrincipal,
-    credentials:DefaultCredentials,
+    principal:String,
+    credentials:String,
 }
 
 impl DefaultAuthenticationToken {
-    pub fn new(principal:DefaultPrincipal,credentials:DefaultCredentials)->Self{
+    pub fn new(principal:String,credentials:String)->Self{
         DefaultAuthenticationToken{
             principal,
             credentials
@@ -420,25 +378,25 @@ impl DefaultAuthenticationToken {
 }
 
 impl AuthenticationToken for DefaultAuthenticationToken {
-    fn get_principal(&self) -> Box<&dyn Principal> {
-        Box::new(&self.principal)
+    fn get_principal(&self) -> &(dyn Any + Send + Sync) {
+        &self.principal
     }
 
-    fn get_credentials(&self) -> Box<&dyn Credentials> {
-        Box::new(&self.credentials)
+    fn get_credentials(&self) -> &(dyn Any + Send + Sync) {
+        &self.credentials
     }
 }
 pub struct DefaultAuthentication{
     authentication_token:DefaultAuthenticationToken,
     authorities:Option<Vec<String>>,
     authenticated:bool,
-    details:Box<dyn UserDetails + Send + Sync>,
+    details:Box<dyn Any + Send + Sync>,
 }
 impl DefaultAuthentication{
     pub fn new(authentication_token:DefaultAuthenticationToken,
                authorities:Option<Vec<String>>,
                authenticated:bool,
-               details:Box<dyn UserDetails + Send + Sync>)->Self{
+               details:Box<dyn Any + Send + Sync>)->Self{
         DefaultAuthentication{
             authentication_token,
             authorities,
@@ -475,24 +433,35 @@ impl Authentication for DefaultAuthentication {
         self.details = details.unwrap()
     }
 
-    fn get_details(&self) -> &Box<dyn UserDetails + Send + Sync> {
+    fn get_details(&self) -> &Box<dyn Any + Send + Sync> {
         &self.details
     }
 }
 pub struct DefaultUserDetails{
     id:i64,
     username:String,
+    password:String,
     authorities:Vec<String>,
     enable:bool,
 }
 
 impl DefaultUserDetails {
-    pub fn new(id:i64,username:String,authorities:Vec<String>,enable:bool)->Self{
+    pub fn new(id:i64,username:String,password:String,authorities:Vec<String>,enable:bool)->Self{
         DefaultUserDetails{
             id,
             username,
+            password,
             authorities,
             enable
+        }
+    }
+    pub fn default()->DefaultUserDetails{
+        DefaultUserDetails{
+            id: 0,
+            username: "".to_string(),
+            password:"".to_string(),
+            authorities: vec![],
+            enable: false
         }
     }
 }
@@ -504,6 +473,11 @@ impl UserDetails for DefaultUserDetails {
     fn get_username(&self) -> &String {
         &self.username
     }
+
+    fn get_password(&self) -> &String {
+        &self.password
+    }
+
     fn get_authorities(&self) -> &Vec<String> {
         &self.authorities
     }
@@ -513,54 +487,63 @@ impl UserDetails for DefaultUserDetails {
 }
 
 pub struct UsernamePasswordAuthenticationToken{
-    username:Username,
-    password:Password,
-    /*pub authentication_token: Box<dyn AuthenticationToken>,*/
-    details:Option<Box<dyn UserDetails + Send + Sync>>,
-    authorities:Option<Vec<String>>,
-    authenticated:bool,
+    username:String,
+    password:String,
 }
 impl UsernamePasswordAuthenticationToken{
-    pub fn unauthenticated(username:String,password:String)->UsernamePasswordAuthenticationToken{
+    pub fn new(username:String,password:String)->UsernamePasswordAuthenticationToken{
         UsernamePasswordAuthenticationToken{
-            username:Username{
-                the_username : username
-            },
-            password:Password{
-                the_password:password
-            },
-            details: None,
-            authorities: None,
-            authenticated: false
-        }
-    }
-    pub fn authenticated(username:String,password:String,authorities:Option<Vec<String>>)->UsernamePasswordAuthenticationToken{
-        UsernamePasswordAuthenticationToken{
-            username:Username{
-                the_username : username
-            },
-            password:Password{
-                the_password:password
-            },
-            details: None,
-            authorities,
-            authenticated: true
+            username,
+            password,
         }
     }
 }
 impl AuthenticationToken for UsernamePasswordAuthenticationToken{
-    fn get_principal(&self) -> Box<&dyn Principal> {
-        Box::new(&self.username)
+    fn get_principal(&self) -> &(dyn Any + Send + Sync) {
+        &self.username
     }
 
-    fn get_credentials(&self) -> Box<&dyn Credentials> {
-        Box::new(&self.password)
+    fn get_credentials(&self) -> &(dyn Any + Send + Sync) {
+        &self.password
     }
 }
-impl Authentication for  UsernamePasswordAuthenticationToken{
-    fn get_authentication_token(&self) -> &(dyn AuthenticationToken) {
-        self
+pub struct DefaultLoadUserService{
+
+}
+#[async_trait::async_trait]
+impl LoadUserService for DefaultLoadUserService{
+    async fn load_user_by_username(&self, username: &String) -> anyhow::Result<Box<dyn UserDetails + Send + Sync>> {
+        todo!()
     }
+}
+pub struct UsernamePasswordAuthenticationProvider{
+    load_user_service:Box<dyn LoadUserService + Send + Sync>,
+    password_encoder:Box<dyn PasswordEncoder + Send + Sync>,
+    user_details_checker:Box<dyn UserDetailsChecker + Send + Sync>,
+}
+impl UsernamePasswordAuthenticationProvider{
+    pub fn new(load_user_service:Box<dyn LoadUserService + Send + Sync>,
+               password_encoder:Box<dyn PasswordEncoder + Send + Sync>,
+               user_details_checker:Box<dyn UserDetailsChecker + Send + Sync>)->Self{
+        UsernamePasswordAuthenticationProvider{
+            load_user_service,
+            password_encoder,
+            user_details_checker
+        }
+    }
+}
+pub struct UsernamePasswordAuthentication{
+    authentication_token:UsernamePasswordAuthenticationToken,
+    authorities:Option<Vec<String>>,
+    authenticated:bool,
+    details:Box<dyn Any + Send + Sync>,
+}
+
+impl Authentication for UsernamePasswordAuthentication {
+    fn get_authentication_token(&self) -> &(dyn AuthenticationToken) {
+        &self.authentication_token
+    }
+
     fn get_authorities(&self) -> &Option<Vec<String>> {
         &self.authorities
     }
@@ -573,24 +556,98 @@ impl Authentication for  UsernamePasswordAuthenticationToken{
         &self.authenticated
     }
 
-    fn set_authenticated(&mut self,is_authenticated: bool) {
-        self.authenticated = is_authenticated;
+    fn set_authenticated(&mut self, authenticated: bool) {
+        self.authenticated = authenticated;
     }
 
-    fn set_details(&mut self, details:Box<dyn Any + Send + Sync>) {
-        self.details = Some(details);
+    fn set_details(&mut self, details: Box<dyn Any + Send + Sync>) {
+        self.details = details;
     }
 
-    fn get_details(&self) -> &Box<dyn UserDetails  + Send + Sync> {
+    fn get_details(&self) -> &Box<dyn Any + Send + Sync> {
         &self.details
+    }
+}
+#[async_trait::async_trait]
+impl AuthenticationProvider for UsernamePasswordAuthenticationProvider{
+    async fn authenticate(&self, authentication_token: Box<dyn AuthenticationToken + Send + Sync>) -> anyhow::Result<Box<dyn Authentication>> {
+        let username:Option<&String> = authentication_token.get_principal().downcast_ref();
+        let username = username.unwrap();
+        let details = self.load_user_service.load_user_by_username(username).await?;
+        self.user_details_checker.check(&details).await?;
+        self.additional_authentication_checks(&details,&authentication_token).await?;
+        let mut authorities = vec![];
+        for authority in details.get_authorities() {
+            authorities.push(authority.to_string());
+        }
+        let password:Option<&String> = authentication_token.get_credentials().downcast_ref();
+        let password = password.unwrap();
+        let authentication : UsernamePasswordAuthentication = UsernamePasswordAuthentication{
+            authentication_token: UsernamePasswordAuthenticationToken {
+                username: username.to_string(),
+                password: password.to_string(),
+            },
+            authorities: Some(authorities),
+            authenticated: true,
+            details:Box::new(details)
+        };
+        Ok(Box::new(authentication))
+    }
+
+    async fn additional_authentication_checks(&self,user_details: &Box<dyn UserDetails + Send + Sync>, authentication_token: &Box<dyn AuthenticationToken + Send + Sync>) -> anyhow::Result<()> {
+        //let details : Box<DefaultUserDetails> = user_details.downcast().unwrap();
+        let password:Option<&String> = authentication_token.get_credentials().downcast_ref();
+        let password = password.unwrap();
+        let matches = self.password_encoder.matches(password, user_details.get_password())?;
+        return if matches {
+            Ok(())
+        } else {
+            Err(anyhow!("密码错误"))
+        }
+    }
+}
+pub trait PasswordEncoder{
+    fn encode(&self,raw_password:&String) ->anyhow::Result<String>;
+    fn matches(&self,raw_password:&String, encoded_password:&String) ->anyhow::Result<bool>;
+}
+pub struct BcryptPasswordEncoder{
+
+}
+impl PasswordEncoder for BcryptPasswordEncoder{
+    fn encode(&self,raw_password: &String) -> anyhow::Result<String> {
+        let hashed = hash(raw_password, DEFAULT_COST)?;
+        return Ok(hashed);
+    }
+
+    fn matches(&self,raw_password: &String, encoded_password: &String) -> anyhow::Result<bool> {
+        let valid = verify(raw_password, encoded_password)?;
+        return Ok(valid);
+    }
+}
+#[async_trait::async_trait]
+pub trait UserDetailsChecker{
+    async fn check(&self,details: &Box<(dyn UserDetails + Send + Sync)>)->anyhow::Result<()>;
+}
+pub struct DefaultUserDetailsChecker{
+
+}
+#[async_trait::async_trait]
+impl UserDetailsChecker for DefaultUserDetailsChecker{
+    async fn check(&self,details: &Box<(dyn UserDetails + Send + Sync)>) -> anyhow::Result<()> {
+        if !details.is_enable() {
+            Err(anyhow!(format!("账号{}已被禁止登陆",details.get_username())))
+        }else {
+            Ok(())
+        }
     }
 }
 #[async_trait::async_trait]
 pub trait AuthenticationProvider{
     async fn authenticate(&self,authentication_token: Box<dyn AuthenticationToken + Send + Sync>) -> anyhow::Result<Box<dyn Authentication>>;
+    async fn additional_authentication_checks(&self,user_details:&Box<dyn UserDetails + Send + Sync>, authentication_token:&Box<dyn AuthenticationToken + Send + Sync>)->anyhow::Result<()>;
 }
 pub struct AuthenticationProviderManager{
-    pub providers:HashMap<TypeId,Box<dyn AuthenticationProvider + Send + Sync + 'static>>
+    pub providers:HashMap<TypeId,Box<dyn Any + Send + Sync + 'static>>
 }
 
 impl AuthenticationProviderManager {
@@ -599,16 +656,30 @@ impl AuthenticationProviderManager {
             providers:HashMap::new(),
         }
     }
-    pub fn add(&mut self, authentication_token_type_id:TypeId, provider: Box<dyn AuthenticationProvider + Send + Sync>){
+    pub fn add(&mut self, authentication_token_type_id:TypeId, provider: Box<dyn Any + Send + Sync>){
         self.providers.entry(authentication_token_type_id).or_insert_with(||{
             provider
         });
     }
-    pub fn get(&self,authentication_token_type_id:TypeId)->Option<&Box<dyn AuthenticationProvider + Send + Sync>>{
-        self.providers.get(&authentication_token_type_id)
+    pub fn get<T: 'static>(&self,authentication_token_type_id:TypeId)->Option<&T>{
+        let provider = self.providers.get(&authentication_token_type_id);
+        return if provider.is_some() {
+            let provider: Option<&T> = provider.unwrap().downcast_ref();
+            provider
+        } else {
+            None
+        }
     }
 }
+pub trait AccessDecisionManager{
+    //async fn decide(Authentication authentication, Object object, Collection<ConfigAttribute> configAttributes)
+}
+pub struct SecurityMetadataSource{
 
+}
+pub struct AccessDecisionVoter{
+
+}
 pub struct AuthenticationProcessingFilter{
 
 }
@@ -632,7 +703,7 @@ impl Filter for UsernamePasswordAuthenticationFilter{
     async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>> {
         let username_password_form_parser : UsernamePasswordFormParser = UsernamePassword::build_form_parser();
         let username_password:UsernamePassword = username_password_form_parser.parse(ctx.request).await?;
-        let authentication_token = UsernamePasswordAuthenticationToken::unauthenticated(username_password.username,username_password.password);
+        let authentication_token = UsernamePasswordAuthenticationToken::new(username_password.username,username_password.password);
         let auth_provider_manager : Option<&AuthenticationProviderManager> = ctx.extensions.get();
         if auth_provider_manager.is_none() {
             return Err(anyhow!("认证失败：找不到AuthenticationProviderManager"));
@@ -642,7 +713,7 @@ impl Filter for UsernamePasswordAuthenticationFilter{
         if auth_provider.is_none() {
             return Err(anyhow!("认证失败：找不到跟UsernamePasswordAuthenticationToken匹配的AuthenticationProvider"))
         }
-        let auth_provider = auth_provider.unwrap();
+        let auth_provider:&UsernamePasswordAuthenticationProvider = auth_provider.unwrap();
         let auth = auth_provider.authenticate(Box::new(authentication_token)).await;
 
         todo!()
@@ -673,7 +744,7 @@ pub struct SecurityConfig{
     authentication_success_handler:Box<dyn AuthenticationSuccessHandler>,
     authentication_failure_handler:Box<dyn AuthenticationFailureHandler>,
     load_user_service:Box<dyn LoadUserService>,
-    authentication_provider:Box<dyn AuthenticationProvider>
+    authentication_provider:Box<dyn Any + Send + Sync>
 }
 pub trait SecurityFilter{
 
@@ -898,9 +969,6 @@ pub async fn parse_request_json<T>(req:Request<Body>)->anyhow::Result<T>
         }
     }
 }
-/*pub fn parse_request_params<T>(ctx:RequestCtx)->anyhow::Result<T>{
-    Ok(())
-}*/
 pub async fn parse_form_params(req:Request<Body>)->HashMap<String,String>{
     let url = req.uri().to_string();
     let b = hyper::body::to_bytes(req).await;
