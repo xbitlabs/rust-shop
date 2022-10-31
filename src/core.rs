@@ -250,6 +250,7 @@ type Router = HashMap<String, MethodRouter<BoxHTTPHandler>>;
 #[async_trait::async_trait]
 pub trait Filter: Send + Sync + 'static {
     async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>>;
+    fn url_patterns(&self) ->String;
 }
 
 #[allow(missing_debug_implementations)]
@@ -301,6 +302,10 @@ impl Filter for AccessLogFilter {
             start.elapsed().as_millis()
         );
         res
+    }
+
+    fn url_patterns(&self) -> String {
+        todo!()
     }
 }
 
@@ -755,10 +760,11 @@ impl Filter for AuthenticationProcessingFilter{
         let auth_provider:Option<&Box<dyn AuthenticationProvider + Send + Sync>> = auth_provider_manager.unwrap().get(security_config.unwrap().authentication_token_type_id);
         let authentication_token = authentication_token_resolver.unwrap().resolve(ctx.request).await?;
         //let authentication_token:Result<Box<(dyn AuthenticationToken)>,Box<dyn Any>> = authentication_token.downcast();
-        let authentication = auth_provider.unwrap().authenticate(authentication_token).await?;
-        if *authentication.is_authenticated() {
+        let authentication = auth_provider.unwrap().authenticate(authentication_token).await;
+        if authentication.is_ok() {
+            let authentication = authentication.unwrap();
             if success_handler.is_some() {
-                let result = success_handler.unwrap().handle(&ctx,next).await?;
+                let result = success_handler.unwrap().handle(authentication).await?;
                 Ok(result)
             }else {
                 let user_details:Option<&DefaultUserDetails> = authentication.get_details().downcast_ref();
@@ -768,13 +774,17 @@ impl Filter for AuthenticationProcessingFilter{
             }
         }else {
             if fail_handler.is_some() {
-                let result = fail_handler.unwrap().handle(&ctx,next).await?;
+                let result = fail_handler.unwrap().handle(authentication.err().unwrap()).await?;
                 Ok(result)
             }else {
                 let endpoint_result:EndpointResult<AccessToken> = EndpointResult::unauthorized("登录凭证无效".to_string());
                 Ok(ResponseBuilder::with_endpoint_result(&endpoint_result))
             }
         }
+    }
+
+    fn url_patterns(&self) -> String {
+        todo!()
     }
 }
 pub struct UsernamePasswordAuthenticationFilter{
@@ -806,10 +816,14 @@ impl Filter for UsernamePasswordAuthenticationFilter{
 
         todo!()
     }
+
+    fn url_patterns(&self) -> String {
+        todo!()
+    }
 }
 #[async_trait::async_trait]
 pub trait AuthenticationSuccessHandler{
-    async fn handle<'a>(&'a self, ctx: &RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>>;
+    async fn handle(&self, authentication:Box<dyn Authentication  + Send + Sync>) -> anyhow::Result<Response<Body>>;
 }
 /*#[async_trait::async_trait]
 impl Filter for AuthenticationSuccessHandler{
@@ -819,7 +833,7 @@ impl Filter for AuthenticationSuccessHandler{
 }*/
 #[async_trait::async_trait]
 pub trait  AuthenticationFailureHandler{
-    async fn handle<'a>(&'a self, ctx: &RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>>;
+    async fn handle(&self, error: anyhow::Error) -> anyhow::Result<Response<Body>>;
 }
 /*#[async_trait::async_trait]
 impl Filter for AuthenticationFailureHandler{
@@ -1043,6 +1057,7 @@ use schemars::_private::NoSerialize;
 use serde_json::Value;
 use sqlx::encode::IsNull::No;
 use time::OffsetDateTime;
+use uri_pattern_matcher::UriPattern;
 
 pub async fn parse_request_json<T>(req:Request<Body>)->anyhow::Result<T>
     where for<'a> T:
@@ -1099,15 +1114,8 @@ zoom_and_enhance! {
 
 #[test]
 fn test() {
-    let map:HashMap<String,String> = HashMap::new();
-    let value = map.get("key");
-    if value.is_some() {
-        let result = value.unwrap().parse::<i64>();
-        if result.is_err() {
-            let result = result.unwrap();
-        }
-    }
-    let s  = "sss";
-    println!("{:?}", Export::field_names());
+    let pattern: UriPattern = "/*".into();
+    assert!(pattern.is_match("/api/resource/id1/details"));
+    assert!(pattern.is_match("/api/customer/John/details"));
 }
 

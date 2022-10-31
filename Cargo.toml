@@ -52,6 +52,7 @@ thiserror = "1.0.37"
 ahash = "0.8.0"
 validator = "0.16.0"
 bcrypt = "0.13.0"
+uri-pattern-matcher = "0.1.4"
 
 [dev-dependencies]
 tokio-test = "*"

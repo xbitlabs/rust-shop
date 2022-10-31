@@ -39,6 +39,10 @@ impl Filter for AuthFilter {
         let endpoint_result:EndpointResult<String> = EndpointResult::server_error("无权限".to_string());
         Ok(ResponseBuilder::with_endpoint_result(&endpoint_result))
     }
+
+    fn url_patterns(&self) -> String {
+        todo!()
+    }
 }
 
 

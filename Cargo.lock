@@ -1797,6 +1797,7 @@ dependencies = [
  "time 0.3.14",
  "tokio",
  "tokio-test",
+ "uri-pattern-matcher",
  "uuid",
  "validator 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -2636,6 +2637,12 @@ name = "untrusted"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
+
+[[package]]
+name = "uri-pattern-matcher"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b030cbad6d5d664533f4adf9c28502af79651050a35f99850052ff28000d5809"
 
 [[package]]
 name = "url"
