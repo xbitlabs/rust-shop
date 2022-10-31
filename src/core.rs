@@ -46,7 +46,7 @@ pub struct RequestCtx {
     pub remote_addr: SocketAddr,
     pub query_params: HashMap<String, String>,
     pub request_states: Extensions,
-    pub current_user:Option<Box<dyn UserDetails + Send>>,
+    pub current_user:Option<Box<dyn UserDetails + Send + Sync>>,
     pub extensions:Arc<Extensions>,
 }
 
@@ -311,19 +311,17 @@ pub trait  LoadUserService
 }
 //获取登陆凭证
 #[async_trait::async_trait]
-pub trait AuthenticationTokenResolver<T>
-    where T:
-    AuthenticationToken
+pub trait AuthenticationTokenResolver
 {
-    async fn resolve(&self,ctx:RequestCtx)->anyhow::Result<T>;
+    async fn resolve(&self,req:Request<Body>)->anyhow::Result<Box<dyn AuthenticationToken + Send + Sync>>;
 }
 pub struct UsernamePasswordAuthenticationTokenResolver{
 
 }
 #[async_trait::async_trait]
-impl AuthenticationTokenResolver<UsernamePasswordAuthenticationToken> for UsernamePasswordAuthenticationTokenResolver{
-    async fn resolve(&self, ctx:RequestCtx) -> anyhow::Result<UsernamePasswordAuthenticationToken> {
-        let params:HashMap<String,String> = parse_form_params(ctx.request).await;
+impl AuthenticationTokenResolver for UsernamePasswordAuthenticationTokenResolver{
+    async fn resolve(&self, req:Request<Body>) -> anyhow::Result<Box<dyn AuthenticationToken + Send + Sync>> {
+        let params:HashMap<String,String> = parse_form_params(req).await;
         let username = params.get("username");
         if username.is_none() {
             return Err(anyhow!("必须传入username字段"));
@@ -332,7 +330,7 @@ impl AuthenticationTokenResolver<UsernamePasswordAuthenticationToken> for Userna
         if password.is_none() {
             return Err(anyhow!("必须传入password字段"));
         }
-        Ok(UsernamePasswordAuthenticationToken::new(username.unwrap().to_string(),password.unwrap().to_string()))
+        Ok(Box::new(UsernamePasswordAuthenticationToken::new(username.unwrap().to_string(),password.unwrap().to_string())))
     }
 }
 
@@ -570,7 +568,7 @@ impl Authentication for UsernamePasswordAuthentication {
 }
 #[async_trait::async_trait]
 impl AuthenticationProvider for UsernamePasswordAuthenticationProvider{
-    async fn authenticate(&self, authentication_token: Box<dyn AuthenticationToken + Send + Sync>) -> anyhow::Result<Box<dyn Authentication>> {
+    async fn authenticate(&self, authentication_token: Box<dyn AuthenticationToken + Send + Sync>) -> anyhow::Result<Box<dyn Authentication + Send + Sync>> {
         let username:Option<&String> = authentication_token.get_principal().downcast_ref();
         let username = username.unwrap();
         let details = self.load_user_service.load_user_by_username(username).await?;
@@ -643,7 +641,7 @@ impl UserDetailsChecker for DefaultUserDetailsChecker{
 }
 #[async_trait::async_trait]
 pub trait AuthenticationProvider{
-    async fn authenticate(&self,authentication_token: Box<dyn AuthenticationToken + Send + Sync>) -> anyhow::Result<Box<dyn Authentication>>;
+    async fn authenticate(&self,authentication_token: Box<dyn AuthenticationToken + Send + Sync>) -> anyhow::Result<Box<dyn Authentication  + Send + Sync>>;
     async fn additional_authentication_checks(&self,user_details:&Box<dyn UserDetails + Send + Sync>, authentication_token:&Box<dyn AuthenticationToken + Send + Sync>)->anyhow::Result<()>;
 }
 pub struct AuthenticationProviderManager{
@@ -671,6 +669,68 @@ impl AuthenticationProviderManager {
         }
     }
 }
+mod jwt_numeric_date {
+    //! Custom serialization of OffsetDateTime to conform with the JWT spec (RFC 7519 section 2, "Numeric Date")
+    use serde::{self, Deserialize, Deserializer, Serializer};
+    use time::OffsetDateTime;
+
+    /// Serializes an OffsetDateTime to a Unix timestamp (milliseconds since 1970/1/1T00:00:00T)
+    pub fn serialize<S>(date: &OffsetDateTime, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+    {
+        let timestamp = date.unix_timestamp();
+        serializer.serialize_i64(timestamp)
+    }
+
+    /// Attempts to deserialize an i64 and use as a Unix timestamp
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<OffsetDateTime, D::Error>
+        where
+            D: Deserializer<'de>,
+    {
+        OffsetDateTime::from_unix_timestamp(i64::deserialize(deserializer)?)
+            .map_err(|_| serde::de::Error::custom("invalid Unix timestamp value"))
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct Claims {
+    pub token_id:String,
+    //用户标识
+    pub user_id:i64,
+    pub sub: String,
+    ///token颁发时间
+    #[serde(with = "jwt_numeric_date")]
+    pub iat: OffsetDateTime,
+    ///失效时间
+    #[serde(with = "jwt_numeric_date")]
+    pub exp: OffsetDateTime,
+}
+impl Claims{
+    pub fn new(token_id:String,user_id:i64,sub:String,iat: OffsetDateTime,exp: OffsetDateTime)->Self{
+        Claims{
+            token_id,
+            user_id,
+            sub,
+            iat,
+            exp
+        }
+    }
+}
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct AccessToken{
+    pub access_token:String,
+    pub refresh_token:String,
+    pub exp:i64,
+}
+#[async_trait::async_trait]
+pub trait JwtService{
+    async fn grant_access_token(&self,user_id: i64) -> anyhow::Result<AccessToken>;
+    async fn decode_access_token(&self,access_token: String) -> anyhow::Result<Claims>;
+    async fn decode_refresh_token(&self,refresh_token: String) -> anyhow::Result<Claims>;
+    async fn refresh_token(&self,refresh_token: String) -> anyhow::Result<AccessToken>;
+    async fn remove_access_token(&self, access_token: String) -> anyhow::Result<bool>;
+}
 pub trait AccessDecisionManager{
     //async fn decide(Authentication authentication, Object object, Collection<ConfigAttribute> configAttributes)
 }
@@ -686,7 +746,35 @@ pub struct AuthenticationProcessingFilter{
 #[async_trait::async_trait]
 impl Filter for AuthenticationProcessingFilter{
     async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>> {
-        todo!()
+        let authentication_token_resolver:Option<&Box<dyn AuthenticationTokenResolver + Send + Sync>> = ctx.extensions.get();
+        let  auth_provider_manager:Option<&AuthenticationProviderManager> = ctx.extensions.get();
+        let jwt_service:Option<&Box<dyn JwtService + Send + Sync>> = ctx.extensions.get();
+        let  security_config:Option<&Box<SecurityConfig>> = ctx.extensions.get();
+        let success_handler:Option<&Box<dyn AuthenticationSuccessHandler + Send + Sync>> = ctx.extensions.get();
+        let fail_handler:Option<&Box<dyn AuthenticationFailureHandler + Send + Sync>> = ctx.extensions.get();
+        let auth_provider:Option<&Box<dyn AuthenticationProvider + Send + Sync>> = auth_provider_manager.unwrap().get(security_config.unwrap().authentication_token_type_id);
+        let authentication_token = authentication_token_resolver.unwrap().resolve(ctx.request).await?;
+        //let authentication_token:Result<Box<(dyn AuthenticationToken)>,Box<dyn Any>> = authentication_token.downcast();
+        let authentication = auth_provider.unwrap().authenticate(authentication_token).await?;
+        if *authentication.is_authenticated() {
+            if success_handler.is_some() {
+                let result = success_handler.unwrap().handle(&ctx,next).await?;
+                Ok(result)
+            }else {
+                let user_details:Option<&DefaultUserDetails> = authentication.get_details().downcast_ref();
+                let access_token = jwt_service.unwrap().grant_access_token(user_details.unwrap().id).await?;
+                let endpoint_result:EndpointResult<AccessToken> = EndpointResult::ok_with_payload("".to_string(),access_token);
+                Ok(ResponseBuilder::with_endpoint_result(&endpoint_result))
+            }
+        }else {
+            if fail_handler.is_some() {
+                let result = fail_handler.unwrap().handle(&ctx,next).await?;
+                Ok(result)
+            }else {
+                let endpoint_result:EndpointResult<AccessToken> = EndpointResult::unauthorized("登录凭证无效".to_string());
+                Ok(ResponseBuilder::with_endpoint_result(&endpoint_result))
+            }
+        }
     }
 }
 pub struct UsernamePasswordAuthenticationFilter{
@@ -721,7 +809,7 @@ impl Filter for UsernamePasswordAuthenticationFilter{
 }
 #[async_trait::async_trait]
 pub trait AuthenticationSuccessHandler{
-    async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>>;
+    async fn handle<'a>(&'a self, ctx: &RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>>;
 }
 /*#[async_trait::async_trait]
 impl Filter for AuthenticationSuccessHandler{
@@ -731,7 +819,7 @@ impl Filter for AuthenticationSuccessHandler{
 }*/
 #[async_trait::async_trait]
 pub trait  AuthenticationFailureHandler{
-    async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>>;
+    async fn handle<'a>(&'a self, ctx: &RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>>;
 }
 /*#[async_trait::async_trait]
 impl Filter for AuthenticationFailureHandler{
@@ -741,10 +829,12 @@ impl Filter for AuthenticationFailureHandler{
 }*/
 pub struct SecurityConfig{
     enable_security:bool,
-    authentication_success_handler:Box<dyn AuthenticationSuccessHandler>,
-    authentication_failure_handler:Box<dyn AuthenticationFailureHandler>,
-    load_user_service:Box<dyn LoadUserService>,
-    authentication_provider:Box<dyn Any + Send + Sync>
+    authentication_success_handler:Box<dyn AuthenticationSuccessHandler + Send + Sync>,
+    authentication_failure_handler:Box<dyn AuthenticationFailureHandler + Send + Sync>,
+    load_user_service:Box<dyn LoadUserService + Send + Sync>,
+    authentication_provider:Box<dyn Any + Send + Sync>,
+    authentication_token_type_id:TypeId,
+
 }
 pub trait SecurityFilter{
 
@@ -952,6 +1042,7 @@ use hyper::body::Buf;
 use schemars::_private::NoSerialize;
 use serde_json::Value;
 use sqlx::encode::IsNull::No;
+use time::OffsetDateTime;
 
 pub async fn parse_request_json<T>(req:Request<Body>)->anyhow::Result<T>
     where for<'a> T:

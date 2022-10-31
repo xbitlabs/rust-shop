@@ -11,56 +11,10 @@ use crate::config::load_config::APP_CONFIG;
 use serde::Serialize;
 use serde::Deserialize;
 use crate::{ID_GENERATOR, MysqlPoolManager};
+use crate::core::{AccessToken, Claims, JwtService};
 use crate::entity::entity::UserJwt;
 
-mod jwt_numeric_date {
-    //! Custom serialization of OffsetDateTime to conform with the JWT spec (RFC 7519 section 2, "Numeric Date")
-    use serde::{self, Deserialize, Deserializer, Serializer};
-    use time::OffsetDateTime;
 
-    /// Serializes an OffsetDateTime to a Unix timestamp (milliseconds since 1970/1/1T00:00:00T)
-    pub fn serialize<S>(date: &OffsetDateTime, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-    {
-        let timestamp = date.unix_timestamp();
-        serializer.serialize_i64(timestamp)
-    }
-
-    /// Attempts to deserialize an i64 and use as a Unix timestamp
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<OffsetDateTime, D::Error>
-        where
-            D: Deserializer<'de>,
-    {
-        OffsetDateTime::from_unix_timestamp(i64::deserialize(deserializer)?)
-            .map_err(|_| serde::de::Error::custom("invalid Unix timestamp value"))
-    }
-}
-
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct Claims {
-    pub token_id:String,
-    //用户标识
-    pub user_id:i64,
-    pub sub: String,
-    ///token颁发时间
-    #[serde(with = "jwt_numeric_date")]
-    pub iat: OffsetDateTime,
-    ///失效时间
-    #[serde(with = "jwt_numeric_date")]
-    pub exp: OffsetDateTime,
-}
-impl Claims{
-    pub fn new(token_id:String,user_id:i64,sub:String,iat: OffsetDateTime,exp: OffsetDateTime)->Self{
-        Claims{
-            token_id,
-            user_id,
-            sub,
-            iat,
-            exp
-        }
-    }
-}
 pub struct JwtConfig{
     pub access_token_validity:i64,
     pub refresh_token_validity:i64,
@@ -75,12 +29,6 @@ impl JwtConfig {
         }
     }
 }
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct AccessToken{
-    pub access_token:String,
-    pub refresh_token:String,
-    pub exp:i64,
-}
 
 
 
@@ -88,13 +36,24 @@ pub struct RustShopJwtService<'a,'b>{
     mysql_pool_manager: &'a MysqlPoolManager<'b>
 }
 
-impl <'a,'b> RustShopJwtService<'a,'b>{
-    pub fn new(mysql_pool_manager:&'b MysqlPoolManager)->Self{
-        RustShopJwtService{
+impl <'a,'b> RustShopJwtService<'a,'b> {
+    pub fn new(mysql_pool_manager: &'b MysqlPoolManager) -> Self {
+        RustShopJwtService {
             mysql_pool_manager
         }
     }
-    pub async fn grant_access_token(&self,user_id: i64) -> anyhow::Result<AccessToken> {
+    async fn get_jwt_config(&self,) -> anyhow::Result<JwtConfig> {
+        Ok(JwtConfig{
+            access_token_validity: APP_CONFIG.jwt.access_token_validity,
+            refresh_token_validity: APP_CONFIG.jwt.refresh_token_validity,
+            sub: APP_CONFIG.jwt.sub.as_str().to_string(),
+        })
+    }
+}
+
+#[async_trait::async_trait]
+impl <'a,'b> JwtService for RustShopJwtService<'a,'b> {
+    async fn grant_access_token(&self,user_id: i64) -> anyhow::Result<AccessToken> {
         let jwt_config = self.get_jwt_config().await?;
         let iat = OffsetDateTime::now_utc();
         let access_token_exp = iat + Duration::days(jwt_config.access_token_validity / 60 / 60 / 24);
@@ -136,21 +95,21 @@ impl <'a,'b> RustShopJwtService<'a,'b>{
         })
     }
 
-    pub async fn decode_access_token(&self,access_token: String) -> anyhow::Result<Claims> {
+    async fn decode_access_token(&self,access_token: String) -> anyhow::Result<Claims> {
         let access_token_claims:TokenData<Claims> = decode(access_token.as_str(),
                                                            &DecodingKey::from_secret(APP_CONFIG.jwt.secret.as_ref()),
                                                            &Validation::new(Algorithm::HS256))?;
         Ok(access_token_claims.claims)
     }
 
-    pub async fn decode_refresh_token(&self,refresh_token: String) -> anyhow::Result<Claims> {
+    async fn decode_refresh_token(&self,refresh_token: String) -> anyhow::Result<Claims> {
         let token_data:TokenData<Claims> = decode(refresh_token.as_str(),
                                                            &DecodingKey::from_secret(APP_CONFIG.jwt.secret.as_ref()),
                                                            &Validation::new(Algorithm::HS256))?;
         Ok(token_data.claims)
     }
 
-    pub async fn refresh_token(&self,refresh_token: String) -> anyhow::Result<AccessToken> {
+    async fn refresh_token(&self,refresh_token: String) -> anyhow::Result<AccessToken> {
         println!("当前线程id={:?}",thread::current().id());
         let decode_refresh_token = self.decode_refresh_token(refresh_token).await?;
 
@@ -174,15 +133,9 @@ impl <'a,'b> RustShopJwtService<'a,'b>{
         self.grant_access_token(decode_refresh_token.user_id).await
     }
 
-    pub async fn get_jwt_config(&self,) -> anyhow::Result<JwtConfig> {
-        Ok(JwtConfig{
-            access_token_validity: APP_CONFIG.jwt.access_token_validity,
-            refresh_token_validity: APP_CONFIG.jwt.refresh_token_validity,
-            sub: APP_CONFIG.jwt.sub.as_str().to_string(),
-        })
-    }
 
-    pub async fn remove_access_token(&self, access_token: String) -> anyhow::Result<bool> {
+
+    async fn remove_access_token(&self, access_token: String) -> anyhow::Result<bool> {
         let decode_access_token = self.decode_access_token(access_token).await?;
         let pool = self.mysql_pool_manager.get_pool();
         let rows_affected = sqlx::query!("delete from user_jwt where user_id=? and token_id=?",decode_access_token.user_id,decode_access_token.token_id)

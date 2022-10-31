@@ -8,6 +8,7 @@ use crate::{MysqlPoolManager, MysqlPoolStateProvider, RequestCtx, ResponseBuilde
 use crate::core::{RequestStateResolver, EndpointResultCode};
 use crate::service::auth_service::AuthService;
 use crate::entity::entity::UserJwt;
+use crate::service::jwt_service::RustShopJwtService;
 
 pub struct AuthController;
 
@@ -19,8 +20,8 @@ lazy_static! {
 impl AuthController {
     pub async fn login(ctx:RequestCtx) ->anyhow::Result<hyper::Response<hyper::Body>> {
         let pool_manager : &MysqlPoolManager = RequestStateResolver::get(&ctx);
-
-        let auth_service = AuthService::new(pool_manager);
+        let jwt_service = RustShopJwtService::new(pool_manager);
+        let auth_service = AuthService::new(pool_manager,&jwt_service);
         let js_code = ctx.query_params.get("js_code");
         if js_code.is_none() {
             let endpoint_result:EndpointResult<String> = EndpointResult::client_error("登录失败".to_string());
@@ -39,7 +40,8 @@ impl AuthController {
     }
     pub async fn logout(ctx:RequestCtx) ->anyhow::Result<hyper::Response<hyper::Body>> {
         let pool_manager : &MysqlPoolManager = RequestStateResolver::get(&ctx);
-        let auth_service = AuthService::new(pool_manager);
+        let jwt_service = RustShopJwtService::new(pool_manager);
+        let auth_service = AuthService::new(pool_manager,&jwt_service);
         let token_option = ctx.request.headers().get(ACCESS_TOKEN.to_string());
 
         if let Some(token) = token_option {
@@ -55,7 +57,8 @@ impl AuthController {
     }
     pub async fn refresh_token(ctx:RequestCtx) ->anyhow::Result<hyper::Response<hyper::Body>> {
         let pool_manager : &MysqlPoolManager = RequestStateResolver::get(&ctx);
-        let auth_service = AuthService::new(pool_manager);
+        let jwt_service = RustShopJwtService::new(pool_manager);
+        let auth_service = AuthService::new(pool_manager,&jwt_service);
         let refresh_token_option = ctx.request.headers().get(REFRESH_TOKEN.to_string());
 
         if let Some(token) = refresh_token_option {

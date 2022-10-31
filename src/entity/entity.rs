@@ -97,6 +97,7 @@ pub struct Sku{
 pub struct User{
     pub id:i64,
     pub phone_number:Option<String>,
+    pub is_phone_number_verified:u8,
     pub password:Option<String>,
     pub wx_open_id:String,
     #[serde(with = "db_numeric_date")]

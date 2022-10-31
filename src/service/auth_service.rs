@@ -16,11 +16,12 @@ use crate::entity::entity::User;
 use crate::service::wechat_service::WeChatMiniAppService;
 use jsonwebtoken::{Algorithm, DecodingKey, encode, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
-use crate::service::jwt_service::{AccessToken, RustShopJwtService};
+use crate::service::jwt_service::{RustShopJwtService};
 use chrono::prelude::*;
 use sqlx::{Error, MySql, Pool};
 use crate::entity::entity::UserJwt;
 use crate::{ID_GENERATOR, MysqlPoolManager};
+use crate::core::{AccessToken, JwtService};
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct LoginResult{
@@ -32,14 +33,14 @@ pub struct LoginResult{
 
 pub struct AuthService<'a,'b>{
     wechat_service:WeChatMiniAppService,
-    jwt_service: RustShopJwtService<'a,'b>,
+    jwt_service: &'a (dyn JwtService  + Send + Sync),
     mysql_pool_manager: &'a MysqlPoolManager<'b>
 }
 impl <'a,'b> AuthService<'a,'b> {
-    pub fn new(mysql_pool_manager:&'b MysqlPoolManager)->Self{
+    pub fn new(mysql_pool_manager:&'b MysqlPoolManager,jwt_service:&'a (dyn JwtService  + Send + Sync))->Self{
         AuthService{
             wechat_service:WeChatMiniAppService::new(),
-            jwt_service : RustShopJwtService::new(mysql_pool_manager),
+            jwt_service,
             mysql_pool_manager
         }
     }
