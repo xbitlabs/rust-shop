@@ -1,4 +1,4 @@
-use std::any::Any;
+/*use std::any::Any;
 use std::string::ToString;
 use std::thread;
 use hyper::StatusCode;
@@ -69,4 +69,4 @@ impl AuthController {
             Ok(ResponseBuilder::with_text("刷新token失败".to_string(), EndpointResultCode::ClientError))
         }
     }
-}
+}*/

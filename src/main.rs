@@ -46,7 +46,7 @@ impl Filter for AuthFilter {
 }
 
 
-use crate::api::auth_controller::AuthController;
+//use crate::api::auth_controller::AuthController;
 use crate::api::static_file_controller::StaticFileController;
 use crate::api::upload_controller::UploadController;
 use crate::config::load_config::{APP_CONFIG, load_conf};
@@ -88,9 +88,9 @@ async fn main() ->anyhow::Result<()>{
 
     srv.post("/", IndexController::index);
     //登录
-    srv.post("/login", AuthController::login);
-    srv.post("/logout", AuthController::logout);
-    srv.post("/refresh_token",AuthController::refresh_token);
+    //srv.post("/login", AuthController::login);
+    //srv.post("/logout", AuthController::logout);
+    //srv.post("/refresh_token",AuthController::refresh_token);
     //上传
     srv.post("/upload",UploadController::upload);
     //静态文件
