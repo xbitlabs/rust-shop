@@ -37,7 +37,7 @@ pub struct RustShopJwtService<'a,'b>{
 }
 
 impl <'a,'b> RustShopJwtService<'a,'b> {
-    pub fn new(mysql_pool_manager: &'b MysqlPoolManager) -> Self {
+    pub fn new(mysql_pool_manager: &'a MysqlPoolManager<'b>) -> Self {
         RustShopJwtService {
             mysql_pool_manager
         }
