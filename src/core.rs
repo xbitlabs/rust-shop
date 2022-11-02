@@ -18,6 +18,7 @@ use criterion::Criterion;
 use bcrypt::{DEFAULT_COST, hash, verify};
 use crate::entity::entity::User;
 use chrono::Local;
+use chrono::Utc;
 
 use route_recognizer::{Params, Router as MethodRouter};
 
@@ -426,7 +427,7 @@ impl <'a,'b> LoadUserService for WeChatUserService<'a,'b>{
             }))
         }else {
             let id: i64 = ID_GENERATOR.lock().unwrap().real_time_generate();
-            let rows_affected = sqlx::query!("insert into `user`(id,wx_open_id,created_time,enable) values(?,?,?,?)",id,identity.to_string(),Local::now(),1)
+            let rows_affected = sqlx::query!("insert into `user`(id,wx_open_id,created_time,enable) values(?,?,?,?)",id,identity.to_string(),Utc::now(),1)
                 .execute(pool).await?
                 .rows_affected();
             if rows_affected > 0 {
