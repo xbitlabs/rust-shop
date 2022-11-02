@@ -11,11 +11,101 @@
  Target Server Version : 80027
  File Encoding         : 65001
 
- Date: 31/10/2022 18:13:17
+ Date: 02/11/2022 18:25:37
 */
 
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
+
+-- ----------------------------
+-- Table structure for admin_permission
+-- ----------------------------
+DROP TABLE IF EXISTS `admin_permission`;
+CREATE TABLE `admin_permission`  (
+  `id` bigint NOT NULL,
+  `admin_permission_group_id` bigint NULL DEFAULT NULL,
+  `title` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `code` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `url` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of admin_permission
+-- ----------------------------
+
+-- ----------------------------
+-- Table structure for admin_permission_group
+-- ----------------------------
+DROP TABLE IF EXISTS `admin_permission_group`;
+CREATE TABLE `admin_permission_group`  (
+  `id` bigint NOT NULL,
+  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `parent_id` bigint NULL DEFAULT NULL,
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of admin_permission_group
+-- ----------------------------
+
+-- ----------------------------
+-- Table structure for admin_role
+-- ----------------------------
+DROP TABLE IF EXISTS `admin_role`;
+CREATE TABLE `admin_role`  (
+  `id` bigint NOT NULL,
+  `name` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `description` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of admin_role
+-- ----------------------------
+
+-- ----------------------------
+-- Table structure for admin_role_permission
+-- ----------------------------
+DROP TABLE IF EXISTS `admin_role_permission`;
+CREATE TABLE `admin_role_permission`  (
+  `admin_role_id` bigint NOT NULL,
+  `admin_permission_id` bigint NOT NULL,
+  PRIMARY KEY (`admin_role_id`, `admin_permission_id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of admin_role_permission
+-- ----------------------------
+
+-- ----------------------------
+-- Table structure for admin_user
+-- ----------------------------
+DROP TABLE IF EXISTS `admin_user`;
+CREATE TABLE `admin_user`  (
+  `id` bigint NOT NULL,
+  `username` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `password` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of admin_user
+-- ----------------------------
+
+-- ----------------------------
+-- Table structure for admin_user_role
+-- ----------------------------
+DROP TABLE IF EXISTS `admin_user_role`;
+CREATE TABLE `admin_user_role`  (
+  `admin_user_id` bigint NOT NULL,
+  `admin_role_id` bigint NOT NULL,
+  PRIMARY KEY (`admin_user_id`, `admin_role_id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of admin_user_role
+-- ----------------------------
 
 -- ----------------------------
 -- Table structure for discount_coupon
@@ -63,6 +153,7 @@ DROP TABLE IF EXISTS `order_item`;
 CREATE TABLE `order_item`  (
   `id` bigint NOT NULL,
   `order_id` bigint NOT NULL,
+  `product_id` bigint NOT NULL,
   `sku_id` bigint NOT NULL,
   `quantity` int NOT NULL,
   `price` decimal(10, 2) NOT NULL,
@@ -144,11 +235,27 @@ CREATE TABLE `promotion`  (
 -- ----------------------------
 
 -- ----------------------------
+-- Table structure for role
+-- ----------------------------
+DROP TABLE IF EXISTS `role`;
+CREATE TABLE `role`  (
+  `id` bigint NOT NULL,
+  `name` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `description` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of role
+-- ----------------------------
+
+-- ----------------------------
 -- Table structure for shopping_cart
 -- ----------------------------
 DROP TABLE IF EXISTS `shopping_cart`;
 CREATE TABLE `shopping_cart`  (
   `id` bigint NOT NULL,
+  `product_id` bigint NOT NULL,
   `sku_id` bigint NOT NULL,
   `quantity` int NOT NULL,
   `user_id` bigint NOT NULL,
@@ -183,10 +290,12 @@ CREATE TABLE `sku`  (
 DROP TABLE IF EXISTS `user`;
 CREATE TABLE `user`  (
   `id` bigint NOT NULL,
-  `phone_number` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `username` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
   `password` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
-  `is_phone_number_verified` bit(1) NOT NULL,
-  `wx_open_id` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `phone_number` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `is_phone_number_verified` bit(1) NULL DEFAULT NULL,
+  `wx_open_id` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `enable` bit(1) NOT NULL DEFAULT b'1',
   `created_time` datetime NOT NULL,
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `wx_open_id`(`wx_open_id`) USING BTREE
@@ -195,6 +304,7 @@ CREATE TABLE `user`  (
 -- ----------------------------
 -- Records of user
 -- ----------------------------
+INSERT INTO `user` VALUES (1, 'test', '$2b$12$WjTkxnMfCMG4wPijgXqUn.aRVYk0D5Mk6qQmrLW6OOrWE.fllf4ki', NULL, b'0', '333', b'1', '2022-11-02 12:26:52');
 
 -- ----------------------------
 -- Table structure for user_jwt
@@ -252,6 +362,26 @@ INSERT INTO `user_jwt` VALUES (6984358440374243328, 1111, '27ef7ec2-432b-4f41-ba
 INSERT INTO `user_jwt` VALUES (6984360512259756033, 1111, '2a4073da-d178-41e0-ab32-b7c072ff00ab', 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ0b2tlbl9pZCI6IjJhNDA3M2RhLWQxNzgtNDFlMC1hYjMyLWI3YzA3MmZmMDBhYiIsInVzZXJfaWQiOjExMTEsInN1YiI6InJ1c3Qtc2hvcCIsImlhdCI6MTY2NTIwMTMwOSwiZXhwIjoxNjY1ODA2MTA5fQ.53wEerIDwwvqeJjFfTHmdn_kqsdJnwYvQgZ8tyU8vuM', 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ0b2tlbl9pZCI6IjJhNDA3M2RhLWQxNzgtNDFlMC1hYjMyLWI3YzA3MmZmMDBhYiIsInVzZXJfaWQiOjExMTEsInN1YiI6InJ1c3Qtc2hvcCIsImlhdCI6MTY2NTIwMTMwOSwiZXhwIjoxNjY2NDk3MzA5fQ.28n5g-SD-pG1oj26Y8d4JjbLmfnLrzednPAQjqTsZe0', '2022-10-08 03:55:09');
 INSERT INTO `user_jwt` VALUES (6984360619164176384, 1111, 'ed7dfd16-be86-42cf-a04c-5ecfb1e1dcb0', 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ0b2tlbl9pZCI6ImVkN2RmZDE2LWJlODYtNDJjZi1hMDRjLTVlY2ZiMWUxZGNiMCIsInVzZXJfaWQiOjExMTEsInN1YiI6InJ1c3Qtc2hvcCIsImlhdCI6MTY2NTIwMTMzNCwiZXhwIjoxNjY1ODA2MTM0fQ.SmssOfPL1K2PPJeajebRYe-Rb03YQV6fNha8w1OFR5Q', 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ0b2tlbl9pZCI6ImVkN2RmZDE2LWJlODYtNDJjZi1hMDRjLTVlY2ZiMWUxZGNiMCIsInVzZXJfaWQiOjExMTEsInN1YiI6InJ1c3Qtc2hvcCIsImlhdCI6MTY2NTIwMTMzNCwiZXhwIjoxNjY2NDk3MzM0fQ.cnlRR30RqEIlSySfbZMu9UQeKJj6A-iE3IZuc84uMeM', '2022-10-08 03:55:34');
 INSERT INTO `user_jwt` VALUES (6984360835414102016, 1111, '3135d302-b3e7-438d-a902-c146ea85964b', 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ0b2tlbl9pZCI6IjMxMzVkMzAyLWIzZTctNDM4ZC1hOTAyLWMxNDZlYTg1OTY0YiIsInVzZXJfaWQiOjExMTEsInN1YiI6InJ1c3Qtc2hvcCIsImlhdCI6MTY2NTIwMTM4NiwiZXhwIjoxNjY1ODA2MTg2fQ.5uAMWuNHH-di4GZOENH5xf-Xb_AXALA-y8bDVfnw8iw', 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ0b2tlbl9pZCI6IjMxMzVkMzAyLWIzZTctNDM4ZC1hOTAyLWMxNDZlYTg1OTY0YiIsInVzZXJfaWQiOjExMTEsInN1YiI6InJ1c3Qtc2hvcCIsImlhdCI6MTY2NTIwMTM4NiwiZXhwIjoxNjY2NDk3Mzg2fQ.ntuJl2h151GbHnpyTAR5R7pUh9o_oBBo3Xcxi0oML6A', '2022-10-08 03:56:26');
+INSERT INTO `user_jwt` VALUES (6993449441202147329, 1, 'c5417065-5270-426f-9c29-6cc0e32a71f6', 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ0b2tlbl9pZCI6ImM1NDE3MDY1LTUyNzAtNDI2Zi05YzI5LTZjYzBlMzJhNzFmNiIsInVzZXJfaWQiOjEsInN1YiI6InJ1c3Qtc2hvcCIsImlhdCI6MTY2NzM2ODI3OCwiZXhwIjoxNjY3OTczMDc4fQ.DA2P9kxLbIgf4Z2BNTv4Bl1Lsymt1ALNj7AeUN40jfI', 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ0b2tlbl9pZCI6ImM1NDE3MDY1LTUyNzAtNDI2Zi05YzI5LTZjYzBlMzJhNzFmNiIsInVzZXJfaWQiOjEsInN1YiI6InJ1c3Qtc2hvcCIsImlhdCI6MTY2NzM2ODI3OCwiZXhwIjoxNjY4NjY0Mjc4fQ.Zg089g38AfqSPfAShxKMcN8QRe-ogNHvWNTiI4kpVPY', '2022-11-02 05:51:18');
+INSERT INTO `user_jwt` VALUES (6993449757691744256, 1, '4c8f2a57-9476-438e-9128-daa632b23026', 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ0b2tlbl9pZCI6IjRjOGYyYTU3LTk0NzYtNDM4ZS05MTI4LWRhYTYzMmIyMzAyNiIsInVzZXJfaWQiOjEsInN1YiI6InJ1c3Qtc2hvcCIsImlhdCI6MTY2NzM2ODM1NCwiZXhwIjoxNjY3OTczMTU0fQ.s8-1SNNvxqT9bjyH019Yw2NXcuTiL-lGajYSes_CT3I', 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ0b2tlbl9pZCI6IjRjOGYyYTU3LTk0NzYtNDM4ZS05MTI4LWRhYTYzMmIyMzAyNiIsInVzZXJfaWQiOjEsInN1YiI6InJ1c3Qtc2hvcCIsImlhdCI6MTY2NzM2ODM1NCwiZXhwIjoxNjY4NjY0MzU0fQ.uvu2p2q0u0zVkIzR4wYX1MKUPZ2sGsNuzX4_JqVqZpo', '2022-11-02 05:52:34');
+INSERT INTO `user_jwt` VALUES (6993450084667101184, 1, 'c79d1769-f00f-4c14-9293-8fca83a3f6e1', 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ0b2tlbl9pZCI6ImM3OWQxNzY5LWYwMGYtNGMxNC05MjkzLThmY2E4M2EzZjZlMSIsInVzZXJfaWQiOjEsInN1YiI6InJ1c3Qtc2hvcCIsImlhdCI6MTY2NzM2ODQzMiwiZXhwIjoxNjY3OTczMjMyfQ.y4s0I_77PKxqVBHUbl0RxPTbBewox-RInGAD311Qs_w', 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ0b2tlbl9pZCI6ImM3OWQxNzY5LWYwMGYtNGMxNC05MjkzLThmY2E4M2EzZjZlMSIsInVzZXJfaWQiOjEsInN1YiI6InJ1c3Qtc2hvcCIsImlhdCI6MTY2NzM2ODQzMiwiZXhwIjoxNjY4NjY0NDMyfQ.zGYKu8_izmtQu-Ry-O6-TQpqsO7G1z3yseG03cGO5qI', '2022-11-02 05:53:52');
+INSERT INTO `user_jwt` VALUES (6993450261347962880, 1, 'd832f58b-1773-4ce7-a54a-5f1d253cbc86', 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ0b2tlbl9pZCI6ImQ4MzJmNThiLTE3NzMtNGNlNy1hNTRhLTVmMWQyNTNjYmM4NiIsInVzZXJfaWQiOjEsInN1YiI6InJ1c3Qtc2hvcCIsImlhdCI6MTY2NzM2ODQ3NCwiZXhwIjoxNjY3OTczMjc0fQ.Sscy2FlQQx4jY8IFkDN1KNEMxoBmWgwax4a74lS2mfI', 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ0b2tlbl9pZCI6ImQ4MzJmNThiLTE3NzMtNGNlNy1hNTRhLTVmMWQyNTNjYmM4NiIsInVzZXJfaWQiOjEsInN1YiI6InJ1c3Qtc2hvcCIsImlhdCI6MTY2NzM2ODQ3NCwiZXhwIjoxNjY4NjY0NDc0fQ.3o_cXQcS4qLEIbt3DY1by-M4aPPCPwf1rLcxIcjgewg', '2022-11-02 05:54:34');
+INSERT INTO `user_jwt` VALUES (6993450476192796672, 1, 'eb0cbe23-a4b2-40fd-b6f0-5b1f61dcfbf4', 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ0b2tlbl9pZCI6ImViMGNiZTIzLWE0YjItNDBmZC1iNmYwLTViMWY2MWRjZmJmNCIsInVzZXJfaWQiOjEsInN1YiI6InJ1c3Qtc2hvcCIsImlhdCI6MTY2NzM2ODUyNSwiZXhwIjoxNjY3OTczMzI1fQ.ztxYT9Lawr50hv8UjM38utaZjVquDNUW9HtgYG4WKYU', 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ0b2tlbl9pZCI6ImViMGNiZTIzLWE0YjItNDBmZC1iNmYwLTViMWY2MWRjZmJmNCIsInVzZXJfaWQiOjEsInN1YiI6InJ1c3Qtc2hvcCIsImlhdCI6MTY2NzM2ODUyNSwiZXhwIjoxNjY4NjY0NTI1fQ.F5A_i26-DYKfxXxyTMDEBGvufrn2nmx5BU5CBwmEPss', '2022-11-02 05:55:25');
+INSERT INTO `user_jwt` VALUES (6993451346666065921, 1, 'c0a25a8f-09d3-4124-9a7e-8a83c3afb087', 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ0b2tlbl9pZCI6ImMwYTI1YThmLTA5ZDMtNDEyNC05YTdlLThhODNjM2FmYjA4NyIsInVzZXJfaWQiOjEsInN1YiI6InJ1c3Qtc2hvcCIsImlhdCI6MTY2NzM2ODczMywiZXhwIjoxNjY3OTczNTMzfQ.6ov2TLmfI99Zz_1CyElOKgs-EAz1jj8hFWCXVP9OqtA', 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ0b2tlbl9pZCI6ImMwYTI1YThmLTA5ZDMtNDEyNC05YTdlLThhODNjM2FmYjA4NyIsInVzZXJfaWQiOjEsInN1YiI6InJ1c3Qtc2hvcCIsImlhdCI6MTY2NzM2ODczMywiZXhwIjoxNjY4NjY0NzMzfQ.AzAJl3uhwjR7vX_Wk5ywvYhla1XG-wLKmi15ZHBYXMg', '2022-11-02 05:58:53');
+
+-- ----------------------------
+-- Table structure for user_role
+-- ----------------------------
+DROP TABLE IF EXISTS `user_role`;
+CREATE TABLE `user_role`  (
+  `user_id` bigint NOT NULL,
+  `role_id` bigint NOT NULL,
+  PRIMARY KEY (`user_id`, `role_id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of user_role
+-- ----------------------------
 
 -- ----------------------------
 -- Table structure for user_shipping_address
