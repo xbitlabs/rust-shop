@@ -19,7 +19,7 @@ use std::net::SocketAddr;
 use hyper::{Body, Request, StatusCode};
 use lazy_static::lazy_static;
 use log::info;
-use crate::core::{AccessLogFilter, Filter, MysqlPoolManager, Next, RequestCtx, RequestStateProvider, ResponseBuilder, EndpointResult, Server, SecurityConfig};
+use crate::core::{AccessLogFilter, Filter, MysqlPoolManager, Next, RequestCtx, RequestStateProvider, ResponseBuilder, EndpointResult, Server, SecurityConfig, AuthenticationTokenResolverFn, UserDetailsCheckerFn, UserDetailsChecker, DefaultUserDetailsChecker, AuthenticationTokenResolver, WeChatMiniAppAuthenticationTokenResolver, NopPasswordEncoder, LoadUserServiceFn, LoadUserService, DefaultLoadUserService, WeChatUserService};
 use crate::api::index_controller::IndexController;
 use snowflake::SnowflakeIdGenerator;
 use std::sync::{Arc, Mutex};
@@ -85,6 +85,21 @@ async fn main() ->anyhow::Result<()>{
 
     let mut security_config = SecurityConfig::new();
     security_config.enable_security(true);
+    security_config.authentication_token_resolver(
+        AuthenticationTokenResolverFn::from(
+        Box::new(|request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn AuthenticationTokenResolver + Send + Sync>{
+            Box::new(WeChatMiniAppAuthenticationTokenResolver{})
+        })));
+    security_config.password_encoder(Box::new(NopPasswordEncoder{}));
+    security_config.load_user_service(
+        LoadUserServiceFn::from(
+            Box::new(|request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn LoadUserService + Send + Sync>{
+                let state: Option<&Box<dyn Any + Send + Sync>> = request_states.get();
+                let state: Option<&MysqlPoolManager> = state.unwrap().downcast_ref();
+                let pool = state.unwrap();
+                Box::new(WeChatUserService::new(pool))
+            }))
+    );
     srv.security_config(security_config);
 
     let mysql_pool_state_provider : Box<dyn RequestStateProvider + Sync + Send> = Box::new(MysqlPoolStateProvider);

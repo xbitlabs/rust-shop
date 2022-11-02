@@ -17,6 +17,7 @@ use chrono::NaiveDateTime;
 use criterion::Criterion;
 use bcrypt::{DEFAULT_COST, hash, verify};
 use crate::entity::entity::User;
+use chrono::Local;
 
 use route_recognizer::{Params, Router as MethodRouter};
 
@@ -29,7 +30,7 @@ use tokio::task_local;
 use crate::config::load_config::APP_CONFIG;
 use crate::core::EndpointResultCode::{AccessDenied, ClientError, ServerError, SUCCESS, Unauthorized};
 use crate::extensions::Extensions;
-use crate::{get_connection_pool, MysqlPoolStateProvider};
+use crate::{get_connection_pool, ID_GENERATOR, MysqlPoolStateProvider};
 use crate::state::State;
 use rust_shop_std::FormParser;
 
@@ -313,7 +314,7 @@ impl Filter for AccessLogFilter {
 #[async_trait::async_trait]
 pub trait  LoadUserService
 {
-    async fn load_user_by_username(&self, username: &String) -> anyhow::Result<Box<dyn UserDetails + Send + Sync>>;
+    async fn load_user(&self, identity: &String) -> anyhow::Result<Box<dyn UserDetails + Send + Sync>>;
 }
 //获取登陆凭证
 #[async_trait::async_trait]
@@ -343,6 +344,103 @@ impl AuthenticationTokenResolver for UsernamePasswordAuthenticationTokenResolver
             return Err(anyhow!("必须传入password字段"));
         }
         Ok(Box::new(UsernamePasswordAuthenticationToken::new(username.unwrap().to_string(),password.unwrap().to_string())))
+    }
+}
+pub struct WeChatMiniAppAuthenticationToken{
+    pub js_code:String,
+    pub principal:String,
+}
+impl AuthenticationToken for WeChatMiniAppAuthenticationToken{
+    fn get_principal(&self) -> &(dyn Any + Send + Sync) {
+        &self.principal
+    }
+
+    fn get_credentials(&self) -> &(dyn Any + Send + Sync) {
+        &self.js_code
+    }
+}
+pub struct WeChatMiniAppAuthenticationTokenResolver{
+
+}
+#[async_trait::async_trait]
+impl AuthenticationTokenResolver for WeChatMiniAppAuthenticationTokenResolver {
+    async fn resolve(&self, req: Request<Body>) -> anyhow::Result<Box<dyn AuthenticationToken + Send + Sync>> {
+        let params:HashMap<String,String> = parse_form_params(req).await;
+        let js_code = params.get("jsCode");
+        if js_code.is_none() {
+            return Err(anyhow!("必须传入jsCode字段"));
+        }else {
+            let js_code = js_code.unwrap().trim().to_string();
+            if js_code.is_empty() {
+                return Err(anyhow!("jsCode不能为空"));
+            }else {
+                let wechat_service = WeChatMiniAppService::new();
+                let login_result = wechat_service.login(js_code.clone()).await?;
+                if login_result.errcode.is_none() && login_result.errmsg.is_none() {
+                    Ok(Box::new(WeChatMiniAppAuthenticationToken {
+                        js_code,
+                        principal: login_result.openid.unwrap()
+                    }))
+                }else {
+                    return Err(anyhow!(login_result.errmsg.unwrap()));
+                }
+            }
+        }
+    }
+}
+pub struct WeChatUserService<'a,'b>{
+    mysql_pool_manager: &'a MysqlPoolManager<'b>
+}
+
+impl <'a,'b> WeChatUserService<'a,'b> {
+    pub fn new(mysql_pool_manager: &'a MysqlPoolManager<'b>)->Self{
+        WeChatUserService{
+            mysql_pool_manager
+        }
+    }
+}
+#[async_trait::async_trait]
+impl <'a,'b> LoadUserService for WeChatUserService<'a,'b>{
+    async fn load_user(&self, identity: &String) -> anyhow::Result<Box<dyn UserDetails + Send + Sync>> {
+        let pool = self.mysql_pool_manager.get_pool();
+        let user = sqlx::query_as!(User,"select * from user where wx_open_id=?",identity.to_string())
+            .fetch_one(pool).await;
+        if user.is_ok() {
+            let user = user.unwrap();
+            let username: String = if user.username.is_some() {
+                user.username.unwrap()
+            } else {
+                String::from("")
+            };
+            let password: String = if user.password.is_some() {
+                user.password.unwrap()
+            } else {
+                String::from("")
+            };
+            Ok(Box::new(DefaultUserDetails {
+                id: user.id,
+                username,
+                password,
+                authorities: vec![],
+                enable: true
+            }))
+        }else {
+            let id: i64 = ID_GENERATOR.lock().unwrap().real_time_generate();
+            let rows_affected = sqlx::query!("insert into `user`(id,wx_open_id,created_time,enable) values(?,?,?,?)",id,identity.to_string(),Local::now(),1)
+                .execute(pool).await?
+                .rows_affected();
+            if rows_affected > 0 {
+                Ok(Box::new(DefaultUserDetails {
+                    id,
+                    username:String::from(""),
+                    password:String::from(""),
+                    authorities: vec![],
+                    enable: true
+                }))
+            }else {
+                return Err(anyhow!("保存微信用户信息失败"));
+            }
+        }
     }
 }
 
@@ -530,7 +628,7 @@ impl <'a,'b> DefaultLoadUserService<'a,'b> {
 }
 #[async_trait::async_trait]
 impl <'a,'b> LoadUserService for DefaultLoadUserService<'a,'b>{
-    async fn load_user_by_username(&self, username: &String) -> anyhow::Result<Box<dyn UserDetails + Send + Sync>> {
+    async fn load_user(&self, username: &String) -> anyhow::Result<Box<dyn UserDetails + Send + Sync>> {
         let pool = self.mysql_pool_manager.get_pool();
         let user = sqlx::query_as!(User,"select * from `user` where username=?",username).fetch_one(pool)
             .await?;
@@ -544,11 +642,11 @@ impl <'a,'b> LoadUserService for DefaultLoadUserService<'a,'b>{
         Ok(Box::new(user_details))
     }
 }
-pub struct UsernamePasswordAuthenticationProvider{
+pub struct DefaultAuthenticationProvider {
 }
-impl UsernamePasswordAuthenticationProvider{
+impl DefaultAuthenticationProvider {
     pub fn new()->Self{
-        UsernamePasswordAuthenticationProvider{
+        DefaultAuthenticationProvider {
         }
     }
 }
@@ -589,18 +687,18 @@ impl Authentication for UsernamePasswordAuthentication {
     }
 }
 #[async_trait::async_trait]
-impl AuthenticationProvider for UsernamePasswordAuthenticationProvider{
+impl AuthenticationProvider for DefaultAuthenticationProvider {
     async fn authenticate(&self, request_states:Arc<Extensions>,app_extensions:Arc<Extensions>,authentication_token: Box<dyn AuthenticationToken + Send + Sync>) -> anyhow::Result<Box<dyn Authentication + Send + Sync>> {
-        let username:Option<&String> = authentication_token.get_principal().downcast_ref();
+        let identify:Option<&String> = authentication_token.get_principal().downcast_ref();
 
         let  security_config:&State<SecurityConfig> = app_extensions.get().unwrap();
 
         let request_states = Arc::clone(&request_states);
 
-        let username = username.unwrap();
+        let identify = identify.unwrap();
 
         let load_user_service : Box<dyn LoadUserService + Send + Sync> = security_config.get_load_user_service()(&request_states, &Arc::clone(&app_extensions));
-        let details = load_user_service.load_user_by_username(username).await?;
+        let details = load_user_service.load_user(identify).await?;
         let user_details_checker:Box<dyn UserDetailsChecker + Send + Sync> = security_config.get_user_details_checker()(&request_states, &Arc::clone(&app_extensions));
         user_details_checker.check(&details).await?;
         self.additional_authentication_checks(Arc::clone(&request_states), Arc::clone(&app_extensions),&details,&authentication_token).await?;
@@ -612,7 +710,7 @@ impl AuthenticationProvider for UsernamePasswordAuthenticationProvider{
         let password = password.unwrap();
         let authentication : UsernamePasswordAuthentication = UsernamePasswordAuthentication{
             authentication_token: UsernamePasswordAuthenticationToken {
-                username: username.to_string(),
+                username: identify.to_string(),
                 password: password.to_string(),
             },
             authorities: Some(authorities),
@@ -667,6 +765,17 @@ impl PasswordEncoder for BcryptPasswordEncoder{
             Err(anyhow!("密码格式无效"))
         }
 
+    }
+}
+pub struct NopPasswordEncoder;
+
+impl PasswordEncoder for NopPasswordEncoder {
+    fn encode(&self, raw_password: &String) -> anyhow::Result<String> {
+        Ok(raw_password.to_string())
+    }
+
+    fn matches(&self, _: &String, _: &String) -> anyhow::Result<bool> {
+        Ok(true)
     }
 }
 #[async_trait::async_trait]
@@ -834,13 +943,13 @@ pub trait  AuthenticationFailureHandler{
     async fn handle(&self, error: anyhow::Error) -> anyhow::Result<Response<Body>>;
 }
 
-type AuthenticationTokenResolverFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>) -> Box<dyn AuthenticationTokenResolver + Send + Sync + 'a> + Send + Sync>;
-type JwtServiceFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)->Box<dyn JwtService + Send + Sync + 'a> + Send + Sync>;
-type AuthenticationSuccessHandlerFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)->Box<dyn AuthenticationSuccessHandler + Send + Sync + 'a> + Send + Sync>;
-type AuthenticationFailureHandlerFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)->Box<dyn AuthenticationFailureHandler + Send + Sync + 'a> + Send + Sync>;
-type LoadUserServiceFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)-> Box<dyn LoadUserService + Send + Sync + 'a> + Send + Sync>;
-type AuthenticationProviderFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)->Box<dyn AuthenticationProvider + Send + Sync + 'a> + Send + Sync>;
-type UserDetailsCheckerFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)->Box<dyn UserDetailsChecker + Send + Sync + 'a> + Send + Sync>;
+pub type AuthenticationTokenResolverFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>) -> Box<dyn AuthenticationTokenResolver + Send + Sync + 'a> + Send + Sync>;
+pub type JwtServiceFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)->Box<dyn JwtService + Send + Sync + 'a> + Send + Sync>;
+pub type AuthenticationSuccessHandlerFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)->Box<dyn AuthenticationSuccessHandler + Send + Sync + 'a> + Send + Sync>;
+pub type AuthenticationFailureHandlerFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)->Box<dyn AuthenticationFailureHandler + Send + Sync + 'a> + Send + Sync>;
+pub type LoadUserServiceFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)-> Box<dyn LoadUserService + Send + Sync + 'a> + Send + Sync>;
+pub type AuthenticationProviderFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)->Box<dyn AuthenticationProvider + Send + Sync + 'a> + Send + Sync>;
+pub type UserDetailsCheckerFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)->Box<dyn UserDetailsChecker + Send + Sync + 'a> + Send + Sync>;
 
 
 pub struct SecurityConfig{
@@ -882,7 +991,7 @@ impl SecurityConfig {
                 })),
             authentication_provider: AuthenticationProviderFn::from(
                 Box::new(|request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn AuthenticationProvider + Send + Sync>{
-                    Box::new(UsernamePasswordAuthenticationProvider::new())
+                    Box::new(DefaultAuthenticationProvider::new())
                 })),
             user_details_checker: UserDetailsCheckerFn::from(
                 Box::new(|request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn UserDetailsChecker + Send + Sync>{
@@ -1169,7 +1278,9 @@ use serde_json::Value;
 use sqlx::encode::IsNull::No;
 use time::OffsetDateTime;
 use uri_pattern_matcher::UriPattern;
+use crate::service::auth_service::LoginResult;
 use crate::service::jwt_service::DefaultJwtService;
+use crate::service::wechat_service::WeChatMiniAppService;
 
 pub async fn parse_request_json<T>(req:Request<Body>)->anyhow::Result<T>
     where for<'a> T:
