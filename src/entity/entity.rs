@@ -62,6 +62,7 @@ pub struct Order{
 pub struct OrderItem{
     pub id:i64,
     pub order_id:i64,
+    pub product_id:i64,
     pub sku_id:i64,
     pub quantity:i32,
     pub price:f64
@@ -79,6 +80,7 @@ pub struct PayLog{
 #[derive(sqlx::FromRow,serde::Serialize)]
 pub struct ShoppingCart{
     pub id:i64,
+    pub product_id:i64,
     pub sku_id:i64,
     pub quantity:i32,
     pub user_id:i64,
@@ -96,10 +98,12 @@ pub struct Sku{
 #[derive(sqlx::FromRow,serde::Serialize)]
 pub struct User{
     pub id:i64,
-    pub phone_number:Option<String>,
-    pub is_phone_number_verified:u8,
+    pub username:Option<String>,
     pub password:Option<String>,
-    pub wx_open_id:String,
+    pub phone_number:Option<String>,
+    pub is_phone_number_verified:Option<u8>,
+    pub wx_open_id:Option<String>,
+    pub enable:u8,
     #[serde(with = "db_numeric_date")]
     pub created_time:NaiveDateTime,
 }

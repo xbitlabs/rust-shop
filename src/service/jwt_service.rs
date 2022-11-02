@@ -32,13 +32,13 @@ impl JwtConfig {
 
 
 
-pub struct RustShopJwtService<'a,'b>{
+pub struct DefaultJwtService<'a,'b>{
     mysql_pool_manager: &'a MysqlPoolManager<'b>
 }
 
-impl <'a,'b> RustShopJwtService<'a,'b> {
+impl <'a,'b> DefaultJwtService<'a,'b> {
     pub fn new(mysql_pool_manager: &'a MysqlPoolManager<'b>) -> Self {
-        RustShopJwtService {
+        DefaultJwtService {
             mysql_pool_manager
         }
     }
@@ -52,7 +52,7 @@ impl <'a,'b> RustShopJwtService<'a,'b> {
 }
 
 #[async_trait::async_trait]
-impl <'a,'b> JwtService for RustShopJwtService<'a,'b> {
+impl <'a,'b> JwtService for DefaultJwtService<'a,'b> {
     async fn grant_access_token(&self,user_id: i64) -> anyhow::Result<AccessToken> {
         let jwt_config = self.get_jwt_config().await?;
         let iat = OffsetDateTime::now_utc();

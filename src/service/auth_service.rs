@@ -16,7 +16,7 @@ use crate::entity::entity::User;
 use crate::service::wechat_service::WeChatMiniAppService;
 use jsonwebtoken::{Algorithm, DecodingKey, encode, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
-use crate::service::jwt_service::{RustShopJwtService};
+use crate::service::jwt_service::{DefaultJwtService};
 use chrono::prelude::*;
 use sqlx::{Error, MySql, Pool};
 use crate::entity::entity::UserJwt;

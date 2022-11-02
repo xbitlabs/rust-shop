@@ -16,6 +16,7 @@ use anyhow::anyhow;
 use chrono::NaiveDateTime;
 use criterion::Criterion;
 use bcrypt::{DEFAULT_COST, hash, verify};
+use crate::entity::entity::User;
 
 use route_recognizer::{Params, Router as MethodRouter};
 
@@ -516,19 +517,31 @@ impl AuthenticationToken for UsernamePasswordAuthenticationToken{
         &self.password
     }
 }
-pub struct DefaultLoadUserService{
-
+pub struct DefaultLoadUserService<'a,'b>{
+    mysql_pool_manager: &'a MysqlPoolManager<'b>
 }
 
-impl DefaultLoadUserService {
-    pub fn new()->Self{
-        DefaultLoadUserService{}
+impl <'a,'b> DefaultLoadUserService<'a,'b> {
+    pub fn new(mysql_pool_manager: &'a MysqlPoolManager<'b>)->Self{
+        DefaultLoadUserService{
+            mysql_pool_manager
+        }
     }
 }
 #[async_trait::async_trait]
-impl LoadUserService for DefaultLoadUserService{
+impl <'a,'b> LoadUserService for DefaultLoadUserService<'a,'b>{
     async fn load_user_by_username(&self, username: &String) -> anyhow::Result<Box<dyn UserDetails + Send + Sync>> {
-        todo!()
+        let pool = self.mysql_pool_manager.get_pool();
+        let user = sqlx::query_as!(User,"select * from `user` where username=?",username).fetch_one(pool)
+            .await?;
+        let user_details = DefaultUserDetails{
+            id: user.id,
+            username: user.username.unwrap(),
+            password: user.password.unwrap(),
+            authorities: vec![],
+            enable: user.enable == 1,
+        };
+        Ok(Box::new(user_details))
     }
 }
 pub struct UsernamePasswordAuthenticationProvider{
@@ -582,14 +595,13 @@ impl AuthenticationProvider for UsernamePasswordAuthenticationProvider{
 
         let  security_config:&State<SecurityConfig> = app_extensions.get().unwrap();
 
-        //let request_states = Arc::new(ctx.request_states);
-        //let authentication_token_resolver= security_config.get_authentication_token_resolver()(Arc::clone(&request_states), Arc::clone(&ctx.extensions));
+        let request_states = Arc::clone(&request_states);
 
         let username = username.unwrap();
 
-        let load_user_service : Box<dyn LoadUserService + Send + Sync> = security_config.get_load_user_service()(Arc::clone(&request_states), Arc::clone(&app_extensions));
+        let load_user_service : Box<dyn LoadUserService + Send + Sync> = security_config.get_load_user_service()(&request_states, &Arc::clone(&app_extensions));
         let details = load_user_service.load_user_by_username(username).await?;
-        let user_details_checker:Box<dyn UserDetailsChecker + Send + Sync> = security_config.get_user_details_checker()(Arc::clone(&request_states), Arc::clone(&app_extensions));
+        let user_details_checker:Box<dyn UserDetailsChecker + Send + Sync> = security_config.get_user_details_checker()(&request_states, &Arc::clone(&app_extensions));
         user_details_checker.check(&details).await?;
         self.additional_authentication_checks(Arc::clone(&request_states), Arc::clone(&app_extensions),&details,&authentication_token).await?;
         let mut authorities = vec![];
@@ -619,7 +631,7 @@ impl AuthenticationProvider for UsernamePasswordAuthenticationProvider{
         return if matches {
             Ok(())
         } else {
-            Err(anyhow!("密码错误"))
+            Err(anyhow!("无效密码"))
         }
     }
 }
@@ -643,8 +655,18 @@ impl PasswordEncoder for BcryptPasswordEncoder{
     }
 
     fn matches(&self,raw_password: &String, encoded_password: &String) -> anyhow::Result<bool> {
-        let valid = verify(raw_password, encoded_password)?;
-        return Ok(valid);
+        let valid = verify(raw_password, encoded_password);
+        return if valid.is_ok() {
+            if valid.unwrap() {
+                Ok(true)
+            }else {
+                Err(anyhow!("密码错误"))
+            }
+        } else {
+            println!("{:?}", valid);
+            Err(anyhow!("密码格式无效"))
+        }
+
     }
 }
 #[async_trait::async_trait]
@@ -675,31 +697,7 @@ pub trait AuthenticationProvider{
     async fn authenticate(&self,request_states:Arc<Extensions>,app_extensions:Arc<Extensions>, authentication_token: Box<dyn AuthenticationToken + Send + Sync>) -> anyhow::Result<Box<dyn Authentication  + Send + Sync>>;
     async fn additional_authentication_checks(&self,request_states:Arc<Extensions>,app_extensions:Arc<Extensions>,user_details:&Box<dyn UserDetails + Send + Sync>, authentication_token:&Box<dyn AuthenticationToken + Send + Sync>)->anyhow::Result<()>;
 }
-/*pub struct AuthenticationProviderManager{
-    pub providers:HashMap<TypeId,Box<dyn Any + Send + Sync + 'static>>
-}
 
-impl AuthenticationProviderManager {
-    pub fn new()->Self{
-        AuthenticationProviderManager{
-            providers:HashMap::new(),
-        }
-    }
-    pub fn add(&mut self, authentication_token_type_id:TypeId, provider: Box<dyn Any + Send + Sync>){
-        self.providers.entry(authentication_token_type_id).or_insert_with(||{
-            provider
-        });
-    }
-    pub fn get<T: 'static>(&self,authentication_token_type_id:TypeId)->Option<&T>{
-        let provider = self.providers.get(&authentication_token_type_id);
-        return if provider.is_some() {
-            let provider: Option<&T> = provider.unwrap().downcast_ref();
-            provider
-        } else {
-            None
-        }
-    }
-}*/
 mod jwt_numeric_date {
     //! Custom serialization of OffsetDateTime to conform with the JWT spec (RFC 7519 section 2, "Numeric Date")
     use serde::{self, Deserialize, Deserializer, Serializer};
@@ -780,22 +778,20 @@ impl Filter for AuthenticationProcessingFilter{
 
         let  security_config:&State<SecurityConfig> = ctx.extensions.get().unwrap();
         let request_states = Arc::new(ctx.request_states);
+        let request_states = Arc::clone(&request_states);
 
-        let authentication_token_resolver= security_config.get_authentication_token_resolver()(Arc::clone(&request_states), Arc::clone(&ctx.extensions));
-
-        let jwt_service = security_config.get_jwt_service()(Arc::clone(&request_states), Arc::clone(&ctx.extensions));
-
+        let authentication_token_resolver= security_config.get_authentication_token_resolver()(&request_states, &Arc::clone(&ctx.extensions));
+        let jwt_service = security_config.get_jwt_service()(&request_states, &Arc::clone(&ctx.extensions));
         let success_handler = security_config.get_authentication_success_handler();
         let fail_handler = security_config.get_authentication_failure_handler();
-        let auth_provider = security_config.get_authentication_provider()(Arc::clone(&request_states), Arc::clone(&ctx.extensions));
-        //let auth_provider : &(dyn AuthenticationProvider) = auth_provider.downcast_unchecked();
+        let auth_provider = security_config.get_authentication_provider()(&request_states, &Arc::clone(&ctx.extensions));
         let authentication_token = authentication_token_resolver.resolve(ctx.request).await?;
-        //let authentication_token:Result<Box<(dyn AuthenticationToken)>,Box<dyn Any>> = authentication_token.downcast();
+
         let authentication = auth_provider.authenticate(Arc::clone(&request_states), Arc::clone(&ctx.extensions),authentication_token).await;
         if authentication.is_ok() {
             let authentication = authentication.unwrap();
             if success_handler.is_some() {
-                let result = success_handler.as_ref().unwrap()(Arc::clone(&request_states), Arc::clone(&ctx.extensions)).handle(authentication).await?;
+                let result = success_handler.as_ref().unwrap()(&Arc::clone(&request_states), &Arc::clone(&ctx.extensions)).handle(authentication).await?;
                 Ok(result)
             }else {
                 let user_details:Option<&Box<dyn UserDetails + Send + Sync>> = authentication.get_details().downcast_ref();
@@ -805,7 +801,7 @@ impl Filter for AuthenticationProcessingFilter{
             }
         }else {
             if fail_handler.is_some() {
-                let result = fail_handler.as_ref().unwrap()(Arc::clone(&request_states), Arc::clone(&ctx.extensions)).handle(authentication.err().unwrap()).await?;
+                let result = fail_handler.as_ref().unwrap()(&Arc::clone(&request_states), &Arc::clone(&ctx.extensions)).handle(authentication.err().unwrap()).await?;
                 Ok(result)
             }else {
                 let endpoint_result:EndpointResult<AccessToken> = EndpointResult::unauthorized("登录凭证无效".to_string());
@@ -832,45 +828,22 @@ pub struct UsernamePassword{
 pub trait AuthenticationSuccessHandler{
     async fn handle(&self, authentication:Box<dyn Authentication  + Send + Sync>) -> anyhow::Result<Response<Body>>;
 }
-/*#[async_trait::async_trait]
-impl Filter for AuthenticationSuccessHandler{
-    async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>> {
-        todo!()
-    }
-}*/
+
 #[async_trait::async_trait]
 pub trait  AuthenticationFailureHandler{
     async fn handle(&self, error: anyhow::Error) -> anyhow::Result<Response<Body>>;
 }
-/*#[async_trait::async_trait]
-impl Filter for AuthenticationFailureHandler{
-    async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>> {
-        todo!()
-    }
-}*/
-type AuthenticationTokenResolverFn = Box<dyn Fn(Arc<Extensions>,Arc<Extensions>) -> Box<dyn AuthenticationTokenResolver + Send + Sync> + Send + Sync>;
-type JwtServiceFn = Box<dyn Fn(Arc<Extensions>,Arc<Extensions>)->Box<dyn JwtService + Send + Sync > + Send + Sync>;
-type AuthenticationSuccessHandlerFn = Box<dyn Fn(Arc<Extensions>,Arc<Extensions>)->Box<dyn AuthenticationSuccessHandler + Send + Sync> + Send + Sync>;
-type AuthenticationFailureHandlerFn = Box<dyn Fn(Arc<Extensions>,Arc<Extensions>)->Box<dyn AuthenticationFailureHandler + Send + Sync> + Send + Sync>;
-type LoadUserServiceFn = Box<dyn Fn(Arc<Extensions>,Arc<Extensions>)-> Box<dyn LoadUserService + Send + Sync> + Send + Sync>;
-type AuthenticationProviderFn = Box<dyn Fn(Arc<Extensions>,Arc<Extensions>)->Box<dyn AuthenticationProvider + Send + Sync> + Send + Sync>;
-type UserDetailsCheckerFn = Box<dyn Fn(Arc<Extensions>,Arc<Extensions>)->Box<dyn UserDetailsChecker + Send + Sync> + Send + Sync>;
 
-/*#[async_trait::async_trait]
-impl<F: Send + Sync + 'static, Fut> HTTPHandler for F
-    where
-        F: Fn(RequestCtx) -> Fut,
-        Fut: Future<Output = anyhow::Result<Response<Body>>> + Send + 'static,
-{
-    async fn handle(&self, ctx: RequestCtx) -> anyhow::Result<Response<Body>> {
-        self(ctx).await
-    }
-}*/
+type AuthenticationTokenResolverFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>) -> Box<dyn AuthenticationTokenResolver + Send + Sync + 'a> + Send + Sync>;
+type JwtServiceFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)->Box<dyn JwtService + Send + Sync + 'a> + Send + Sync>;
+type AuthenticationSuccessHandlerFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)->Box<dyn AuthenticationSuccessHandler + Send + Sync + 'a> + Send + Sync>;
+type AuthenticationFailureHandlerFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)->Box<dyn AuthenticationFailureHandler + Send + Sync + 'a> + Send + Sync>;
+type LoadUserServiceFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)-> Box<dyn LoadUserService + Send + Sync + 'a> + Send + Sync>;
+type AuthenticationProviderFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)->Box<dyn AuthenticationProvider + Send + Sync + 'a> + Send + Sync>;
+type UserDetailsCheckerFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)->Box<dyn UserDetailsChecker + Send + Sync + 'a> + Send + Sync>;
 
 
-pub struct SecurityConfig<'a,'b>{
-    request_states:&'a Extensions,
-    app_extensions:&'b Extensions,
+pub struct SecurityConfig{
     enable_security:bool,
     authentication_token_resolver: AuthenticationTokenResolverFn,
     jwt_service:JwtServiceFn,
@@ -881,35 +854,38 @@ pub struct SecurityConfig<'a,'b>{
     user_details_checker:UserDetailsCheckerFn,
     password_encoder:Box<dyn PasswordEncoder + Send + Sync>
 }
-fn jwt_service_fn(request_states:Arc<Extensions>, _:Arc<Extensions>) ->Box<dyn JwtService + Send + Sync>{
-    let state: Option<&Box<dyn Any + Send + Sync>> = request_states.get();
-    let state: Option<&MysqlPoolManager> = state.unwrap().downcast_ref();
-    let pool = state.unwrap();
-    Box::new(RustShopJwtService::new(pool))
-}
-impl <'a,'b> SecurityConfig<'a,'b> {
-    pub fn new(request_states:&'a Extensions,app_extensions:&'b Extensions)->Self {
+
+impl SecurityConfig {
+    pub fn new()->Self {
         SecurityConfig {
-            request_states,
-            app_extensions,
             enable_security: false,
             authentication_token_resolver: AuthenticationTokenResolverFn::from(
-                Box::new(|request_states: Arc<Extensions>, app_extensions: Arc<Extensions>| -> Box<dyn AuthenticationTokenResolver + Send + Sync>{
+                Box::new(|request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn AuthenticationTokenResolver + Send + Sync>{
                     Box::new(UsernamePasswordAuthenticationTokenResolver::new())
                 })),
-            jwt_service: JwtServiceFn::from(Box::new(jwt_service_fn)),
+            jwt_service: JwtServiceFn::from(
+                Box::new(|request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn JwtService + Send + Sync>{
+                    let state: Option<&Box<dyn Any + Send + Sync>> = request_states.get();
+                    let state: Option<&MysqlPoolManager> = state.unwrap().downcast_ref();
+                    let pool = state.unwrap();
+                    Box::new(DefaultJwtService::new(pool))
+                })
+            ),
             authentication_success_handler: None,
             authentication_failure_handler: None,
             load_user_service: LoadUserServiceFn::from(
-                Box::new(|request_states: Arc<Extensions>, app_extensions: Arc<Extensions>| -> Box<dyn LoadUserService + Send + Sync>{
-                    Box::new(DefaultLoadUserService::new())
+                Box::new(|request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn LoadUserService + Send + Sync>{
+                    let state: Option<&Box<dyn Any + Send + Sync>> = request_states.get();
+                    let state: Option<&MysqlPoolManager> = state.unwrap().downcast_ref();
+                    let pool = state.unwrap();
+                    Box::new(DefaultLoadUserService::new(pool))
                 })),
             authentication_provider: AuthenticationProviderFn::from(
-                Box::new(|request_states: Arc<Extensions>, app_extensions: Arc<Extensions>| -> Box<dyn AuthenticationProvider + Send + Sync>{
+                Box::new(|request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn AuthenticationProvider + Send + Sync>{
                     Box::new(UsernamePasswordAuthenticationProvider::new())
                 })),
             user_details_checker: UserDetailsCheckerFn::from(
-                Box::new(|request_states: Arc<Extensions>, app_extensions: Arc<Extensions>| -> Box<dyn UserDetailsChecker + Send + Sync>{
+                Box::new(|request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn UserDetailsChecker + Send + Sync>{
                     Box::new(DefaultUserDetailsChecker::new())
                 })),
             password_encoder: Box::new(BcryptPasswordEncoder::new())
@@ -958,7 +934,7 @@ impl <'a,'b> SecurityConfig<'a,'b> {
     pub fn get_authentication_token_resolver(&self) ->&AuthenticationTokenResolverFn{
         &self.authentication_token_resolver
     }
-    pub fn get_jwt_service(&self) ->&JwtServiceFn{
+    pub fn get_jwt_service(&self) ->&JwtServiceFn {
         &self.jwt_service
     }
     pub fn get_authentication_success_handler(&self) ->&Option<AuthenticationSuccessHandlerFn>{
@@ -980,9 +956,7 @@ impl <'a,'b> SecurityConfig<'a,'b> {
         &self.password_encoder
     }
 }
-pub trait SecurityFilter{
 
-}
 
 pub struct MysqlPoolManager<'a>{
     tran:Option<Transaction<'a,MySql>>,
@@ -1023,6 +997,7 @@ pub struct Server {
     filters: Vec<Arc<dyn Filter>>,
     extensions: Extensions,
     request_state_providers:Extensions,
+    enable_security:bool,
 }
 
 impl Server {
@@ -1032,6 +1007,7 @@ impl Server {
             filters: Vec::new(),
             extensions : Extensions::new(),
             request_state_providers : Extensions::new(),
+            enable_security:false,
         }
     }
     pub fn get_extension<T:'static + Sync + Send>(&self) ->Option<&State<T>>{
@@ -1069,12 +1045,20 @@ impl Server {
     pub fn request_state<U: 'static + Send + Sync>(&mut self, ext: U)  {
         self.request_state_providers.insert(ext);
     }
+    pub fn security_config(&mut self,security_config:SecurityConfig){
+        self.enable_security = security_config.is_enable_security();
+        self.extensions.insert(State::new(security_config));
+        if self.enable_security {
+            self.filters.push(Arc::new(AuthenticationProcessingFilter{}))
+        }
+    }
     pub async fn run(self, addr: SocketAddr) -> anyhow::Result<()> {
         let Self {
             router,
             filters,
             extensions,
-            request_state_providers
+            request_state_providers,
+            enable_security
         } = self;
         let router = Arc::new(router);
         let filters = Arc::new(filters);
@@ -1185,7 +1169,7 @@ use serde_json::Value;
 use sqlx::encode::IsNull::No;
 use time::OffsetDateTime;
 use uri_pattern_matcher::UriPattern;
-use crate::service::jwt_service::RustShopJwtService;
+use crate::service::jwt_service::DefaultJwtService;
 
 pub async fn parse_request_json<T>(req:Request<Body>)->anyhow::Result<T>
     where for<'a> T:
@@ -1242,8 +1226,9 @@ zoom_and_enhance! {
 
 #[test]
 fn test() {
-    let pattern: UriPattern = "/*".into();
-    assert!(pattern.is_match("/api/resource/id1/details"));
-    assert!(pattern.is_match("/api/customer/John/details"));
+    let pwd = String::from("123456");
+    let encoder = BcryptPasswordEncoder::new();
+    let pwd = encoder.encode(&pwd).unwrap();
+    println!("{}",pwd);
 }
 

@@ -19,7 +19,7 @@ use std::net::SocketAddr;
 use hyper::{Body, Request, StatusCode};
 use lazy_static::lazy_static;
 use log::info;
-use crate::core::{AccessLogFilter, Filter, MysqlPoolManager, Next, RequestCtx, RequestStateProvider, ResponseBuilder, EndpointResult, Server};
+use crate::core::{AccessLogFilter, Filter, MysqlPoolManager, Next, RequestCtx, RequestStateProvider, ResponseBuilder, EndpointResult, Server, SecurityConfig};
 use crate::api::index_controller::IndexController;
 use snowflake::SnowflakeIdGenerator;
 use std::sync::{Arc, Mutex};
@@ -82,6 +82,10 @@ async fn main() ->anyhow::Result<()>{
 
     let conn_pool = get_connection_pool().await?;
     srv.extension(State::new(conn_pool.clone()));
+
+    let mut security_config = SecurityConfig::new();
+    security_config.enable_security(true);
+    srv.security_config(security_config);
 
     let mysql_pool_state_provider : Box<dyn RequestStateProvider + Sync + Send> = Box::new(MysqlPoolStateProvider);
     srv.request_state(mysql_pool_state_provider);
