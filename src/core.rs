@@ -289,7 +289,7 @@ pub struct AccessLogFilter;
 
 #[async_trait::async_trait]
 impl Filter for AccessLogFilter {
-    async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<hyper::Response<Body>> {
+    async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>> {
         let start = Instant::now();
         let method = ctx.request.method().to_string();
         let path = ctx.request.uri().path().to_string();
@@ -427,7 +427,7 @@ impl <'a,'b> LoadUserService for WeChatUserService<'a,'b>{
             }))
         }else {
             let id: i64 = ID_GENERATOR.lock().unwrap().real_time_generate();
-            let rows_affected = sqlx::query!("insert into `user`(id,wx_open_id,created_time,enable) values(?,?,?,?)",id,identity.to_string(),Utc::now(),1)
+            let rows_affected = sqlx::query!("insert into `user`(id,wx_open_id,created_time,enable) values(?,?,?,?)",id,identity.to_string(),Local::now(),1)
                 .execute(pool).await?
                 .rows_affected();
             if rows_affected > 0 {
@@ -1338,9 +1338,9 @@ zoom_and_enhance! {
 
 #[test]
 fn test() {
-    let pwd = String::from("123456");
-    let encoder = BcryptPasswordEncoder::new();
-    let pwd = encoder.encode(&pwd).unwrap();
-    println!("{}",pwd);
+    let now = Local::now();
+    let str = now.format("%Y-%m-%d %H:%M:%S").to_string();
+
+    print!("{}",str);
 }
 
