@@ -1,0 +1,10 @@
+[package]
+name = "test_macro"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+axum_route = {version = "0.1.1" ,path="../axum-route-master"}
+axum = "0.5.17"
