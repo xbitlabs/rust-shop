@@ -19,7 +19,7 @@ use std::net::SocketAddr;
 use hyper::{Body, Request, StatusCode};
 use lazy_static::lazy_static;
 use log::info;
-use crate::core::{AccessLogFilter, Filter, MysqlPoolManager, Next, RequestCtx, RequestStateProvider, ResponseBuilder, EndpointResult, Server, SecurityConfig, AuthenticationTokenResolverFn, UserDetailsCheckerFn, UserDetailsChecker, DefaultUserDetailsChecker, AuthenticationTokenResolver, WeChatMiniAppAuthenticationTokenResolver, NopPasswordEncoder, LoadUserServiceFn, LoadUserService, DefaultLoadUserService, WeChatUserService};
+use crate::core::{AccessLogFilter, Filter, MysqlPoolManager, Next, RequestCtx, RequestStateProvider, ResponseBuilder, EndpointResult, Server, SecurityConfig, AuthenticationTokenResolverFn, UserDetailsCheckerFn, UserDetailsChecker, DefaultUserDetailsChecker, AuthenticationTokenResolver, WeChatMiniAppAuthenticationTokenResolver, NopPasswordEncoder, LoadUserServiceFn, LoadUserService, DefaultLoadUserService, WeChatUserService, ROUTER};
 use crate::api::index_controller::IndexController;
 use snowflake::SnowflakeIdGenerator;
 use std::sync::{Arc, Mutex};
@@ -68,8 +68,24 @@ impl Drop for MysqlPoolStateProvider{
     }
 }
 
+use crate::core::register_route;
+lazy_static! {
+    static ref b : bool = register_route(String::from("post"),String::from("/test"),IndexController::index);
+}
+
+lazy_static! {
+    static ref c : bool = register_route(String::from("get"),String::from("/test2"),StaticFileController::handle);
+}
+
 #[tokio::main]
 async fn main() ->anyhow::Result<()>{
+
+    //println!("The map has {} entries.", *b);
+    //println!("The map has {} entries.", *c);
+    lazy_static::initialize(&b);
+    lazy_static::initialize(&c);
+
+    println!("len = {}",ROUTER.lock().unwrap().len());
 
     log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
     info!("booting up");

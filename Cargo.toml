@@ -64,7 +64,9 @@ members = [
     "rust-shop-std",
     "validator",
     "validator_derive",
-    "validator_types"
+    "validator_types",
+    "test_macro",
+    "axum-route-master",
 ]
 
 #rust版本：stable（稳定版），beta（测试版），nightly（每日构建版）

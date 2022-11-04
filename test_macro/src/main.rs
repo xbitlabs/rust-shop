@@ -14,12 +14,12 @@ pub mod test1 {
     use axum::routing::{get,post};
 
     #[route(post, "/")]
-    pub async fn add(Json(payload): Json<User>) -> String {
+    pub async fn add(axum::Json(payload): axum::Json<User>) -> String {
         String::from("hello")
     }
 
     #[route(post, "/")]
-    pub async fn update(Json(payload): Json<User>) -> String {
+    pub async fn update(axum::Json(payload): axum::Json<User>) -> String {
         String::from("hello")
     }
 }

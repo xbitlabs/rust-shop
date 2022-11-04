@@ -155,6 +155,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                 /// self-type as in `<Vec<T> as SomeTrait>::Associated`.
                 Type::Path(type_path)=>{
                     let mut  str:String = String::from("") ;
+
                     for s in  type_path.path.segments.iter() {
                         str = str + &s.ident.to_string();
                     }
