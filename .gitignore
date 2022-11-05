@@ -6,3 +6,4 @@
 /log/rust-shop.log
 /.idea/vcs.xml
 /.idea
+*.iml
