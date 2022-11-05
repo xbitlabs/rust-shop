@@ -1,11 +1,11 @@
 use std::any::Any;
 use crate::{RequestCtx, ResponseBuilder, EndpointResult, StatusCode};
-use crate::core::parse_request_json;
+use rust_shop_core::parse_request_json;
 use crate::service::product_category_service::ProductCategoryService;
 use anyhow::anyhow;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
-use crate::core::parse_form_params;
-use rust_shop_std::FormParser;
+use rust_shop_core::parse_form_params;
+use rust_shop_macro::FormParser;
 use hyper::Body;
 use hyper::Request;
 

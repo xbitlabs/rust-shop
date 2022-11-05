@@ -12,8 +12,8 @@ use uuid::Uuid;
 use log4rs;
 use log::{debug, error, info, warn};
 use tokio::io::AsyncWriteExt;
+use rust_shop_core::EndpointResultCode;
 use crate::config::load_config::APP_CONFIG;
-use crate::core::EndpointResultCode;
 use crate::{RequestCtx, ResponseBuilder, EndpointResult};
 
 pub struct UploadController;

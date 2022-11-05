@@ -1,5 +1,5 @@
 [package]
-name = "rust-shop"
+name = "rust-shop-core"
 version = "0.1.0"
 edition = "2021"
 
@@ -40,10 +40,6 @@ log = "0.4.17"
 chrono = {version= "0.4",features  = ["serde"]}
 time = "0.3.14"
 criterion = "0.4.0"
-#静态文件
-hyper-staticfile = {version = "0.9.1",path = "hyper-staticfile" }
-rust-shop-macro = { version = "0.1" , path = "rust-shop-macro" }
-rust-shop-core = { version = "0.1" , path = "rust-shop-core" }
 
 
 rs-snowflake = "0.6.0"
@@ -54,25 +50,5 @@ thiserror = "1.0.37"
 ahash = "0.8.0"
 validator = "0.16.0"
 bcrypt = "0.13.0"
-uri-pattern-matcher = "0.1.4"
-
-[dev-dependencies]
-tokio-test = "*"
-
-[workspace]
-members = [
-    "hyper-staticfile",
-    "rust-shop-macro",
-    "validator",
-    "validator_derive",
-    "validator_types",
-    "test_macro",
-    "axum-route-master",
-    "rust-shop-core"
-]
-
-#rust版本：stable（稳定版），beta（测试版），nightly（每日构建版）
-#切换到特定版本
-#rustup default 版本单词
-#如：
-#rustup default nightly
+rust-shop-macro = { version = "0.1" , path = "../rust-shop-macro" }
+serde_html_form = "0.1.0"

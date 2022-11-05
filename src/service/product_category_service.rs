@@ -1,8 +1,9 @@
 use std::fmt::Error;
 use sqlx::MySqlPool;
+use rust_shop_core::db_pool_manager::get_connection_pool;
 use crate::entity::entity::ProductCategory;
 use crate::{MysqlPoolManager};
-use crate::utils::db::get_connection_pool;
+
 
 pub struct ProductCategoryService<'a,'b>{
     mysql_pool_manager: &'a MysqlPoolManager<'b>

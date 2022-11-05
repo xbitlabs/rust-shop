@@ -1,0 +1,6 @@
+secret: rust-shop#123
+sub: rust-shop
+#单位：秒，7天
+access_token_validity: 604800
+#单位：秒，15天
+refresh_token_validity: 1296000

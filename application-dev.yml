@@ -1,30 +1,7 @@
 #服务器监听端口
 server:
   port: 5000
-# mysql 配置
-mysql:
-  host: 127.0.0.1
-  port: 3306
-  user: root
-  password: 123456
-  db: rust_shop
-  #最小连接数
-  pool_min_idle: 8
-  #最大连接数
-  pool_max_open: 32
-  #连接超时时间单位秒
-  timeout_seconds: 15
 upload:
   save_path: G:\static
 static_file:
   virtual_path: /static
-wechat:
-  app_id: wx61e54e91bb3e06dc
-  app_secret: 0900e222453a2256ed9bcce4c657108f
-jwt:
-  secret: rust-shop#123
-  sub: rust-shop
-  #单位：秒，7天
-  access_token_validity: 604800
-  #单位：秒，15天
-  refresh_token_validity: 1296000

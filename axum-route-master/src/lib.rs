@@ -2,6 +2,9 @@
 
 use proc_macro::{TokenStream, Span};
 use std::alloc::System;
+use std::fs::File;
+use std::io::Write;
+use std::path::PathBuf;
 use syn::{parse_macro_input, ItemFn, FnArg, Type, TypePath, Path};
 use syn::punctuated::Punctuated;
 use syn::parse::{Parse, ParseStream};
@@ -55,6 +58,32 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
     //println!("{:?}",func.sig.inputs.into_iter());
     // 1. Filter the params, so that only typed arguments remain
     // 2. Extract the ident (in case the pattern type is ident)
+
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = path.to_str();
+    if path.is_some() {
+        let path = path.unwrap().to_string();
+        let mut file = match File::create("d:\\test\\test.txt") {
+            Err(why) => panic!("couldn't create {}", "file"),
+            Ok(file) => file,
+        };
+
+        match file.write_all(path.as_bytes()) {
+            Err(why) => panic!("couldn't write to {}", "d:\\test\\test.txt"),
+            Ok(_) => println!("successfully wrote to {}", "d:\\test\\test.txt"),
+        }
+    }else {
+        let path = "没有找到";
+        let mut file = match File::create("d:\\test\\test.txt") {
+            Err(why) => panic!("couldn't create {}", "file"),
+            Ok(file) => file,
+        };
+
+        match file.write_all(path.as_bytes()) {
+            Err(why) => panic!("couldn't write to {}", "d:\\test\\test.txt"),
+            Ok(_) => println!("successfully wrote to {}", "d:\\test\\test.txt"),
+        }
+    }
 
     let mut test = quote!{
         pub fn test111(){

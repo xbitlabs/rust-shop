@@ -1,4 +1,4 @@
-/*use std::{
+use std::{
     any::{Any, TypeId},
     fmt,
 };
@@ -231,4 +231,3 @@ mod tests {
         assert_eq!(extensions.get_mut(), Some(&mut 20u8));
     }
 }
-*/

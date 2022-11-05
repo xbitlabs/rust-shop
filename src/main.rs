@@ -19,17 +19,19 @@ use std::net::SocketAddr;
 use hyper::{Body, Request, StatusCode};
 use lazy_static::lazy_static;
 use log::info;
-use crate::core::{AccessLogFilter, Filter, MysqlPoolManager, Next, RequestCtx, RequestStateProvider, ResponseBuilder, EndpointResult, Server, SecurityConfig, AuthenticationTokenResolverFn, UserDetailsCheckerFn, UserDetailsChecker, DefaultUserDetailsChecker, AuthenticationTokenResolver, WeChatMiniAppAuthenticationTokenResolver, NopPasswordEncoder, LoadUserServiceFn, LoadUserService, DefaultLoadUserService, WeChatUserService, ROUTER};
 use crate::api::index_controller::IndexController;
 use snowflake::SnowflakeIdGenerator;
 use std::sync::{Arc, Mutex};
 use sqlx::{MySql, Pool};
+use rust_shop_core::{AccessLogFilter, EndpointResult, Filter, Next, RequestCtx, RequestStateProvider, ResponseBuilder, Server};
+use rust_shop_core::db_pool_manager::{get_connection_pool, MysqlPoolManager};
+use rust_shop_core::extensions::Extensions;
+use rust_shop_core::router::ROUTER;
+use rust_shop_core::security::{AuthenticationTokenResolver, AuthenticationTokenResolverFn, LoadUserService, LoadUserServiceFn, SecurityConfig, WeChatMiniAppAuthenticationTokenResolver, WeChatUserService};
+use rust_shop_core::state::State;
+use rust_shop_core::router::register_route;
+use rust_shop_core::security::NopPasswordEncoder;
 
-
-
-lazy_static::lazy_static! {
-    pub static ref ID_GENERATOR : Mutex<SnowflakeIdGenerator> = Mutex::new(SnowflakeIdGenerator::new(1, 1));
-}
 
 pub struct  AuthFilter;
 
@@ -49,10 +51,7 @@ impl Filter for AuthFilter {
 //use crate::api::auth_controller::AuthController;
 use crate::api::static_file_controller::StaticFileController;
 use crate::api::upload_controller::UploadController;
-use crate::config::load_config::{APP_CONFIG, load_conf};
-use crate::extensions::Extensions;
-use crate::state::State;
-use crate::utils::db::get_connection_pool;
+use crate::config::load_config::APP_CONFIG;
 
 pub struct MysqlPoolStateProvider;
 
@@ -68,7 +67,7 @@ impl Drop for MysqlPoolStateProvider{
     }
 }
 
-use crate::core::register_route;
+
 lazy_static! {
     static ref b : bool = register_route(String::from("post"),String::from("/test"),IndexController::index);
 }

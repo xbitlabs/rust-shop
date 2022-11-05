@@ -1,4 +1,4 @@
-use sqlx::{Error, MySql, MySqlPool, Pool};
+/*use sqlx::{Error, MySql, MySqlPool, Pool};
 use crate::APP_CONFIG;
 
 pub async fn get_connection_pool() -> Result<Pool<MySql>, Error> {
@@ -12,4 +12,4 @@ pub async fn get_connection_pool() -> Result<Pool<MySql>, Error> {
                        app_config.mysql.db);
     let pool = MySqlPool::connect(conn.as_str());
     pool.await
-}
+}*/

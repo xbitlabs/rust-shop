@@ -1,13 +1,19 @@
-/*use chrono::Local;
+use chrono::Local;
 use hyper::{Client, Method, Request, Uri};
 use hyper_tls::HttpsConnector;
 use lazy_static::lazy_static;
 use log::error;
-use crate::config::load_config::APP_CONFIG;
 use hyper::body::Buf;
 use std::sync::Mutex;
 use anyhow::anyhow;
-use crate::{MysqlPoolManager};
+use crate::app_config::load_mod_config;
+
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct Wechat{
+    pub app_id:String,
+    pub app_secret:String,
+}
 
 #[derive(serde::Serialize,serde::Deserialize,PartialEq)]
 pub struct WeChatAccessTokenResponse{
@@ -61,6 +67,12 @@ pub struct WeChatUserInfo{
 lazy_static! {
     static ref WE_CHAT_ACCESS_TOKEN_MANAGER: Mutex<WeChatAccessTokenManager> = Mutex::new(WeChatAccessTokenManager::new());
 }
+lazy_static! {
+    ///
+    /// 全局配置
+    ///
+    pub static ref WE_CHAT_CONFIG: Wechat = load_mod_config(String::from("wechat")).unwrap();
+}
 ///token还剩下多少秒有效的时间就要去刷新token
 const TOKEN_REMAINING_LIFETIME_SECONDS_REFRESH: i64 = 10 * 60;
 
@@ -113,7 +125,7 @@ impl WeChatAccessTokenManager {
         }
     }
     async fn request_access_token(&self)->anyhow::Result<WeChatAccessTokenResponse>{
-        let wechat_config = &APP_CONFIG.wechat;
+        let wechat_config = &WE_CHAT_CONFIG;
         //let client = Client::new();
         let https = HttpsConnector::new();
         let client = Client::builder()
@@ -174,7 +186,7 @@ impl WeChatMiniAppService{
 
     }
     pub async fn login(&self,js_code:String)->anyhow::Result<WeChatMiniAppLoginResponse>{
-        let wechat_config = &APP_CONFIG.wechat;
+        let wechat_config = &WE_CHAT_CONFIG;
         let https = HttpsConnector::new();
         let client = Client::builder()
             .build::<_, hyper::Body>(https);
@@ -224,4 +236,4 @@ fn test_wechat_api(){
     let result = api.get_access_token();
     let result1 = aw!(result);
     println!("{:?}",result1);
-}*/
+}

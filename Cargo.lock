@@ -1915,7 +1915,8 @@ dependencies = [
  "multer",
  "route-recognizer",
  "rs-snowflake",
- "rust-shop-std",
+ "rust-shop-core",
+ "rust-shop-macro",
  "schemars",
  "serde",
  "serde_json",
@@ -1933,7 +1934,43 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust-shop-std"
+name = "rust-shop-core"
+version = "0.1.0"
+dependencies = [
+ "ahash 0.8.0",
+ "anyhow",
+ "async-trait",
+ "bcrypt",
+ "chrono",
+ "criterion",
+ "form_urlencoded",
+ "hyper",
+ "hyper-tls",
+ "jsonwebtoken",
+ "lazy_static",
+ "log",
+ "log4rs",
+ "multer",
+ "route-recognizer",
+ "rs-snowflake",
+ "rust-shop-macro",
+ "schemars",
+ "serde",
+ "serde_html_form",
+ "serde_json",
+ "serde_urlencoded",
+ "serde_yaml 0.9.13",
+ "sqlx",
+ "sqlx-crud",
+ "thiserror",
+ "time 0.3.14",
+ "tokio",
+ "uuid",
+ "validator 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "rust-shop-macro"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -2094,6 +2131,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "serde_html_form"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3312ac3bf56e70cb7082a85db89d127940607b6acf39bd537cc06c8212124927"
+dependencies = [
+ "form_urlencoded",
+ "indexmap",
+ "itoa",
+ "ryu",
+ "serde",
 ]
 
 [[package]]

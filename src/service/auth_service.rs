@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+/*use std::cell::RefCell;
 use std::ops::Deref;
 use std::string::ToString;
 use std::sync::{Arc, Mutex};
@@ -12,16 +12,19 @@ use hyper::body::Buf;
 use hyper_tls::HttpsConnector;
 use lazy_static::lazy_static;
 use sqlx::encode::IsNull::No;
-use crate::entity::entity::User;
+use rust_shop_core::entity::User;
 use crate::service::wechat_service::WeChatMiniAppService;
 use jsonwebtoken::{Algorithm, DecodingKey, encode, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use crate::service::jwt_service::{DefaultJwtService};
 use chrono::prelude::*;
 use sqlx::{Error, MySql, Pool};
-use crate::entity::entity::UserJwt;
-use crate::{ID_GENERATOR, MysqlPoolManager};
-use crate::core::{AccessToken, JwtService};
+use rust_shop_core::db_pool_manager::MysqlPoolManager;
+use rust_shop_core::id_generator::ID_GENERATOR;
+use rust_shop_core::jwt::{AccessToken, JwtService};
+use rust_shop_core::entity::UserJwt;
+
+
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct LoginResult{
@@ -90,3 +93,4 @@ impl <'a,'b> AuthService<'a,'b> {
         self.jwt_service.refresh_token(refresh_token).await
     }
 }
+*/

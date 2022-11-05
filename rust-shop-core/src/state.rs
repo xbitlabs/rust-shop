@@ -1,4 +1,4 @@
-/*use std::ops::Deref;
+use std::ops::Deref;
 use std::sync::Arc;
 use serde::Serialize;
 
@@ -54,4 +54,3 @@ impl<T> Serialize for State<T>
         self.0.serialize(serializer)
     }
 }
-*/

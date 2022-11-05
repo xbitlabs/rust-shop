@@ -1,5 +1,5 @@
 [package]
-name = "rust-shop-std"
+name = "rust-shop-macro"
 version = "0.1.0"
 edition = "2021"
 

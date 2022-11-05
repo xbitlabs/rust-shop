@@ -1,36 +1,37 @@
-/*use std::collections::HashMap;
+use std::collections::HashMap;
 use std::thread;
 use anyhow::anyhow;
 use chrono::NaiveDateTime;
 use jsonwebtoken::{Algorithm, decode, DecodingKey, encode, EncodingKey, Header, TokenData, Validation};
+use lazy_static::lazy_static;
 use log::info;
 use sqlx::Executor;
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
-use crate::config::load_config::APP_CONFIG;
 use serde::Serialize;
 use serde::Deserialize;
-use rust_shop_core::db_pool_manager::MysqlPoolManager;
-use rust_shop_core::id_generator::ID_GENERATOR;
-use rust_shop_core::jwt::{AccessToken, Claims, JwtService};
-use rust_shop_core::entity::UserJwt;
+use crate::db_pool_manager::MysqlPoolManager;
+use crate::jwt::{AccessToken, Claims, JwtService};
+use crate::app_config::load_mod_config;
+use crate::id_generator::ID_GENERATOR;
+use crate::entity::UserJwt;
 
+
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct JwtConfig{
-    pub access_token_validity:i64,
-    pub refresh_token_validity:i64,
+    pub secret:String,
     pub sub:String,
-}
-impl JwtConfig {
-    pub fn new(access_token_validity:i64,refresh_token_validity:i64,sub:String)->Self{
-        JwtConfig{
-            access_token_validity,
-            refresh_token_validity,
-            sub
-        }
-    }
+    pub access_token_validity:i64,
+    pub refresh_token_validity:i64
 }
 
 
+lazy_static! {
+    ///
+    /// 全局配置
+    ///
+    pub static ref JWT_CONFIG: JwtConfig = load_mod_config(String::from("jwt")).unwrap();
+}
 
 pub struct DefaultJwtService<'a,'b>{
     mysql_pool_manager: &'a MysqlPoolManager<'b>
@@ -42,19 +43,12 @@ impl <'a,'b> DefaultJwtService<'a,'b> {
             mysql_pool_manager
         }
     }
-    async fn get_jwt_config(&self,) -> anyhow::Result<JwtConfig> {
-        Ok(JwtConfig{
-            access_token_validity: APP_CONFIG.jwt.access_token_validity,
-            refresh_token_validity: APP_CONFIG.jwt.refresh_token_validity,
-            sub: APP_CONFIG.jwt.sub.as_str().to_string(),
-        })
-    }
 }
 
 #[async_trait::async_trait]
 impl <'a,'b> JwtService for DefaultJwtService<'a,'b> {
     async fn grant_access_token(&self,user_id: i64) -> anyhow::Result<AccessToken> {
-        let jwt_config = self.get_jwt_config().await?;
+        let jwt_config = &JWT_CONFIG;
         let iat = OffsetDateTime::now_utc();
         let access_token_exp = iat + Duration::days(jwt_config.access_token_validity / 60 / 60 / 24);
         let refresh_token_exp = iat + Duration::days(jwt_config.refresh_token_validity / 60 / 60 / 24);
@@ -62,19 +56,19 @@ impl <'a,'b> JwtService for DefaultJwtService<'a,'b> {
         let access_token_claims = Claims{
             token_id : token_id.as_str().to_string(),
             user_id,
-            sub : APP_CONFIG.jwt.sub.as_str().to_string(),
+            sub : JWT_CONFIG.sub.as_str().to_string(),
             iat,
             exp: access_token_exp
         };
         let refresh_token_claims = Claims{
             token_id : token_id.as_str().to_string(),
             user_id,
-            sub : APP_CONFIG.jwt.sub.as_str().to_string(),
+            sub : JWT_CONFIG.sub.as_str().to_string(),
             iat,
             exp: refresh_token_exp
         };
-        let access_token =  encode(&Header::default(), &access_token_claims, &EncodingKey::from_secret(APP_CONFIG.jwt.secret.as_ref()))?;
-        let refresh_token = encode(&Header::default(), &refresh_token_claims, &EncodingKey::from_secret(APP_CONFIG.jwt.secret.as_ref()))?;
+        let access_token =  encode(&Header::default(), &access_token_claims, &EncodingKey::from_secret(JWT_CONFIG.secret.as_ref()))?;
+        let refresh_token = encode(&Header::default(), &refresh_token_claims, &EncodingKey::from_secret(JWT_CONFIG.secret.as_ref()))?;
 
         let conn_pool = self.mysql_pool_manager.get_pool();
         let user_jwt_id = ID_GENERATOR.lock().unwrap().real_time_generate();
@@ -97,14 +91,14 @@ impl <'a,'b> JwtService for DefaultJwtService<'a,'b> {
 
     async fn decode_access_token(&self,access_token: String) -> anyhow::Result<Claims> {
         let access_token_claims:TokenData<Claims> = decode(access_token.as_str(),
-                                                           &DecodingKey::from_secret(APP_CONFIG.jwt.secret.as_ref()),
+                                                           &DecodingKey::from_secret(JWT_CONFIG.secret.as_ref()),
                                                            &Validation::new(Algorithm::HS256))?;
         Ok(access_token_claims.claims)
     }
 
     async fn decode_refresh_token(&self,refresh_token: String) -> anyhow::Result<Claims> {
         let token_data:TokenData<Claims> = decode(refresh_token.as_str(),
-                                                           &DecodingKey::from_secret(APP_CONFIG.jwt.secret.as_ref()),
+                                                           &DecodingKey::from_secret(JWT_CONFIG.secret.as_ref()),
                                                            &Validation::new(Algorithm::HS256))?;
         Ok(token_data.claims)
     }
@@ -168,4 +162,4 @@ fn test_jwt()->Result<(),RustShopError>{
     //    println!("{}","删除成功");
     //}
     Ok(())
-}*/*/
+}*/
