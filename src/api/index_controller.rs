@@ -47,12 +47,12 @@ impl IndexController {
         let rows = ProductCategoryService::list_all_categories().await;
         match rows {
             Ok(data)=>{
-                let endpoint_result = EndpointResult::ok_with_payload("".to_string(), data);
-                Ok(ResponseBuilder::with_endpoint_result(&endpoint_result))
+                let endpoint_result = EndpointResult::ok_with_payload("", data);
+                Ok(ResponseBuilder::with_endpoint_result(endpoint_result))
             }
             Err(e)=>{
-                let endpoint_result:EndpointResult<String> = EndpointResult::server_error("内部服务器错误".to_string());
-                Ok(ResponseBuilder::with_endpoint_result(&endpoint_result))
+                let endpoint_result:EndpointResult<String> = EndpointResult::server_error("内部服务器错误");
+                Ok(ResponseBuilder::with_endpoint_result(endpoint_result))
             }
         }
 

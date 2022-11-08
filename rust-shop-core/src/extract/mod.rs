@@ -35,11 +35,12 @@ pub enum ExtractError {
     FailedToDeserializeFormData,
     #[error("未发现Json数据")]
     MissingJsonContentType,
-    #[error("Json转为对象异常")]
-    JsonDataError(#[from] serde_json::error::Category::Data),
+    #[error("Json IO错误")]
+    JsonIoError,
+    #[error("Json对象类型映射错误")]
+    JsonDataError,
     #[error("Json格式无效")]
-    JsonSyntaxError(#[from] serde_json::error::Category::Syntax),
-
+    JsonSyntaxError,
     #[error("未知错误")]
     Unknown,
 }

@@ -1,15 +1,15 @@
 use std::ops::{Deref, DerefMut};
 use async_trait::async_trait;
 use hyper::body::{Bytes, HttpBody};
-use hyper::{Body, header, StatusCode};
+use hyper::{Body, header, Response, StatusCode};
 use hyper::header::HeaderValue;
-use log4rs::filter::Response;
+use log::error;
 use multer::bytes::{BufMut, BytesMut};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use crate::{BoxError, RequestCtx};
+use crate::{BoxError, EndpointResult, RequestCtx, ResponseBuilder};
 use crate::extract::{body_to_bytes, ExtractError, FromRequest, IntoResponse};
-use crate::extract::ExtractError::{JsonDataError, JsonSyntaxError, MissingJsonContentType};
+use crate::extract::ExtractError::{JsonDataError, JsonIoError, JsonSyntaxError, MissingJsonContentType};
 
 #[derive(Debug, Clone, Copy, Default)]
 #[cfg_attr(docsrs, doc(cfg(feature = "json")))]
@@ -27,8 +27,11 @@ impl<T, B> FromRequest<B> for Json<T>
 
     async fn from_request(ctx:RequestCtx) -> Result<Self, ExtractError> {
         if json_content_type(&ctx) {
-            let bytes = body_to_bytes(ctx.request).await?;
-
+            let bytes = body_to_bytes(ctx.request).await;
+            if bytes.is_err() {
+                return Err(JsonIoError)
+            }
+            let bytes = bytes.unwrap();
             let value = match serde_json::from_slice(&bytes) {
                 Ok(value) => value,
                 Err(err) => {
@@ -47,7 +50,7 @@ impl<T, B> FromRequest<B> for Json<T>
                             }
                         }
                     };
-                    return Err(rejection());
+                    return Err(rejection);
                 }
             };
 
@@ -110,23 +113,18 @@ impl<T> IntoResponse for Json<T>
     fn into_response(self) -> Response<Body> {
         let mut buf = BytesMut::new().writer();
         match serde_json::to_writer(&mut buf, &self.0) {
-            Ok(()) => (
-                [(
-                    header::CONTENT_TYPE,
-                    HeaderValue::from_static(mime::APPLICATION_JSON.as_ref()),
-                )],
-                buf.into_inner().freeze(),
-            )
-                .into_response(),
-            Err(err) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                [(
-                    header::CONTENT_TYPE,
-                    HeaderValue::from_static(mime::TEXT_PLAIN_UTF_8.as_ref()),
-                )],
-                err.to_string(),
-            )
-                .into_response(),
+            Ok(()) => {
+                let mut builder = Response::builder()
+                    .header(header::CONTENT_TYPE,HeaderValue::from_static(mime::APPLICATION_JSON.as_ref()))
+                    .status(StatusCode::OK);
+                builder.body(Body::from(buf.into_inner().freeze())).unwrap()
+            }
+            ,
+            Err(err) => {
+                error!("转换json数据为对象时异常：{}",err);
+                let result : EndpointResult<String> = EndpointResult::client_error_with_payload("无效的JSON数据",String::from(""));
+                ResponseBuilder::with_endpoint_result(result)
+            }
         }
     }
 }

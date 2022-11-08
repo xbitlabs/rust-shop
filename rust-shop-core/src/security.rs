@@ -549,16 +549,16 @@ impl Filter for AuthenticationProcessingFilter{
             }else {
                 let user_details:Option<&Box<dyn UserDetails + Send + Sync>> = authentication.get_details().downcast_ref();
                 let access_token = jwt_service.grant_access_token(*user_details.unwrap().get_id()).await?;
-                let endpoint_result:EndpointResult<AccessToken> = EndpointResult::ok_with_payload("".to_string(),access_token);
-                Ok(ResponseBuilder::with_endpoint_result(&endpoint_result))
+                let endpoint_result:EndpointResult<AccessToken> = EndpointResult::ok_with_payload("",access_token);
+                Ok(ResponseBuilder::with_endpoint_result(endpoint_result))
             }
         }else {
             if fail_handler.is_some() {
                 let result = fail_handler.as_ref().unwrap()(&Arc::clone(&request_states), &Arc::clone(&ctx.extensions)).handle(authentication.err().unwrap()).await?;
                 Ok(result)
             }else {
-                let endpoint_result:EndpointResult<AccessToken> = EndpointResult::unauthorized("登录凭证无效".to_string());
-                Ok(ResponseBuilder::with_endpoint_result(&endpoint_result))
+                let endpoint_result:EndpointResult<AccessToken> = EndpointResult::unauthorized("登录凭证无效");
+                Ok(ResponseBuilder::with_endpoint_result(endpoint_result))
             }
         }
     }

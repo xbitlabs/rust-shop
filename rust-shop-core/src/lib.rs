@@ -92,7 +92,7 @@ pub struct EndpointResult<T>
     Serialize
 {
     code: EndpointResultCode,
-    msg:String,
+    msg:&'static str,
     payload:Option<T>
 }
 
@@ -100,83 +100,83 @@ impl <T:Serialize> EndpointResult<T> {
     pub fn new()-> EndpointResult<T>{
         EndpointResult {
             code:SUCCESS,
-            msg:"".to_string(),
+            msg:"",
             payload:None
         }
     }
     pub fn set_code(&mut self,code: EndpointResultCode){
         self.code = code;
     }
-    pub fn set_msg(&mut self,msg:String){
+    pub fn set_msg(&mut self,msg:&'static str){
         self.msg = msg;
     }
     pub fn set_payload(&mut self,payload:Option<T>){
         self.payload = payload;
     }
-    pub fn ok(msg: String) ->Self{
+    pub fn ok(msg: &'static str) ->Self{
         EndpointResult {
             code:SUCCESS,
             msg,
             payload:None
         }
     }
-    pub fn ok_with_payload(msg: String, payload:T) ->Self{
+    pub fn ok_with_payload(msg: &'static str, payload:T) ->Self{
         EndpointResult {
             code:SUCCESS,
             msg,
             payload:Some(payload)
         }
     }
-    pub fn server_error(msg:String)->Self{
+    pub fn server_error(msg: &'static str)->Self{
         EndpointResult {
             code:ServerError,
             msg,
             payload:Default::default()
         }
     }
-    pub fn server_error_with_payload(msg:String,payload:T)->Self{
+    pub fn server_error_with_payload(msg: &'static str,payload:T)->Self{
         EndpointResult {
             code:ServerError,
             msg,
             payload:Some(payload)
         }
     }
-    pub fn client_error(msg:String)->Self{
+    pub fn client_error(msg: &'static str)->Self{
         EndpointResult {
             code:ClientError,
             msg,
             payload:None
         }
     }
-    pub fn client_error_with_payload(msg:String,payload:T)->Self{
+    pub fn client_error_with_payload(msg: &'static str,payload:T)->Self{
         EndpointResult {
             code:ClientError,
             msg,
             payload:Some(payload)
         }
     }
-    pub fn access_denied(msg:String)->Self{
+    pub fn access_denied(msg: &'static str)->Self{
         EndpointResult {
             code: AccessDenied,
             msg,
             payload:None
         }
     }
-    pub fn access_denied_with_payload(msg:String,payload:T)->Self{
+    pub fn access_denied_with_payload(msg: &'static str,payload:T)->Self{
         EndpointResult {
             code: AccessDenied,
             msg,
             payload:Some(payload)
         }
     }
-    pub fn unauthorized(msg:String)->Self{
+    pub fn unauthorized(msg: &'static str)->Self{
         EndpointResult {
             code: Unauthorized,
             msg,
             payload:None
         }
     }
-    pub fn unauthorized_with_payload(msg:String,payload:T)->Self{
+    pub fn unauthorized_with_payload(msg: &'static str,payload:T)->Self{
         EndpointResult {
             code: Unauthorized,
             msg,
@@ -188,32 +188,32 @@ impl <T:Serialize> EndpointResult<T> {
 pub struct ResponseBuilder;
 
 impl ResponseBuilder {
-    pub fn with_text(text: String, code: EndpointResultCode) -> Response<Body> {
+    pub fn with_msg(msg: &'static str, code: EndpointResultCode) -> Response<Body> {
         let mut endpoint_result = EndpointResult::new();
-        endpoint_result.set_msg(text);
+        endpoint_result.set_msg(msg);
         endpoint_result.set_code(code);
         endpoint_result.set_payload(Some(""));
 
-        ResponseBuilder::with_endpoint_result(&endpoint_result)
+        ResponseBuilder::with_endpoint_result(endpoint_result)
     }
-    pub fn with_text_and_payload<T>(text: String, payload:T, code: EndpointResultCode) -> Response<Body>
+    pub fn with_msg_and_payload<T>(msg: &'static str, payload:T, code: EndpointResultCode) -> Response<Body>
         where T:
         serde::Serialize
     {
         let mut endpoint_result = EndpointResult::new();
-        endpoint_result.set_msg(text);
+        endpoint_result.set_msg(msg);
         endpoint_result.set_code(code);
         endpoint_result.set_payload(Some(payload));
-        ResponseBuilder::with_endpoint_result(&endpoint_result)
+        ResponseBuilder::with_endpoint_result(endpoint_result)
     }
 
-    pub fn with_endpoint_result<T>(obj: &EndpointResult<T>) -> Response<Body>
+    pub fn with_endpoint_result<T>(endpoint_result: EndpointResult<T>) -> Response<Body>
         where T:
         serde::Serialize
     {
-        let json = serde_json::to_string(obj);
+        let json = serde_json::to_string(&endpoint_result);
         let mut status = StatusCode::OK;
-        match obj.code {
+        match endpoint_result.code {
             ServerError=>{
                 status = StatusCode::INTERNAL_SERVER_ERROR;
             }
@@ -475,8 +475,8 @@ impl Server {
                             }
                             Err(error)=>{
                                 error!("处理请求异常{}：{}",url, error);
-                                let endpoint_result:EndpointResult<String> = EndpointResult::server_error("内部服务器错误".to_string());
-                                Ok::<_, anyhow::Error>(ResponseBuilder::with_endpoint_result(&endpoint_result))
+                                let endpoint_result:EndpointResult<String> = EndpointResult::server_error("内部服务器错误");
+                                Ok::<_, anyhow::Error>(ResponseBuilder::with_endpoint_result(endpoint_result))
                             }
                         }
 

@@ -38,8 +38,8 @@ pub struct  AuthFilter;
 #[async_trait::async_trait]
 impl Filter for AuthFilter {
     async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<hyper::Response<hyper::Body>> {
-        let endpoint_result:EndpointResult<String> = EndpointResult::server_error("无权限".to_string());
-        Ok(ResponseBuilder::with_endpoint_result(&endpoint_result))
+        let endpoint_result:EndpointResult<String> = EndpointResult::server_error("无权限");
+        Ok(ResponseBuilder::with_endpoint_result(endpoint_result))
     }
 
     fn url_patterns(&self) -> String {

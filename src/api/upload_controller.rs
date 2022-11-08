@@ -26,8 +26,8 @@ impl UploadController{
                 Ok(result)
             }
             Err(e)=>{
-                let endpoint_result:EndpointResult<String> = EndpointResult::server_error("上传失败".to_string());
-                Ok(ResponseBuilder::with_endpoint_result(&endpoint_result))
+                let endpoint_result:EndpointResult<String> = EndpointResult::server_error("上传失败");
+                Ok(ResponseBuilder::with_endpoint_result(endpoint_result))
             }
         }
     }
@@ -52,10 +52,10 @@ impl UploadController{
         let upload_result = UploadController::process_multipart(req.into_body(), boundary.unwrap()).await;
         match  upload_result{
             Ok(result)=>{
-                Ok(ResponseBuilder::with_endpoint_result(&result))
+                Ok(ResponseBuilder::with_endpoint_result(result))
             }
             Err(error)=>{
-                Ok(ResponseBuilder::with_text("上传失败：内部服务器错误".to_string(), EndpointResultCode::ServerError))
+                Ok(ResponseBuilder::with_msg("上传失败：内部服务器错误", EndpointResultCode::ServerError))
             }
         }
     }
@@ -128,7 +128,7 @@ impl UploadController{
                         }
                         Err(e)=>{
                             error!("创建上传文件夹失败：{}",e);
-                            let endpoint_result:EndpointResult<String> = EndpointResult::server_error("上传失败".to_string());
+                            let endpoint_result:EndpointResult<String> = EndpointResult::server_error("上传失败");
                             return Ok(endpoint_result);
                         }
                     }
@@ -154,7 +154,7 @@ impl UploadController{
                                 Ok(_) => {}
                                 Err(e) => {
                                     error!("写入上传文件失败：{}",e);
-                                    let endpoint_result:EndpointResult<String> = EndpointResult::server_error("上传失败".to_string(),);
+                                    let endpoint_result:EndpointResult<String> = EndpointResult::server_error("上传失败");
                                     return Ok(endpoint_result);
                                 }
                             }
@@ -169,12 +169,12 @@ impl UploadController{
                             result_path.push('/');
                         }
                         result_path = result_path + date.as_str() + "/" + &*file_id + filename_extension.as_str();
-                        let endpoint_result = EndpointResult::ok_with_payload("上传成功".to_string(), result_path);
+                        let endpoint_result = EndpointResult::ok_with_payload("上传成功", result_path);
                         Ok(endpoint_result)
                     }
                     Err(e) => {
                         error!("创建文件异常：{}",e);
-                        let endpoint_result = EndpointResult::server_error("上传失败".to_string());
+                        let endpoint_result = EndpointResult::server_error("上传失败");
                         Ok(endpoint_result)
                     }
                 }
@@ -188,7 +188,7 @@ impl UploadController{
             println!("Field Bytes Length: {:?}", field_bytes_len);
         }
 
-        let endpoint_result = EndpointResult::client_error("请上传文件".to_string());
+        let endpoint_result = EndpointResult::client_error("请上传文件");
         return Ok(endpoint_result);
     }
 }
