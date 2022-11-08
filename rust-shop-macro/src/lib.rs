@@ -3,7 +3,7 @@ use proc_macro::{Span, TokenStream};
 use std::any::{Any, TypeId};
 use std::iter::FromIterator;
 use chrono::NaiveDateTime;
-use syn::{Data, DeriveInput, Fields, FnArg, Ident, parse_macro_input, Type,ItemFn, TypePath, Path};
+use syn::{Data, DeriveInput, Fields, FnArg, Ident, ItemFn, parse_macro_input, Path, Type, TypePath};
 use syn::__private::TokenStream2;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
@@ -13,6 +13,7 @@ use std::alloc::System;
 use quote::{quote, ToTokens};
 use syn::spanned::Spanned;
 use syn::parse_quote;
+
 
 #[derive(Error, Debug)]
 enum Error {

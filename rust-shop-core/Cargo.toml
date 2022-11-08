@@ -52,3 +52,4 @@ validator = "0.16.0"
 bcrypt = "0.13.0"
 rust-shop-macro = { version = "0.1" , path = "../rust-shop-macro" }
 serde_html_form = "0.1.0"
+mime = "0.3.16"

@@ -10,7 +10,7 @@ pub mod jwt_service;
 pub mod entity;
 pub mod id_generator;
 mod extract;
-mod response;
+
 
 use std::any::{Any, TypeId};
 use std::borrow::{Borrow, BorrowMut};
@@ -52,6 +52,7 @@ use crate::EndpointResultCode::{AccessDenied, ClientError, ServerError, SUCCESS,
 use crate::router::Router;
 use crate::security::{AuthenticationProcessingFilter, SecurityConfig};
 
+pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 macro_rules! register_method {
     ($method_name: ident, $method_def: expr) => {

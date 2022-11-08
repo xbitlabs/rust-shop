@@ -1,8 +1,9 @@
 use std::ops::Deref;
-use hyper::body::HttpBody;
-use hyper::Method;
+use hyper::body::{Bytes, HttpBody};
+use hyper::{Body, Error, header, Method, Request};
 use serde::de::DeserializeOwned;
-use crate::RequestCtx;
+use crate::{BoxError, RequestCtx};
+use crate::extract::{body_to_bytes, ExtractError, FromRequest};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Form<T>(pub T);
@@ -15,7 +16,7 @@ impl<T> Deref for Form<T> {
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl<T, B> FromRequest<B> for Form<T>
     where
         T: DeserializeOwned,
@@ -23,22 +24,26 @@ impl<T, B> FromRequest<B> for Form<T>
         B::Data: Send,
         B::Error: Into<BoxError>,
 {
-    type Rejection = FormRejection;
+    type Rejection = ExtractError;
 
-    async fn from_request(req: &mut RequestCtx) -> Result<Self, Self::Rejection> {
-        if req.method() == Method::GET {
-            let query = req.request.uri().query().unwrap_or_default();
+    async fn from_request(ctx:RequestCtx) -> anyhow::Result<Form<T>,ExtractError> {
+        if ctx.request.method() == Method::GET {
+            let query = ctx.request.uri().query().unwrap_or_default();
             let value = serde_html_form::from_str(query)
-                .map_err(FailedToDeserializeQueryString::__private_new::<(), _>)?;
+                .map_err(|_|ExtractError::FailedToDeserializeQueryString)?;
             Ok(Form(value))
         } else {
-            if !has_content_type(req, &mime::APPLICATION_WWW_FORM_URLENCODED) {
-                return Err(InvalidFormContentType::default().into());
+            if !has_content_type(&ctx, &mime::APPLICATION_WWW_FORM_URLENCODED) {
+                return Err(ExtractError::InvalidFormContentType);
             }
 
-            let bytes = Bytes::from_request(req).await?;
+            let bytes =  body_to_bytes(ctx.request).await;
+            if bytes.is_err() {
+                return Err(ExtractError::FailedToDeserializeFormData);
+            }
+            let bytes = bytes.unwrap();
             let value = serde_html_form::from_bytes(&bytes)
-                .map_err(FailedToDeserializeQueryString::__private_new::<(), _>)?;
+                .map_err(|_|ExtractError::FailedToDeserializeFormData)?;
 
             Ok(Form(value))
         }
@@ -46,8 +51,8 @@ impl<T, B> FromRequest<B> for Form<T>
 }
 
 // this is duplicated in `axum/src/extract/mod.rs`
-fn has_content_type<B>(req: &RequestParts<B>, expected_content_type: &mime::Mime) -> bool {
-    let content_type = if let Some(content_type) = req.headers().get(header::CONTENT_TYPE) {
+fn has_content_type(ctx:&RequestCtx, expected_content_type: &mime::Mime) -> bool {
+    let content_type = if let Some(content_type) = ctx.request.headers().get(header::CONTENT_TYPE) {
         content_type
     } else {
         return false;

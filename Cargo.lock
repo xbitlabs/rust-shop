@@ -1950,6 +1950,7 @@ dependencies = [
  "lazy_static",
  "log",
  "log4rs",
+ "mime",
  "multer",
  "route-recognizer",
  "rs-snowflake",
