@@ -16,6 +16,7 @@ mod extensions;
 use std::any::Any;
 use std::convert::Infallible;
 use std::net::SocketAddr;
+use std::string::ToString;
 use hyper::{Body, Request, Response, StatusCode};
 use lazy_static::lazy_static;
 use log::info;
@@ -70,13 +71,13 @@ impl Drop for MysqlPoolStateProvider{
 }
 
 
-lazy_static! {
+/*lazy_static! {
     static ref b : bool = register_route(String::from("post"),String::from("/test"),IndexController::index);
-}
+}*/
 
-lazy_static! {
+/*lazy_static! {
     static ref c : bool = register_route(String::from("get"),String::from("/test2"),StaticFileController::handle);
-}
+}*/
 
 #[tokio::main]
 async fn main() ->anyhow::Result<()>{
@@ -84,8 +85,8 @@ async fn main() ->anyhow::Result<()>{
     println!("Hello, world!{}",std::any::type_name::<Json<User>>());
     //println!("The map has {} entries.", *b);
     //println!("The map has {} entries.", *c);
-    lazy_static::initialize(&b);
-    lazy_static::initialize(&c);
+    //lazy_static::initialize(&b);
+    //lazy_static::initialize(&c);
 
     println!("len = {}",ROUTER.lock().unwrap().len());
 
@@ -152,3 +153,5 @@ pub async fn create_user_handler(ctx:RequestCtx)->anyhow::Result<Response<Body>>
     let result = create_user(extract_result).await?;
     Ok(result.into_response())
 }
+
+//static  b:bool =  register_route("", "", create_user_handler);

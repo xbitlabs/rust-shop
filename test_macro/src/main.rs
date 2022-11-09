@@ -1,6 +1,16 @@
-
+use std::collections::HashMap;
+use rust_shop_core::extract::json::Json;
+use rust_shop_core::{HTTPHandler, RequestCtx};
 use crate::test1::User;
 //use crate::test1::add;
+/*static mut ROUTER : HashMap<String,Box<dyn HTTPHandler>> = HashMap::new();
+unsafe fn reg(method:String, handler:Box<dyn HTTPHandler>) ->bool{
+    ROUTER.entry(method)
+        .or_insert_with(||handler);
+    return true;
+}
+
+static v:bool = unsafe { reg(String::from("post"), ) };*/
 
 pub mod test1 {
     #[derive(serde::Serialize,serde::Deserialize)]
@@ -22,7 +32,6 @@ pub mod test1 {
         String::from("hello")
     }
 }
-
 
 
 fn main() {

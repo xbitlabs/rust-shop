@@ -14,6 +14,7 @@ use quote::{quote, ToTokens};
 use quote::__private::ext::RepToTokensExt;
 use syn::spanned::Spanned;
 use syn::parse_quote;
+use uuid::Uuid;
 
 
 #[derive(Error, Debug)]
@@ -523,6 +524,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
     let fn_name = ident.to_string();
     let handler_name = fn_name.clone() + "_handler";
     let handler_name = Ident::new(handler_name.as_str(), proc_macro2::Span::call_site());
+    let register_route_ident = Ident::new(&*("register_route_".to_owned() + Uuid::new_v4().to_string().replace("-", "_").as_str()), proc_macro2::Span::call_site());
 
     for arg in func.sig.inputs.iter() {
         if let FnArg::Typed(ty) = arg {
@@ -625,6 +627,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                                 let result = #ident (extract_result).await?;
                                 Ok(result.into_response())
                             }
+                            static #register_route_ident:bool = register_route(stringify!(#method),stringify!(#route),#handler_name);
                         }
                 }
 
