@@ -1,4 +1,5 @@
 use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use crate::extract::ExtractError::FailedToDeserializeQueryString;
 use crate::extract::{ExtractError, FromRequest};
 use crate::RequestCtx;
@@ -7,10 +8,9 @@ use crate::RequestCtx;
 pub struct Query<T>(pub T);
 
 #[async_trait::async_trait]
-impl<T, B> FromRequest<B> for Query<T>
+impl<T> FromRequest for Query<T>
     where
-        T: DeserializeOwned,
-        B: Send,
+        T: for<'a> Deserialize<'a>,
 {
     type Rejection = ExtractError;
 

@@ -9,7 +9,7 @@ pub mod app_config;
 pub mod jwt_service;
 pub mod entity;
 pub mod id_generator;
-mod extract;
+pub mod extract;
 
 
 use std::any::{Any, TypeId};
@@ -533,30 +533,6 @@ pub async fn parse_form_params(req:Request<Body>)->HashMap<String,String>{
         .into_owned()
         .collect::<HashMap<String, String>>();
     params
-}
-macro_rules! zoom_and_enhance {
-    (struct $name:ident { $($fname:ident : $ftype:ty),* }) => {
-     struct $name {
-      $($fname : $ftype),*
-     }
-
-     impl $name {
-      fn field_names() -> &'static [&'static str] {
-       static NAMES: &'static [&'static str] = &[$(stringify!($fname)),*];
-       NAMES
-      }
-     }
-    }
-}
-
-zoom_and_enhance! {
-    struct Export {
-        first_name: String,
-        last_name: String,
-        gender: String,
-        date_of_birth: String,
-        address: String
-    }
 }
 
 #[test]

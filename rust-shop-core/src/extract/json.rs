@@ -6,7 +6,7 @@ use hyper::header::HeaderValue;
 use log::error;
 use multer::bytes::{BufMut, BytesMut};
 use serde::de::DeserializeOwned;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use crate::{BoxError, EndpointResult, RequestCtx, ResponseBuilder};
 use crate::extract::{body_to_bytes, ExtractError, FromRequest, IntoResponse};
 use crate::extract::ExtractError::{JsonDataError, JsonIoError, JsonSyntaxError, MissingJsonContentType};
@@ -16,12 +16,9 @@ use crate::extract::ExtractError::{JsonDataError, JsonIoError, JsonSyntaxError, 
 pub struct Json<T>(pub T);
 
 #[async_trait]
-impl<T, B> FromRequest<B> for Json<T>
+impl<T> FromRequest for Json<T>
     where
-        T: DeserializeOwned,
-        B: HttpBody + Send,
-        B::Data: Send,
-        B::Error: Into<BoxError>,
+        T: for<'a> Deserialize<'a>,
 {
     type Rejection = ExtractError;
 

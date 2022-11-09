@@ -2,6 +2,7 @@ use std::ops::Deref;
 use hyper::body::{Bytes, HttpBody};
 use hyper::{Body, Error, header, Method, Request};
 use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use crate::{BoxError, RequestCtx};
 use crate::extract::{body_to_bytes, ExtractError, FromRequest};
 
@@ -17,12 +18,9 @@ impl<T> Deref for Form<T> {
 }
 
 #[async_trait::async_trait]
-impl<T, B> FromRequest<B> for Form<T>
+impl<T> FromRequest for Form<T>
     where
-        T: DeserializeOwned,
-        B: HttpBody + Send,
-        B::Data: Send,
-        B::Error: Into<BoxError>,
+        T: for<'a> Deserialize<'a>,
 {
     type Rejection = ExtractError;
 

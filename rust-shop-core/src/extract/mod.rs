@@ -1,6 +1,8 @@
 pub mod form;
 pub mod json;
 pub mod query;
+pub mod path_variable;
+mod request_param;
 
 use std::io;
 use anyhow::anyhow;
@@ -17,7 +19,7 @@ pub trait IntoResponse {
 }
 
 #[async_trait]
-pub trait FromRequest<B>: Sized {
+pub trait FromRequest: Sized {
     /// If the extractor fails it'll use this "rejection" type. A rejection is
     /// a kind of error that can be converted into a response.
     type Rejection: IntoResponse;

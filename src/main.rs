@@ -16,7 +16,7 @@ mod extensions;
 use std::any::Any;
 use std::convert::Infallible;
 use std::net::SocketAddr;
-use hyper::{Body, Request, StatusCode};
+use hyper::{Body, Request, Response, StatusCode};
 use lazy_static::lazy_static;
 use log::info;
 use crate::api::index_controller::IndexController;
@@ -26,6 +26,8 @@ use sqlx::{MySql, Pool};
 use rust_shop_core::{AccessLogFilter, EndpointResult, Filter, Next, RequestCtx, RequestStateProvider, ResponseBuilder, Server};
 use rust_shop_core::db_pool_manager::{get_connection_pool, MysqlPoolManager};
 use rust_shop_core::extensions::Extensions;
+use rust_shop_core::extract::{FromRequest, IntoResponse};
+use rust_shop_core::extract::json::Json;
 use rust_shop_core::router::ROUTER;
 use rust_shop_core::security::{AuthenticationTokenResolver, AuthenticationTokenResolverFn, LoadUserService, LoadUserServiceFn, SecurityConfig, WeChatMiniAppAuthenticationTokenResolver, WeChatUserService};
 use rust_shop_core::state::State;
@@ -79,6 +81,7 @@ lazy_static! {
 #[tokio::main]
 async fn main() ->anyhow::Result<()>{
 
+    println!("Hello, world!{}",std::any::type_name::<Json<User>>());
     //println!("The map has {} entries.", *b);
     //println!("The map has {} entries.", *c);
     lazy_static::initialize(&b);
@@ -133,4 +136,19 @@ async fn main() ->anyhow::Result<()>{
 
     info!("server shutdown!");
     Ok(())
+}
+
+#[derive(serde::Serialize,serde::Deserialize)]
+pub struct User{
+    pub username:String,
+    pub age:u32
+}
+
+pub async fn create_user(Json(user):Json<User>)->anyhow::Result<Json<EndpointResult<&'static str>>>{
+    Ok(Json(EndpointResult::ok_with_payload("新增成功","")))
+}
+pub async fn create_user_handler(ctx:RequestCtx)->anyhow::Result<Response<Body>>{
+    let extract_result = Json::from_request(ctx).await?;
+    let result = create_user(extract_result).await?;
+    Ok(result.into_response())
 }

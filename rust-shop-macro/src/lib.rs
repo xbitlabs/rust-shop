@@ -11,6 +11,7 @@ use syn::token::Comma;
 use thiserror::Error;
 use std::alloc::System;
 use quote::{quote, ToTokens};
+use quote::__private::ext::RepToTokensExt;
 use syn::spanned::Spanned;
 use syn::parse_quote;
 
@@ -510,10 +511,23 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut punctuated: Punctuated<syn::Ident, Comma> = Punctuated::new();
     idents.for_each(|ident| punctuated.push(ident));
 
+    //方法的访问修饰符
+    let vis = func.vis.clone();
+    //方法签名
+    let ident = func.sig.ident.clone();
+    //请求方法，如：get,post
+    let method = args.get_method().unwrap();
+    //请求路径
+    let route = args.get_route().unwrap();
+
+    let fn_name = ident.to_string();
+    let handler_name = fn_name.clone() + "_handler";
+    let handler_name = Ident::new(handler_name.as_str(), proc_macro2::Span::call_site());
 
     for arg in func.sig.inputs.iter() {
         if let FnArg::Typed(ty) = arg {
             let ty = ty.ty.clone();
+            let type_name = ty.to_token_stream().to_string();
             match *ty {
                 Type::Array(TypeArray)=>{
                     test = quote!{
@@ -590,16 +604,28 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                 /// A path like `std::slice::Iter`, optionally qualified with a
                 /// self-type as in `<Vec<T> as SomeTrait>::Associated`.
                 Type::Path(type_path)=>{
-                    let mut  str:String = String::from("") ;
+                    if type_name == "Json" {
+                        test = quote!{
+                            pub async fn create_user_handler(ctx:RequestCtx)->anyhow::Result<Response<Body>>{
+                                let extract_result = Json::from_request(ctx).await?;
+                                let result = create_user(extract_result).await?;
+                                Ok(result.into_response())
+                            }
+                        }
+                    }
+                    if type_name == "Form" {
 
-                    for s in  type_path.path.segments.iter() {
-                        str = str + &s.ident.to_string();
+                    }
+                    if type_name == "Query" {
+
                     }
                     test = quote!{
-                        pub fn testTypePath(){
-                            let str:String = #str;
+                            pub async fn #handler_name (ctx:RequestCtx)->anyhow::Result<Response<Body>>{
+                                let extract_result = Json::from_request(ctx).await?;
+                                let result = #ident (extract_result).await?;
+                                Ok(result.into_response())
+                            }
                         }
-                    };
                 }
 
                 /// A raw pointer type: `*const T` or `*mut T`.
@@ -642,58 +668,54 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                 /// A tuple type: `(A, B, C, String)`.
                 Type::Tuple(TypeTuple)=>{
                     test = quote!{
-                pub fn testTypeTuple(){
+                        pub fn testTypeTuple(){
 
-                }
+                        }
                     };
                 }
 
                 /// Tokens in type position not interpreted by Syn.
                 Type::Verbatim(TokenStream)=>{
                     test = quote!{
-                pub fn testTokenStream(){
+                        pub fn testTokenStream(){
 
-                }
+                        }
                     };
                 }
                 _ =>{
                     test = quote!{
-                pub fn test2222__()-{
+                        pub fn test2222__()-{
 
-                }
-            };
+                        }
+                    };
                 }
             }
 
         }
     }
 
-    //方法的访问修饰符
-    let vis = func.vis.clone();
-    //方法签名
-    let ident = func.sig.ident.clone();
-    //请求方法，如：get,post
-    let method = args.get_method().unwrap();
-    //请求路径
-    let route = args.get_route().unwrap();
+
 
     let expanded = quote! {
-        #[allow(non_camel_case_types)]
-        #vis struct #ident;
-
-        impl #ident {
-            #vis fn route() -> axum::Router {
-                #func
-
-                axum::Router::new().route(#route, #method (#ident))
-            }
-            #test
-            pub fn kkk(){
-
-            }
-        }
+        #func
+        #test
     };
 
     expanded.into()
 }
+
+/*#[derive(serde::Serialize,serde::Deserialize)]
+pub struct User{
+    pub username:String,
+    pub age:u32
+}
+
+pub async fn create_user(Json(user):Json<User>)->anyhow::Result<Json<EndpointResult<&'static str>>>{
+    Ok(Json(EndpointResult::ok_with_payload("新增成功","")))
+}
+pub async fn create_user_handler(ctx:RequestCtx)->anyhow::Result<Response<Body>>{
+    let extract_result = Json::from_request(ctx).await?;
+    let result = create_user(extract_result).await?;
+    Ok(result.into_response())
+}*/
 
