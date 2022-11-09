@@ -7,16 +7,6 @@ use crate::{BoxHTTPHandler, HTTPHandler};
 
 pub type Router = HashMap<String, MethodRouter<BoxHTTPHandler>>;
 
-/*const  ROUTER1 : Arc<Router> = Arc::new(HashMap::with_capacity(10));
- fn register_route1(method:String, path:String, handler: impl HTTPHandler) ->bool{
-    ROUTER1.entry(method)
-        .or_insert_with(MethodRouter::new)
-        .add(path.as_ref(), Box::new(handler));
-    return true;
-}*/
-
-//static v:bool = unsafe { reg(String::from("post"), ) };
-
 
 lazy_static! {
     ///
