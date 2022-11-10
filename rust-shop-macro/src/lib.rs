@@ -632,9 +632,11 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
 
 use walkdir::WalkDir;
 
-//自动注册路由宏
+///
+/// 扫描路由并自动注册路由
+///
 #[proc_macro_attribute]
-pub fn rust_shop_app(args: TokenStream, input: TokenStream) -> TokenStream {
+pub fn scan_route(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut args = args.to_string();
     if args.is_empty() {
         panic!("必须传入项目的controller源码相对路径，如:/src/controller");

@@ -31,17 +31,37 @@ use once_cell::sync::Lazy;
 use sqlx::{MySql, Pool};
 use syn::__private::ToTokens;
 use syn::{Item, ItemMod};
-use rust_shop_core::{AccessLogFilter, EndpointResult, Filter, Next, RequestCtx, RequestStateProvider, ResponseBuilder, Server};
+use rust_shop_core::{
+    AccessLogFilter,
+    EndpointResult,
+    Filter,
+    Next,
+    RequestCtx,
+    RequestStateProvider,
+    ResponseBuilder,
+    Server
+};
 use rust_shop_core::db_pool_manager::{get_connection_pool, MysqlPoolManager};
 use rust_shop_core::extensions::Extensions;
 use rust_shop_core::extract::{FromRequest, IntoResponse};
 use rust_shop_core::extract::json::Json;
 use rust_shop_core::router::{GLOBAL_ROUTER, ROUTER};
-use rust_shop_core::security::{AuthenticationTokenResolver, AuthenticationTokenResolverFn, LoadUserService, LoadUserServiceFn, SecurityConfig, WeChatMiniAppAuthenticationTokenResolver, WeChatUserService};
+use rust_shop_core::security::{
+    AuthenticationTokenResolver,
+    AuthenticationTokenResolverFn,
+    LoadUserService,
+    LoadUserServiceFn,
+    SecurityConfig,
+    WeChatMiniAppAuthenticationTokenResolver,
+    WeChatUserService
+};
 use rust_shop_core::state::State;
 use rust_shop_core::router::register_route;
 use rust_shop_core::security::NopPasswordEncoder;
 use crate::api::auth_controller;
+use crate::api::static_file_controller::StaticFileController;
+use crate::api::upload_controller::UploadController;
+use crate::config::load_config::APP_CONFIG;
 
 
 pub struct  AuthFilter;
@@ -59,11 +79,6 @@ impl Filter for AuthFilter {
 }
 
 
-//use crate::api::auth_controller::AuthController;
-use crate::api::static_file_controller::StaticFileController;
-use crate::api::upload_controller::UploadController;
-use crate::config::load_config::APP_CONFIG;
-
 pub struct MysqlPoolStateProvider;
 
 impl <'a> RequestStateProvider for  MysqlPoolStateProvider{
@@ -78,32 +93,9 @@ impl Drop for MysqlPoolStateProvider{
     }
 }
 
-
-/*lazy_static! {
-    static ref b : bool = register_route(String::from("post"),String::from("/test"),IndexController::index);
-}*/
-
-lazy_static! {
-    static ref c : bool = register_route("get","/test2",StaticFileController::handle);
-}
-
-macro_rules! source_dir {
-    ()=>{
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let mut path = path.to_str().unwrap().to_string();
-        if cfg!(target_os = "windows")  {
-            path.push_str("\\src");
-        }else {
-            path.push_str("/src");
-        }
-        path
-    }
-}
-
 #[tokio::main]
-#[rust_shop_macro::rust_shop_app("/src")]
+#[rust_shop_macro::scan_route("/src")]
 async fn main() ->anyhow::Result<()>{
-    unsafe { println!("路由数={}", GLOBAL_ROUTER.len()); }
     log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
     info!("booting up");
 
