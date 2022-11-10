@@ -3,13 +3,18 @@ use proc_macro::{Span, TokenStream};
 use std::any::{Any, TypeId};
 use std::iter::FromIterator;
 use chrono::NaiveDateTime;
-use syn::{Data, DeriveInput, Fields, FnArg, Ident, ItemFn, parse_macro_input, Path, Type, TypePath};
+use syn::{Data, DeriveInput, Fields, FnArg, Ident, Item, ItemFn, parse_macro_input, Pat, Path, PatTuple, Type, TypePath};
 use syn::__private::TokenStream2;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::token::Comma;
 use thiserror::Error;
 use std::alloc::System;
+use std::{env, fs};
+use std::fs::File;
+use std::io::{Read, Write};
+use std::path::PathBuf;
+use proc_macro2::TokenTree;
 use quote::{quote, ToTokens};
 use quote::__private::ext::RepToTokensExt;
 use syn::spanned::Spanned;
@@ -526,86 +531,53 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
     let handler_name = Ident::new(handler_name.as_str(), proc_macro2::Span::call_site());
     let register_route_ident = Ident::new(&*("register_route_".to_owned() + Uuid::new_v4().to_string().replace("-", "_").as_str()), proc_macro2::Span::call_site());
 
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut path = path.to_str().unwrap().to_string();
+    let mut router_file = String::from("");
+    if cfg!(target_os = "windows")  {
+        path.push_str("\\routers");
+        router_file.push_str(&path);
+        router_file.push_str("\\routers.txt");
+    }else {
+        path.push_str("/routers");
+        router_file.push_str(&path);
+        router_file.push_str("/routers.txt");
+    }
+    let mut file = match File::create("d:\\test\\test.txt") {
+        Err(why) => panic!("couldn't create {}", "file"),
+        Ok(file) => file,
+    };
+    match file.write_all(router_file.as_bytes()) {
+        Err(why) => panic!("couldn't write to {}", "d:\\test\\test.txt"),
+        Ok(_) => println!("successfully wrote to {}", "d:\\test\\test.txt"),
+    }
+    //let path_clone = path.clone();
+    let router_file_dir = std::path::Path::new(&path);
+    if !router_file_dir.exists() {
+        let create_dir_result = fs::create_dir_all(&path);
+        match create_dir_result {
+            Ok(_)=>{
+                let mut new_file = fs::File::create(router_file);
+                if new_file.is_err() {
+                    panic!("创建路由记录文件异常");
+                }
+            }
+            Err(_)=>{
+                panic!("创建路由目录异常");
+            }
+        }
+    }
+
+
+
     for arg in func.sig.inputs.iter() {
         if let FnArg::Typed(ty) = arg {
             let ty = ty.ty.clone();
             let type_name = ty.to_token_stream().to_string();
             match *ty {
-                Type::Array(TypeArray)=>{
-                    test = quote!{
-                        pub fn testTypeArray(){
-
-                        }
-                    };
-                }
-
-                /// A bare function type: `fn(usize) -> bool`.
-                Type::BareFn(TypeBareFn)=>{
-                    test = quote!{
-                        pub fn testTypeBareFn(){
-
-                        }
-                    };
-                }
-
-                /// A type contained within invisible delimiters.
-                Type::Group(TypeGroup)=>{
-                    test = quote!{
-                        pub fn testTypeGroup(){
-
-                        }
-                    };
-                }
-
-                /// An `impl Bound1 + Bound2 + Bound3` type where `Bound` is a trait or
-                /// a lifetime.
-                Type::ImplTrait(TypeImplTrait)=>{
-                    test = quote!{
-                        pub fn testTypeImplTrait(){
-
-                        }
-                    };
-                }
-
-                /// Indication that a type should be inferred by the compiler: `_`.
-                Type::Infer(TypeInfer)=>{
-                    test = quote!{
-                        pub fn testTypeInfer(){
-
-                        }
-                    };
-                }
-
-                /// A macro in the type position.
-                Type::Macro(TypeMacro)=>{
-                    test = quote!{
-                        pub fn testTypeMacro(){
-
-                        }
-                    };
-                }
-
-                /// The never type: `!`.
-                Type::Never(TypeNever)=>{
-                    test = quote!{
-                        pub fn testTypeNever(){
-
-                        }
-                    };
-                }
-
-                /// A parenthesized type equivalent to the inner type.
-                Type::Paren(TypeParen)=>{
-                    test = quote!{
-                        pub fn testTypeParen(){
-
-                        }
-                    };
-                }
-
                 /// A path like `std::slice::Iter`, optionally qualified with a
                 /// self-type as in `<Vec<T> as SomeTrait>::Associated`.
-                Type::Path(type_path)=>{
+                Type::Path(_)=>{
                     if type_name == "Json" {
                         test = quote!{
                             pub async fn create_user_handler(ctx:RequestCtx)->anyhow::Result<Response<Body>>{
@@ -627,63 +599,10 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                                 let result = #ident (extract_result).await?;
                                 Ok(result.into_response())
                             }
-                            static #register_route_ident:bool = register_route(stringify!(#method),stringify!(#route),#handler_name);
+                            lazy_static! {
+                                static ref #register_route_ident : bool = register_route(#method,#route,#handler_name);
+                            }
                         }
-                }
-
-                /// A raw pointer type: `*const T` or `*mut T`.
-                Type::Ptr(TypePtr)=>{
-                    test = quote!{
-                        pub fn testTypePtr(){
-
-                        }
-                    };
-                }
-
-                /// A reference type: `&'a T` or `&'a mut T`.
-                Type::Reference(TypeReference)=>{
-                    test = quote!{
-                        pub fn testTypeReference(){
-
-                        }
-                    };
-                }
-
-                /// A dynamically sized slice type: `[T]`.
-                Type::Slice(TypeSlice)=>{
-                    test = quote!{
-                        pub fn testTypeSlice(){
-
-                        }
-                    };
-                }
-
-                /// A trait object type `dyn Bound1 + Bound2 + Bound3` where `Bound` is a
-                /// trait or a lifetime.
-                Type::TraitObject(TypeTraitObject)=>{
-                    test = quote!{
-                        pub fn testTypeTraitObject(){
-
-                        }
-                    };
-                }
-
-                /// A tuple type: `(A, B, C, String)`.
-                Type::Tuple(TypeTuple)=>{
-                    test = quote!{
-                        pub fn testTypeTuple(){
-
-                        }
-                    };
-                }
-
-                /// Tokens in type position not interpreted by Syn.
-                Type::Verbatim(TokenStream)=>{
-                    test = quote!{
-                        pub fn testTokenStream(){
-
-                        }
-                    };
                 }
                 _ =>{
                     test = quote!{
@@ -707,18 +626,161 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
     expanded.into()
 }
 
-/*#[derive(serde::Serialize,serde::Deserialize)]
-pub struct User{
-    pub username:String,
-    pub age:u32
-}
 
-pub async fn create_user(Json(user):Json<User>)->anyhow::Result<Json<EndpointResult<&'static str>>>{
-    Ok(Json(EndpointResult::ok_with_payload("新增成功","")))
-}
-pub async fn create_user_handler(ctx:RequestCtx)->anyhow::Result<Response<Body>>{
-    let extract_result = Json::from_request(ctx).await?;
-    let result = create_user(extract_result).await?;
-    Ok(result.into_response())
-}*/
 
+use walkdir::WalkDir;
+
+//自动注册路由宏
+#[proc_macro_attribute]
+pub fn rust_shop_app(args: TokenStream, input: TokenStream) -> TokenStream {
+    let mut args = args.to_string();
+    if args.is_empty() {
+        panic!("必须传入项目的controller源码相对路径，如:/src/controller");
+    }else {
+        let current_dir = env::current_dir();
+        if current_dir.is_err() {
+            panic!("无法获取当前目录");
+        } else {
+            args = args.replace("\"","");
+            let current_dir = current_dir.unwrap().to_str().unwrap().to_string().replace("\\","/");
+            let mut path = String::from("");
+            path = current_dir + &*args;
+            let source_path = PathBuf::from(&path);
+            if !source_path.exists() {
+                panic!("未找到路径：{}", path)
+            }
+            let mut register_route_fn = String::from("");
+            for entry in WalkDir::new(path) {
+                let entry = entry.unwrap();
+                let file = entry.path().to_str().unwrap().to_string();
+                if entry.path().is_file() && file.ends_with("_controller.rs"){
+                    let mut file = File::open(file).expect("Unable to open file");
+
+                    let mut src = String::new();
+                    file.read_to_string(&mut src).expect("Unable to read file");
+
+                    let syntax = syn::parse_file(&src).expect("Unable to parse file");
+                    //println!("{:#?}", syntax);
+                    for item in syntax.items {
+                        //let item_mod = item as ItemMod;
+                        match item {
+                            Item::Mod(item_mod)=>{
+                                let mod_ident = item_mod.ident;
+                                if item_mod.content.is_some() {
+                                    //println!("{}",item_mod.content.unwrap().1.len());
+                                    let mod_content_items = item_mod.content.unwrap().1;
+                                    for mod_content_item in mod_content_items {
+                                        match mod_content_item {
+                                            Item::Fn(func)=>{
+                                                //获取路由信息
+                                                let attrs = func.attrs;
+                                                let fn_ident = func.sig.ident;
+                                                let mut route_method = String::from("");
+                                                let mut route_url = String::from("");
+                                                let mut has_request_ctx_params = false;
+                                                let mut has_form_or_query_or_json = false;
+                                                //函数没有route注解就跳过
+                                                if attrs.is_empty() {
+                                                    continue;
+                                                }else {
+                                                    for attr in attrs {
+                                                        let tokens = attr.tokens;
+                                                        let path_segments = attr.path.segments;
+                                                        for path_segment in path_segments {
+                                                            let segment_ident = path_segment.ident;
+                                                            if segment_ident == "route" {
+                                                                for token in tokens.into_iter() {
+                                                                    match token {
+                                                                        TokenTree::Group(group)=>{
+                                                                            let stream = group.stream();
+                                                                            let mut route_params = vec![];
+                                                                            for tag in stream.into_iter() {
+                                                                                match tag {
+                                                                                    TokenTree::Group(_) => {}
+                                                                                    TokenTree::Ident(_) => {}
+                                                                                    TokenTree::Punct(_) => {}
+                                                                                    TokenTree::Literal(lit) => {
+                                                                                        route_params.push(lit);
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                            if route_params.is_empty() || route_params.len() != 2 {
+                                                                                panic!("路由参数无效，正确路由例子如： #[route(\"post\", \"/post\")]");
+                                                                            }
+                                                                            route_method = route_params[0].to_string();
+                                                                            route_url = route_params[1].to_string();
+                                                                        }
+                                                                        _ => {}
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                //获取函数的参数信息
+                                                let fn_params = func.sig.inputs;
+                                                for fn_param in fn_params.into_iter() {
+                                                    match fn_param {
+                                                        FnArg::Receiver(_) => {}
+                                                        FnArg::Typed(fn_param_type) => {
+                                                            let pat = fn_param_type.pat;
+                                                            match *pat {
+                                                                Pat::Box(_) => {}
+                                                                Pat::Ident(_) => {}
+                                                                Pat::Lit(_) => {}
+                                                                Pat::Macro(_) => {}
+                                                                Pat::Or(_) => {}
+                                                                Pat::Path(_) => {}
+                                                                Pat::Range(_) => {}
+                                                                Pat::Reference(_) => {}
+                                                                Pat::Rest(_) => {}
+                                                                Pat::Slice(_) => {}
+                                                                Pat::Struct(_) => {}
+                                                                Pat::Tuple(_) => {}
+                                                                Pat::TupleStruct(_tuple_struct) => {
+                                                                    let mut segments = vec![];
+                                                                    for segment in _tuple_struct.path.segments {
+                                                                        segments.push(segment.ident.to_string())
+                                                                    }
+                                                                    let mut i = 0;
+                                                                    let mut fn_param_type = String::from("");
+                                                                    for segment in segments {
+                                                                        if i != 0 {
+                                                                            fn_param_type = fn_param_type + "::" + &*segment;
+                                                                        }else {
+                                                                            fn_param_type = fn_param_type + &*segment;
+                                                                        }
+                                                                    }
+                                                                    if fn_param_type == "Query" || fn_param_type == "Json" || fn_param_type == "Form" {
+                                                                        has_form_or_query_or_json = true;
+                                                                    }
+                                                                }
+                                                                Pat::Type(_) => {}
+                                                                Pat::Verbatim(_) => {}
+                                                                Pat::Wild(_) => {}
+                                                                Pat::__NonExhaustive => {}
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+
+                    }
+                }
+            }
+            let func = parse_macro_input!(input as ItemFn);
+            let expanded = quote! {
+                #func
+            };
+            expanded.into()
+        }
+
+    }
+}

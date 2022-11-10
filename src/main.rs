@@ -14,7 +14,11 @@ mod extensions;
 
 
 use std::any::Any;
+use std::collections::HashMap;
 use std::convert::Infallible;
+use std::env;
+use std::fs::File;
+use std::io::Read;
 use std::net::SocketAddr;
 use std::string::ToString;
 use hyper::{Body, Request, Response, StatusCode};
@@ -23,7 +27,10 @@ use log::info;
 use crate::api::index_controller::IndexController;
 use snowflake::SnowflakeIdGenerator;
 use std::sync::{Arc, Mutex};
+use once_cell::sync::Lazy;
 use sqlx::{MySql, Pool};
+use syn::__private::ToTokens;
+use syn::{Item, ItemMod};
 use rust_shop_core::{AccessLogFilter, EndpointResult, Filter, Next, RequestCtx, RequestStateProvider, ResponseBuilder, Server};
 use rust_shop_core::db_pool_manager::{get_connection_pool, MysqlPoolManager};
 use rust_shop_core::extensions::Extensions;
@@ -75,18 +82,66 @@ impl Drop for MysqlPoolStateProvider{
     static ref b : bool = register_route(String::from("post"),String::from("/test"),IndexController::index);
 }*/
 
-/*lazy_static! {
-    static ref c : bool = register_route(String::from("get"),String::from("/test2"),StaticFileController::handle);
-}*/
+lazy_static! {
+    static ref c : bool = register_route("get","/test2",StaticFileController::handle);
+}
 
+macro_rules! source_dir {
+    ()=>{
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let mut path = path.to_str().unwrap().to_string();
+        if cfg!(target_os = "windows")  {
+            path.push_str("\\src");
+        }else {
+            path.push_str("/src");
+        }
+        path
+    }
+}
+
+fn reg_route(){
+
+}
 #[tokio::main]
+#[rust_shop_macro::rust_shop_app("/src")]
 async fn main() ->anyhow::Result<()>{
 
-    println!("Hello, world!{}",std::any::type_name::<Json<User>>());
+    let mut file = File::open("D:\\项目\\rust-shop\\src\\api\\auth_controller.rs").expect("Unable to open file");
+
+    let mut src = String::new();
+    file.read_to_string(&mut src).expect("Unable to read file");
+
+    let syntax = syn::parse_file(&src).expect("Unable to parse file");
+    //println!("{:#?}", syntax);
+    for item in syntax.items {
+        //let item_mod = item as ItemMod;
+        match item {
+            Item::Mod(item_mod)=>{
+                let mod_ident = item_mod.ident;
+                if item_mod.content.is_some() {
+                    //println!("{}",item_mod.content.unwrap().1.len());
+                    let mod_content_items = item_mod.content.unwrap().1;
+                    for mod_content_item in mod_content_items {
+                        match mod_content_item {
+                            Item::Fn(f)=>{
+
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+
+    }
+
+
+    println!("{}",env!("CARGO_MANIFEST_DIR"));
     //println!("The map has {} entries.", *b);
     //println!("The map has {} entries.", *c);
     //lazy_static::initialize(&b);
-    //lazy_static::initialize(&c);
+    lazy_static::initialize(&c);
 
     println!("len = {}",ROUTER.lock().unwrap().len());
 
@@ -138,20 +193,3 @@ async fn main() ->anyhow::Result<()>{
     info!("server shutdown!");
     Ok(())
 }
-
-#[derive(serde::Serialize,serde::Deserialize)]
-pub struct User{
-    pub username:String,
-    pub age:u32
-}
-
-pub async fn create_user(Json(user):Json<User>)->anyhow::Result<Json<EndpointResult<&'static str>>>{
-    Ok(Json(EndpointResult::ok_with_payload("新增成功","")))
-}
-pub async fn create_user_handler(ctx:RequestCtx)->anyhow::Result<Response<Body>>{
-    let extract_result = Json::from_request(ctx).await?;
-    let result = create_user(extract_result).await?;
-    Ok(result.into_response())
-}
-
-//static  b:bool =  register_route("", "", create_user_handler);
