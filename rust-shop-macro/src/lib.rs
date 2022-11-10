@@ -1,3 +1,4 @@
+extern crate core;
 
 use proc_macro::{Span, TokenStream};
 use std::any::{Any, TypeId};
@@ -14,8 +15,10 @@ use std::{env, fs};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::str::FromStr;
+use std::sync::Arc;
 use proc_macro2::TokenTree;
-use quote::{quote, ToTokens};
+use quote::{quote, TokenStreamExt, ToTokens};
 use quote::__private::ext::RepToTokensExt;
 use syn::spanned::Spanned;
 use syn::parse_quote;
@@ -529,7 +532,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
     let fn_name = ident.to_string();
     let handler_name = fn_name.clone() + "_handler";
     let handler_name = Ident::new(handler_name.as_str(), proc_macro2::Span::call_site());
-    let register_route_ident = Ident::new(&*("register_route_".to_owned() + Uuid::new_v4().to_string().replace("-", "_").as_str()), proc_macro2::Span::call_site());
+    //let register_route_ident = Ident::new(&*("register_route_".to_owned() + Uuid::new_v4().to_string().replace("-", "_").as_str()), proc_macro2::Span::call_site());
 
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut path = path.to_str().unwrap().to_string();
@@ -573,44 +576,43 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
     for arg in func.sig.inputs.iter() {
         if let FnArg::Typed(ty) = arg {
             let ty = ty.ty.clone();
-            let type_name = ty.to_token_stream().to_string();
+            //let type_name = ty.to_token_stream().to_string();
+            //panic!("type_name={}",type_name);
             match *ty {
                 /// A path like `std::slice::Iter`, optionally qualified with a
                 /// self-type as in `<Vec<T> as SomeTrait>::Associated`.
-                Type::Path(_)=>{
+                Type::Path(path)=>{
+                    let type_name = path.path.segments[0].ident.to_string();
                     if type_name == "Json" {
                         test = quote!{
-                            pub async fn create_user_handler(ctx:RequestCtx)->anyhow::Result<Response<Body>>{
-                                let extract_result = Json::from_request(ctx).await?;
-                                let result = create_user(extract_result).await?;
-                                Ok(result.into_response())
-                            }
-                        }
-                    }
-                    if type_name == "Form" {
-
-                    }
-                    if type_name == "Query" {
-
-                    }
-                    test = quote!{
                             pub async fn #handler_name (ctx:RequestCtx)->anyhow::Result<Response<Body>>{
                                 let extract_result = Json::from_request(ctx).await?;
                                 let result = #ident (extract_result).await?;
                                 Ok(result.into_response())
                             }
-                            lazy_static! {
-                                static ref #register_route_ident : bool = register_route(#method,#route,#handler_name);
+                        }
+                    }
+                    else if type_name == "Form" {
+                        test = quote!{
+                            pub async fn #handler_name (ctx:RequestCtx)->anyhow::Result<Response<Body>>{
+                                let extract_result = Form::from_request(ctx).await?;
+                                let result = #ident (extract_result).await?;
+                                Ok(result.into_response())
                             }
                         }
-                }
-                _ =>{
-                    test = quote!{
-                        pub fn test2222__()-{
-
+                    }
+                    else if type_name == "Query" {
+                        test = quote!{
+                            pub async fn #handler_name (ctx:RequestCtx)->anyhow::Result<Response<Body>>{
+                                let extract_result = Query::from_request(ctx).await?;
+                                let result = #ident (extract_result).await?;
+                                Ok(result.into_response())
+                            }
                         }
-                    };
+                    }else {
+                    }
                 }
+                _ =>{}
             }
 
         }
@@ -684,12 +686,12 @@ pub fn rust_shop_app(args: TokenStream, input: TokenStream) -> TokenStream {
                                                     continue;
                                                 }else {
                                                     for attr in attrs {
-                                                        let tokens = attr.tokens;
                                                         let path_segments = attr.path.segments;
+                                                        let tokens = attr.tokens.into_iter();
                                                         for path_segment in path_segments {
                                                             let segment_ident = path_segment.ident;
                                                             if segment_ident == "route" {
-                                                                for token in tokens.into_iter() {
+                                                                for token in tokens.clone() {
                                                                     match token {
                                                                         TokenTree::Group(group)=>{
                                                                             let stream = group.stream();
@@ -707,8 +709,8 @@ pub fn rust_shop_app(args: TokenStream, input: TokenStream) -> TokenStream {
                                                                             if route_params.is_empty() || route_params.len() != 2 {
                                                                                 panic!("路由参数无效，正确路由例子如： #[route(\"post\", \"/post\")]");
                                                                             }
-                                                                            route_method = route_params[0].to_string();
-                                                                            route_url = route_params[1].to_string();
+                                                                            route_method = route_params[0].to_string().replace("\"","");
+                                                                            route_url = route_params[1].to_string().replace("\"","");
                                                                         }
                                                                         _ => {}
                                                                     }
@@ -724,9 +726,32 @@ pub fn rust_shop_app(args: TokenStream, input: TokenStream) -> TokenStream {
                                                         FnArg::Receiver(_) => {}
                                                         FnArg::Typed(fn_param_type) => {
                                                             let pat = fn_param_type.pat;
+                                                            let ty = fn_param_type.ty;
+                                                            match *ty {
+                                                                Type::Array(_) => {}
+                                                                Type::BareFn(_) => {}
+                                                                Type::Group(_) => {}
+                                                                Type::ImplTrait(_) => {}
+                                                                Type::Infer(_) => {}
+                                                                Type::Macro(_) => {}
+                                                                Type::Never(_) => {}
+                                                                Type::Paren(_) => {}
+                                                                Type::Path(path) => {
+                                                                    has_request_ctx_params = path.path.segments[0].ident == "RequestCtx"
+                                                                }
+                                                                Type::Ptr(_) => {}
+                                                                Type::Reference(_) => {}
+                                                                Type::Slice(_) => {}
+                                                                Type::TraitObject(_) => {}
+                                                                Type::Tuple(_) => {}
+                                                                Type::Verbatim(_) => {}
+                                                                _ => {}
+                                                            }
                                                             match *pat {
                                                                 Pat::Box(_) => {}
-                                                                Pat::Ident(_) => {}
+                                                                Pat::Ident(_) => {
+
+                                                                }
                                                                 Pat::Lit(_) => {}
                                                                 Pat::Macro(_) => {}
                                                                 Pat::Or(_) => {}
@@ -751,18 +776,31 @@ pub fn rust_shop_app(args: TokenStream, input: TokenStream) -> TokenStream {
                                                                             fn_param_type = fn_param_type + &*segment;
                                                                         }
                                                                     }
-                                                                    if fn_param_type == "Query" || fn_param_type == "Json" || fn_param_type == "Form" {
+                                                                    if fn_param_type == "Query" ||
+                                                                        fn_param_type == "Json" ||
+                                                                        fn_param_type == "Form"{
                                                                         has_form_or_query_or_json = true;
                                                                     }
                                                                 }
                                                                 Pat::Type(_) => {}
                                                                 Pat::Verbatim(_) => {}
                                                                 Pat::Wild(_) => {}
-                                                                Pat::__NonExhaustive => {}
+                                                                _ => {}
                                                             }
                                                         }
                                                     }
                                                 }
+
+                                                //动态生成路由注册函数
+                                                let mut handler_fn = String::from("");
+                                                let file_name = entry.file_name().to_str().unwrap().to_string().replace(".rs","");
+                                                if has_request_ctx_params {
+                                                    handler_fn = file_name.clone() + "::" + &*mod_ident.to_string() + "::" + &*fn_ident.to_string();
+                                                }
+                                                if has_form_or_query_or_json {
+                                                    handler_fn = file_name.clone() + "::" + &*mod_ident.to_string() + "::" + &*fn_ident.to_string() + "_handler";
+                                                }
+                                                register_route_fn = register_route_fn + "  register_route(\"" + &*route_method + "\",\"" + &*route_url + "\"," + &*handler_fn + ");\r\n"
                                             }
                                             _ => {}
                                         }
@@ -775,11 +813,46 @@ pub fn rust_shop_app(args: TokenStream, input: TokenStream) -> TokenStream {
                     }
                 }
             }
-            let func = parse_macro_input!(input as ItemFn);
-            let expanded = quote! {
-                #func
-            };
-            expanded.into()
+
+            if !register_route_fn.is_empty() {
+                register_route_fn = "pub fn register_routes(){\r\n".to_owned() + &register_route_fn + "\r\n}";
+                //panic!("{}",register_route_fn);
+                let register_route_fn_token_stream = TokenStream::from_str(&*register_route_fn);
+                if register_route_fn_token_stream.is_err() {
+                    panic!("动态生成注册路由函数失败：{}",register_route_fn_token_stream.err().unwrap());
+                }else {
+                    let func = parse_macro_input!(input as ItemFn);
+                    let register_route_fn_token_stream = register_route_fn_token_stream.unwrap();
+                    let mut expanded = quote! {
+                        #func
+                    };
+
+                    let mut call_register_routes_fn = TokenStream2::from_str("register_routes();\r\n").unwrap();
+                    expanded = expanded.into_iter().map(|tt| { // edit input TokenStream
+                        match tt {
+                            TokenTree::Group(ref g) // match the function's body
+                            if g.delimiter() == proc_macro2::Delimiter::Brace => {
+
+                                call_register_routes_fn.extend(g.stream()); // add parsed string
+
+                                TokenTree::Group(proc_macro2::Group::new(
+                                    proc_macro2::Delimiter::Brace, call_register_routes_fn.clone()))
+                            },
+                            other => other, // else just forward TokenTree
+                        }
+                    }).collect();
+                    //expanded.append(register_route_fn_token_stream);
+                    //expanded.into()
+                    TokenStream::from_iter(vec![expanded.into(),register_route_fn_token_stream])
+                }
+            }else {
+                let func = parse_macro_input!(input as ItemFn);
+                let expanded = quote! {
+                    #func
+                };
+                expanded.into()
+            }
+
         }
 
     }

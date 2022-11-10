@@ -24,7 +24,7 @@ use std::net::SocketAddr;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, LockResult};
 use std::time::Instant;
 use anyhow::anyhow;
 use chrono::NaiveDateTime;
@@ -49,7 +49,7 @@ use serde_json::Value;
 use sqlx::encode::IsNull::No;
 use time::OffsetDateTime;
 use crate::EndpointResultCode::{AccessDenied, ClientError, ServerError, SUCCESS, Unauthorized};
-use crate::router::Router;
+use crate::router::{GLOBAL_ROUTER, Router, ROUTER};
 use crate::security::{AuthenticationProcessingFilter, SecurityConfig};
 
 pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
@@ -334,7 +334,7 @@ impl Filter for AccessLogFilter {
 
 
 pub struct Server {
-    router: Router,
+    router: &'static mut Router,
     filters: Vec<Arc<dyn Filter>>,
     extensions: Extensions,
     request_state_providers:Extensions,
@@ -342,9 +342,9 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new() -> Self {
+    pub unsafe fn new() -> Self {
         Server {
-            router: HashMap::new(),
+            router: &mut GLOBAL_ROUTER,
             filters: Vec::new(),
             extensions : Extensions::new(),
             request_state_providers : Extensions::new(),
@@ -501,7 +501,9 @@ impl Server {
 
 impl Default for Server {
     fn default() -> Self {
-        Self::new()
+        unsafe {
+            Self::new()
+        }
     }
 }
 

@@ -36,11 +36,12 @@ use rust_shop_core::db_pool_manager::{get_connection_pool, MysqlPoolManager};
 use rust_shop_core::extensions::Extensions;
 use rust_shop_core::extract::{FromRequest, IntoResponse};
 use rust_shop_core::extract::json::Json;
-use rust_shop_core::router::ROUTER;
+use rust_shop_core::router::{GLOBAL_ROUTER, ROUTER};
 use rust_shop_core::security::{AuthenticationTokenResolver, AuthenticationTokenResolverFn, LoadUserService, LoadUserServiceFn, SecurityConfig, WeChatMiniAppAuthenticationTokenResolver, WeChatUserService};
 use rust_shop_core::state::State;
 use rust_shop_core::router::register_route;
 use rust_shop_core::security::NopPasswordEncoder;
+use crate::api::auth_controller;
 
 
 pub struct  AuthFilter;
@@ -99,58 +100,16 @@ macro_rules! source_dir {
     }
 }
 
-fn reg_route(){
-
-}
 #[tokio::main]
 #[rust_shop_macro::rust_shop_app("/src")]
 async fn main() ->anyhow::Result<()>{
-
-    let mut file = File::open("D:\\项目\\rust-shop\\src\\api\\auth_controller.rs").expect("Unable to open file");
-
-    let mut src = String::new();
-    file.read_to_string(&mut src).expect("Unable to read file");
-
-    let syntax = syn::parse_file(&src).expect("Unable to parse file");
-    //println!("{:#?}", syntax);
-    for item in syntax.items {
-        //let item_mod = item as ItemMod;
-        match item {
-            Item::Mod(item_mod)=>{
-                let mod_ident = item_mod.ident;
-                if item_mod.content.is_some() {
-                    //println!("{}",item_mod.content.unwrap().1.len());
-                    let mod_content_items = item_mod.content.unwrap().1;
-                    for mod_content_item in mod_content_items {
-                        match mod_content_item {
-                            Item::Fn(f)=>{
-
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-
-    }
-
-
-    println!("{}",env!("CARGO_MANIFEST_DIR"));
-    //println!("The map has {} entries.", *b);
-    //println!("The map has {} entries.", *c);
-    //lazy_static::initialize(&b);
-    lazy_static::initialize(&c);
-
-    println!("len = {}",ROUTER.lock().unwrap().len());
-
+    unsafe { println!("路由数={}", GLOBAL_ROUTER.len()); }
     log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
     info!("booting up");
 
     let addr: SocketAddr = format!("127.0.0.1:{}",&APP_CONFIG.server.port).parse().unwrap();
 
-    let mut srv = Server::new();
+    let mut srv = unsafe { Server::new() };
 
     srv.filter(AccessLogFilter);
 
@@ -158,7 +117,7 @@ async fn main() ->anyhow::Result<()>{
     srv.extension(State::new(conn_pool.clone()));
 
     let mut security_config = SecurityConfig::new();
-    security_config.enable_security(true);
+    security_config.enable_security(false);
     security_config.authentication_token_resolver(
         AuthenticationTokenResolverFn::from(
         Box::new(|request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn AuthenticationTokenResolver + Send + Sync>{
@@ -189,7 +148,9 @@ async fn main() ->anyhow::Result<()>{
     //静态文件
     srv.get("/static/:day/:file",StaticFileController::handle);
     srv.run(addr).await.unwrap();
-
+    register_route("","",auth_controller::AuthController::del);
     info!("server shutdown!");
     Ok(())
+
+
 }
