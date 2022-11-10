@@ -49,7 +49,7 @@ use serde_json::Value;
 use sqlx::encode::IsNull::No;
 use time::OffsetDateTime;
 use crate::EndpointResultCode::{AccessDenied, ClientError, ServerError, SUCCESS, Unauthorized};
-use crate::router::{GLOBAL_ROUTER, Router, ROUTER};
+use crate::router::{get_routers, register_route, Router};
 use crate::security::{AuthenticationProcessingFilter, SecurityConfig};
 
 pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
@@ -342,9 +342,10 @@ pub struct Server {
 }
 
 impl Server {
-    pub unsafe fn new() -> Self {
+    pub fn new() -> Self {
+        let routers:&'static mut Router = get_routers();
         Server {
-            router: &mut GLOBAL_ROUTER,
+            router:routers,
             filters: Vec::new(),
             extensions : Extensions::new(),
             request_state_providers : Extensions::new(),
@@ -361,10 +362,11 @@ impl Server {
         handler: impl HTTPHandler,
     ) {
         let method = method.to_string().to_uppercase();
-        self.router
+        /*self.router
             .entry(method)
             .or_insert_with(MethodRouter::new)
-            .add(path.as_ref(), Box::new(handler));
+            .add(path.as_ref(), Box::new(handler));*/
+        register_route(method.as_str(),path.as_ref(),handler);
     }
 
     register_method!(get, "GET");

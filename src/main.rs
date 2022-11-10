@@ -45,7 +45,6 @@ use rust_shop_core::db_pool_manager::{get_connection_pool, MysqlPoolManager};
 use rust_shop_core::extensions::Extensions;
 use rust_shop_core::extract::{FromRequest, IntoResponse};
 use rust_shop_core::extract::json::Json;
-use rust_shop_core::router::{GLOBAL_ROUTER, ROUTER};
 use rust_shop_core::security::{
     AuthenticationTokenResolver,
     AuthenticationTokenResolverFn,
@@ -101,7 +100,7 @@ async fn main() ->anyhow::Result<()>{
 
     let addr: SocketAddr = format!("127.0.0.1:{}",&APP_CONFIG.server.port).parse().unwrap();
 
-    let mut srv = unsafe { Server::new() };
+    let mut srv = Server::new();
 
     srv.filter(AccessLogFilter);
 

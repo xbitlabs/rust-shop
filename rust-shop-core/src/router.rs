@@ -9,37 +9,30 @@ use crate::{BoxHTTPHandler, HTTPHandler};
 
 pub type Router = HashMap<String, MethodRouter<BoxHTTPHandler>>;
 
-pub static mut GLOBAL_ROUTER: Lazy<Router> = Lazy::new(|| {
+static mut GLOBAL_ROUTER: Lazy<Router> = Lazy::new(|| {
     let mut m:Router = HashMap::new();
     m
 });
 
-lazy_static! {
-    ///
-    /// 全局配置
-    ///
-    pub static ref ROUTER: Mutex<Router> = Mutex::new(HashMap::new());
-}
-
-
-pub fn register_route(method:&'static str, path:&'static str, handler: impl HTTPHandler) ->bool{
-    /*let lock_result = ROUTER.lock();
-    match lock_result {
-        Ok(mut result)=>{
-            result.entry(method.to_string())
-                .or_insert_with(MethodRouter::new)
-                .add(path.as_ref(), Box::new(handler));
-            true
-        }
-        _=>{
-            false
-        }
-    }*/
+pub fn get_routers()->&'static mut Router{
     unsafe {
-        GLOBAL_ROUTER.entry(method.to_string())
-            .or_insert_with(MethodRouter::new)
-            .add(path.as_ref(), Box::new(handler));
+        &mut GLOBAL_ROUTER
     }
-
+}
+pub fn register_route<'a>(method:&'a str, path:&'a str, handler: impl HTTPHandler) ->bool{
+    static MUTEX:Mutex<()> = Mutex::new(());
+    let lock_result = MUTEX.lock();
+    match lock_result{
+        Ok(_)=> {
+            unsafe {
+                GLOBAL_ROUTER.entry(method.to_string())
+                    .or_insert_with(MethodRouter::new)
+                    .add(path.as_ref(), Box::new(handler));
+            }
+        }
+        Err(e)=>{
+            panic!("注册路由异常：{}",e);
+        }
+    }
     true
 }
