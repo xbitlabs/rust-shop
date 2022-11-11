@@ -2,7 +2,7 @@ pub mod form;
 pub mod json;
 pub mod query;
 pub mod path_variable;
-mod request_param;
+pub mod request_param;
 
 use std::io;
 use anyhow::anyhow;
