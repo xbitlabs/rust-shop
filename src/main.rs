@@ -41,7 +41,7 @@ use rust_shop_core::{
     ResponseBuilder,
     Server
 };
-use rust_shop_core::db_pool_manager::{get_connection_pool, MysqlPoolManager};
+use rust_shop_core::db_pool_manager::{get_connection_pool, MysqlPoolManager, MysqlPoolStateProvider};
 use rust_shop_core::extensions::Extensions;
 use rust_shop_core::extract::{FromRequest, IntoResponse};
 use rust_shop_core::extract::json::Json;
@@ -77,20 +77,6 @@ impl Filter for AuthFilter {
     }
 }
 
-
-pub struct MysqlPoolStateProvider;
-
-impl <'a> RequestStateProvider for  MysqlPoolStateProvider{
-    fn get_state(&self, extensions: &Arc<Extensions>, req: &Request<Body>) -> Box<dyn Any + Send + Sync> {
-        let pool_state : &State<Pool<MySql>> = extensions.get().unwrap();
-        Box::new(MysqlPoolManager::new(pool_state.clone()))
-    }
-}
-impl Drop for MysqlPoolStateProvider{
-    fn drop(&mut self) {
-        println!("释放MysqlPoolStateProvider");
-    }
-}
 
 #[tokio::main]
 #[rust_shop_macro::scan_route("/src")]
@@ -142,6 +128,4 @@ async fn main() ->anyhow::Result<()>{
     register_route("","",auth_controller::AuthController::del);
     info!("server shutdown!");
     Ok(())
-
-
 }

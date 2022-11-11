@@ -25,11 +25,6 @@ use syn::parse_quote;
 use uuid::Uuid;
 
 
-#[derive(Error, Debug)]
-enum Error {
-    #[error("field `{0}` required, but not set yet.")]
-    FieldNoValue(String),
-}
 fn is_option_f32_type(type_name:&String)->bool{
     return type_name == "Option<f32>";
 }
@@ -498,14 +493,9 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
     let args = parse_macro_input!(args as Args);
     //方法体
     let func = parse_macro_input!(input as ItemFn);
-    //println!("{:?}",func.sig.inputs.into_iter());
-    // 1. Filter the params, so that only typed arguments remain
-    // 2. Extract the ident (in case the pattern type is ident)
 
-    let mut test = quote!{
-        pub fn test111(){
+    let mut handler_fn = quote!{
 
-        }
     };
 
     let idents = func.sig.inputs.iter().filter_map(|param|{
@@ -532,59 +522,15 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
     let fn_name = ident.to_string();
     let handler_name = fn_name.clone() + "_handler";
     let handler_name = Ident::new(handler_name.as_str(), proc_macro2::Span::call_site());
-    //let register_route_ident = Ident::new(&*("register_route_".to_owned() + Uuid::new_v4().to_string().replace("-", "_").as_str()), proc_macro2::Span::call_site());
-
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let mut path = path.to_str().unwrap().to_string();
-    let mut router_file = String::from("");
-    if cfg!(target_os = "windows")  {
-        path.push_str("\\routers");
-        router_file.push_str(&path);
-        router_file.push_str("\\routers.txt");
-    }else {
-        path.push_str("/routers");
-        router_file.push_str(&path);
-        router_file.push_str("/routers.txt");
-    }
-    let mut file = match File::create("d:\\test\\test.txt") {
-        Err(why) => panic!("couldn't create {}", "file"),
-        Ok(file) => file,
-    };
-    match file.write_all(router_file.as_bytes()) {
-        Err(why) => panic!("couldn't write to {}", "d:\\test\\test.txt"),
-        Ok(_) => println!("successfully wrote to {}", "d:\\test\\test.txt"),
-    }
-    //let path_clone = path.clone();
-    let router_file_dir = std::path::Path::new(&path);
-    if !router_file_dir.exists() {
-        let create_dir_result = fs::create_dir_all(&path);
-        match create_dir_result {
-            Ok(_)=>{
-                let mut new_file = fs::File::create(router_file);
-                if new_file.is_err() {
-                    panic!("创建路由记录文件异常");
-                }
-            }
-            Err(_)=>{
-                panic!("创建路由目录异常");
-            }
-        }
-    }
-
-
 
     for arg in func.sig.inputs.iter() {
         if let FnArg::Typed(ty) = arg {
             let ty = ty.ty.clone();
-            //let type_name = ty.to_token_stream().to_string();
-            //panic!("type_name={}",type_name);
             match *ty {
-                /// A path like `std::slice::Iter`, optionally qualified with a
-                /// self-type as in `<Vec<T> as SomeTrait>::Associated`.
                 Type::Path(path)=>{
                     let type_name = path.path.segments[0].ident.to_string();
                     if type_name == "Json" {
-                        test = quote!{
+                        handler_fn = quote!{
                             pub async fn #handler_name (ctx:RequestCtx)->anyhow::Result<Response<Body>>{
                                 let extract_result = Json::from_request(ctx).await?;
                                 let result = #ident (extract_result).await?;
@@ -593,7 +539,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                         }
                     }
                     else if type_name == "Form" {
-                        test = quote!{
+                        handler_fn = quote!{
                             pub async fn #handler_name (ctx:RequestCtx)->anyhow::Result<Response<Body>>{
                                 let extract_result = Form::from_request(ctx).await?;
                                 let result = #ident (extract_result).await?;
@@ -602,7 +548,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                         }
                     }
                     else if type_name == "Query" {
-                        test = quote!{
+                        handler_fn = quote!{
                             pub async fn #handler_name (ctx:RequestCtx)->anyhow::Result<Response<Body>>{
                                 let extract_result = Query::from_request(ctx).await?;
                                 let result = #ident (extract_result).await?;
@@ -622,7 +568,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let expanded = quote! {
         #func
-        #test
+        #handler_fn
     };
 
     expanded.into()
@@ -818,7 +764,6 @@ pub fn scan_route(args: TokenStream, input: TokenStream) -> TokenStream {
 
             if !register_route_fn.is_empty() {
                 register_route_fn = "pub fn register_routes(){\r\n".to_owned() + &register_route_fn + "\r\n}";
-                //panic!("{}",register_route_fn);
                 let register_route_fn_token_stream = TokenStream::from_str(&*register_route_fn);
                 if register_route_fn_token_stream.is_err() {
                     panic!("动态生成注册路由函数失败：{}",register_route_fn_token_stream.err().unwrap());
@@ -830,21 +775,19 @@ pub fn scan_route(args: TokenStream, input: TokenStream) -> TokenStream {
                     };
 
                     let mut call_register_routes_fn = TokenStream2::from_str("register_routes();\r\n").unwrap();
-                    expanded = expanded.into_iter().map(|tt| { // edit input TokenStream
+                    expanded = expanded.into_iter().map(|tt| {
                         match tt {
-                            TokenTree::Group(ref g) // match the function's body
+                            TokenTree::Group(ref g)
                             if g.delimiter() == proc_macro2::Delimiter::Brace => {
 
-                                call_register_routes_fn.extend(g.stream()); // add parsed string
+                                call_register_routes_fn.extend(g.stream());
 
                                 TokenTree::Group(proc_macro2::Group::new(
                                     proc_macro2::Delimiter::Brace, call_register_routes_fn.clone()))
                             },
-                            other => other, // else just forward TokenTree
+                            other => other,
                         }
                     }).collect();
-                    //expanded.append(register_route_fn_token_stream);
-                    //expanded.into()
                     TokenStream::from_iter(vec![expanded.into(),register_route_fn_token_stream])
                 }
             }else {

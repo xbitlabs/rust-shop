@@ -1,7 +1,12 @@
+use std::any::Any;
+use std::sync::Arc;
+use hyper::{Body, Request};
 use lazy_static::lazy_static;
 use sqlx::{Error, MySql, MySqlPool, Pool, Transaction};
 use crate::state::State;
 use crate::app_config::load_mod_config;
+use crate::extensions::Extensions;
+use crate::RequestStateProvider;
 
 #[derive(Debug,serde::Serialize, serde::Deserialize)]
 pub struct MysqlConfig {
@@ -66,5 +71,20 @@ impl <'a> MysqlPoolManager<'a> {
 impl <'a> Drop for MysqlPoolManager<'a> {
     fn drop(&mut self) {
         println!("释放MysqlPoolManager");
+    }
+}
+
+
+pub struct MysqlPoolStateProvider;
+
+impl <'a> RequestStateProvider for  MysqlPoolStateProvider{
+    fn get_state(&self, extensions: &Arc<Extensions>, req: &Request<Body>) -> Box<dyn Any + Send + Sync> {
+        let pool_state : &State<Pool<MySql>> = extensions.get().unwrap();
+        Box::new(MysqlPoolManager::new(pool_state.clone()))
+    }
+}
+impl Drop for MysqlPoolStateProvider{
+    fn drop(&mut self) {
+        println!("释放MysqlPoolStateProvider");
     }
 }
