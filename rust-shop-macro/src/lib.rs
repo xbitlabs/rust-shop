@@ -527,38 +527,40 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut params = vec![];
 
     for arg in func.sig.inputs.iter() {
-        let mut one = "";
-        let mut two = "";
-        let mut three = "";
-        if let FnArg::Typed(ty) = arg {
-            match *ty.pat {
-                Pat::Ident(ident) => {
+        //RequestParam,user,String
+        let mut one = String::from("");
+        let mut two = String::from("");
+        let mut three = String::from("");
+        if let FnArg::Typed(pat_type) = arg {
+            match &*pat_type.pat {
+                Pat::Ident(_) => {
                 }
                 Pat::TupleStruct(tuple_struct) => {
                     let pat = tuple_struct.pat.elems.first().unwrap();
                     match pat {
-                        Pat::Ident(ident) => {
-                            two = ident.ident.to_string().as_str();
+                        Pat::Ident(pat_ident) => {
+                            two = pat_ident.ident.to_string();
                         }
                         _ => {}
                     }
                 }
                 _ => {}
             }
-            let ty = ty.ty.clone();
+            let ty = pat_type.ty.clone();
 
             match *ty {
                 Type::Path(path)=>{
                     let type_name = path.path.segments[0].ident.to_string();
                     let arguments = path.path.segments.first().unwrap();
-                    match arguments.arguments{
+                    let path_args = &arguments.arguments;
+                    match path_args{
                         PathArguments::AngleBracketed(angle_bracketed) => {
                             let arg = angle_bracketed.args.first().unwrap();
                             match arg{
                                 GenericArgument::Type(arg_type) => {
                                     match arg_type {
                                         Type::Path(arg_path) => {
-                                            three = arg_path.path.segments.first().unwrap().ident.to_string().as_str();
+                                            three = arg_path.path.segments.first().unwrap().ident.to_string();
                                         }
                                         _ => {}
                                     }
@@ -570,7 +572,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                     }
                     if type_name == "Json" {
                         //params.push("Json");
-                        one = "Json";
+                        one = "Json".to_string();
                         handler_fn = quote!{
                             pub async fn #handler_name (ctx:RequestCtx)->anyhow::Result<Response<Body>>{
                                 let extract_result = Json::from_request(ctx).await?;
@@ -581,7 +583,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                     }
                     else if type_name == "Form" {
                         //params.push("Form");
-                        one = "Form";
+                        one = "Form".to_string();
                         handler_fn = quote!{
                             pub async fn #handler_name (ctx:RequestCtx)->anyhow::Result<Response<Body>>{
                                 let extract_result = Form::from_request(ctx).await?;
@@ -592,7 +594,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                     }
                     else if type_name == "Query" {
                         //params.push("Query");
-                        one = "Query";
+                        one = "Query".to_string();
                         handler_fn = quote!{
                             pub async fn #handler_name (ctx:RequestCtx)->anyhow::Result<Response<Body>>{
                                 let extract_result = Query::from_request(ctx).await?;
@@ -602,16 +604,16 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                         }
                     }else if type_name == "Header" {
                         //params.push("Header");
-                        one = "Header";
+                        one = "Header".to_string();
                     } else if type_name == "PathVariable" {
                         //params.push("PathVariable");
-                        one = "PathVariable";
+                        one = "PathVariable".to_string();
                     } else if type_name == "RequestParam" {
                         //params.push("RequestParam");
-                        one = "RequestParam";
+                        one = "RequestParam".to_string();
                     }else if type_name == "RequestCtx" {
                         //params.push("RequestCtx");
-                        one = "RequestCtx";
+                        one = "RequestCtx".to_string();
                     } else {
                     }
                 }
@@ -626,43 +628,100 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
     }
     let mut handler_fn_body = String::from("");
     let mut handler_name = handler_name.to_string();
-    let mut handler_inputs = vec![];
+    let mut original_fn_inputs = vec![];
     let mut i = 0;
     for param in params {
         if param.0 == "RequestCtx" {
-            handler_inputs.push("ctx");
+            original_fn_inputs.push(String::from("ctx"));
         }else {
             if param.0 == "Json" {
-                handler_fn_body = handler_fn_body + "let " + param.1 + " = Json::from_request(ctx).await?;"
+                handler_fn_body = handler_fn_body + "  let " + &*param.1 + " = Json::from_request(ctx).await?;\r\n"
             }
             if param.0 == "Form" {
-                handler_fn_body = handler_fn_body + "let " + param.1 + " = Form::from_request(ctx).await?;"
+                handler_fn_body = handler_fn_body + "  let " + &*param.1 + " = Form::from_request(ctx).await?;\r\n"
             }
             if param.0 == "Query" {
-                handler_fn_body = handler_fn_body + "let " + param.1 + " = Query::from_request(ctx).await?;"
+                handler_fn_body = handler_fn_body + "  let " + &*param.1 + " = Query::from_request(ctx).await?;\r\n"
             }
             if param.0 == "Header" {
+                if param.2.starts_with("Option<") {
+                    handler_fn_body = handler_fn_body + "  let mut " + &*param.1 + ":Header(Option<String>) = Header(None);\r\n";
+                    handler_fn_body = handler_fn_body + "  let " + &*param.1 + "_1 = ctx.headers.get(\"" + &*param.1 + "\");\r\n";
+                    handler_fn_body = handler_fn_body + " if " + &*param.1 + "_1.is_some(){\r\n";
+                    handler_fn_body = handler_fn_body + "  let " + &*param.1 + "_1 = " + &*param.1 + "_1.unwrap();\r\n";
+                    handler_fn_body = handler_fn_body + " if " + &*param.1 + "_1.is_some(){\r\n";
+                    handler_fn_body = handler_fn_body  + &*param.1 + " = Header(Some("  + &*param.1 + "_1.unwrap()));";
+                    handler_fn_body = handler_fn_body + " }\r\n";
+                    handler_fn_body = handler_fn_body + " }\r\n";
+                }else {
 
-                handler_fn_body = handler_fn_body + "let " + param.1 + " = ctx.headers.get(\"" + param.1 + "\").unwrap().unwrap()";
+                    let msg = format!("header '{}' is None",param.1);
+
+                    handler_fn_body = handler_fn_body + "  let mut " + &*param.1 + ":Header(String) = Header(String::from(\"\"));\r\n";
+                    handler_fn_body = handler_fn_body + "  let " + &*param.1 + "_1 = ctx.headers.get(\"" + &*param.1 + "\");\r\n";
+                    handler_fn_body = handler_fn_body + " if " + &*param.1 + "_1.is_some(){\r\n";
+                    handler_fn_body = handler_fn_body + "  let " + &*param.1 + "_1 = " + &*param.1 + "_1.unwrap();\r\n";
+                    handler_fn_body = handler_fn_body + " if " + &*param.1 + "_1.is_some(){\r\n";
+                    handler_fn_body = handler_fn_body  + &*param.1 + " = Header("  + &*param.1 + "_1.unwrap());";
+                    handler_fn_body = handler_fn_body + " }else{return Err(anyhow!(\"" + &*msg + "\"));}\r\n";
+                    handler_fn_body = handler_fn_body + " }else{ return Err(anyhow!(\"" + &*msg + "\"));}\r\n";
+                }
+
             }
             if param.0 == "PathVariable" {
-                handler_fn_body = handler_fn_body + "let " + param.1 + " = ctx.router_params.find(\"" + param.1 + "\").unwrap().to_string().parse().unwrap()";
+                if param.2.starts_with("Option<") {
+                    handler_fn_body = handler_fn_body + "  let mut " + &*param.1 + ":PathVariable(Option<" + &*param.2 + ">) = PathVariable(None);\r\n";
+                    handler_fn_body = handler_fn_body + "  let mut " + &*param.1 + "_1 = ctx.router_params.find(\"" + &*param.1 + "\");\r\n";
+                    handler_fn_body = handler_fn_body + " if " + &*param.1 + "_1.is_some(){" + "\r\n";
+                    handler_fn_body = handler_fn_body + "  let "+  &*param.1 + " = " + &*param.1 + ".unwrap().to_string().parse()?;\r\n";
+                    handler_fn_body = handler_fn_body + "}\r\n" ;
+                }else {
+                    handler_fn_body = handler_fn_body + "  let " + &*param.1 + " = ctx.router_params.find(\"" + &*param.1 + "\");\r\n";
+                    let msg = format!("router param '{}' is None",param.1);
+                    handler_fn_body = handler_fn_body + " if " + &*param.1 + ".is_none(){ return Err(anyhow!(\"" + &*msg + "\")); }\r\n";
+                    handler_fn_body = handler_fn_body + "  let " + &*param.1 + ":" + &*param.2 + " = " + &*param.1 + ".unwrap().to_string().parse()?;\r\n";
+                }
             }
             if param.0 == "RequestParam" {
-                handler_fn_body = handler_fn_body + "let " + param.1 + " = ctx.query_params.get(\"" + param.1 + "\")";
+                if param.2.starts_with("Option<") {
+                    handler_fn_body = handler_fn_body + "  let mut " + &*param.1 + ":" + &*param.2 + " = None;\r\n";
+                    handler_fn_body = handler_fn_body + "  let mut " + &*param.1 + "_1 = ctx.query_params.get(\"" + &*param.1 + "\");\r\n";
+                    handler_fn_body = handler_fn_body + " if " + &*param.1 + "_1.is_some(){" + "\r\n";
+                    handler_fn_body = handler_fn_body +  &*param.1 + " = " + &*param.1 + ".unwrap().to_string().parse()?;\r\n";
+                    handler_fn_body = handler_fn_body + "}\r\n" ;
+                }else {
+                    handler_fn_body = handler_fn_body + "  let " + &*param.1 + " = ctx.query_params.get(\"" + &*param.1 + "\");\r\n";
+                    let msg = format!("router param '{}' is None",param.1);
+                    handler_fn_body = handler_fn_body + " if " + &*param.1 + ".is_none(){ return Err(anyhow!(\"" + &*msg + "\")); }\r\n";
+                    handler_fn_body = handler_fn_body + "  let " + &*param.1 + ":" + &*param.2 + " = " + &*param.1 + ".unwrap().to_string().parse()?;\r\n";
+                }
             }
-            handler_inputs.push(param.1);
+            original_fn_inputs.push(String::from(param.1));
         }
     }
-
-    //let handler_token_stream = TokenStream::from_str()
+    let mut inputs = String::from("");
+    let mut i = 0;
+    for original_fn_input in original_fn_inputs {
+        if i == 0 {
+            inputs = inputs + &*original_fn_input;
+        }else {
+            inputs = inputs + "," + &*original_fn_input;
+        }
+        i = i + 1;
+    }
+    let original_fn_name = ident.to_string();
+    let handler_fn = String::from("pub async fn ") + &*handler_name + "(ctx:RequestCtx)->anyhow::Result<Response<Body>>{"
+     + &*handler_fn_body +
+        "let handler_result = " + &*original_fn_name + "(" + &*inputs + ").await?;\r\n" +
+         "Ok(handler_result.into_response())\r\n" +
+        "}\r\n";
+    //panic!("{:#?}",handler_fn);
+    let handler_token_stream = TokenStream::from_str(handler_fn.as_str()).unwrap();
 
     let expanded = quote! {
         #func
-        #handler_fn
     };
-
-    expanded.into()
+    TokenStream::from_iter(vec![expanded.into(),handler_token_stream])
 }
 
 

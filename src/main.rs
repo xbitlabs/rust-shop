@@ -82,7 +82,7 @@ impl Filter for AuthFilter {
 #[rust_shop_macro::scan_route("/src")]
 async fn main() ->anyhow::Result<()>{
 
-    let mut file = File::open("D:\\项目\\rust-shop\\src\\api\\auth_controller.rs").expect("Unable to open file");
+    let mut file = File::open("D:\\ProjectSourceCode\\rust-shop\\src\\api\\auth_controller.rs").expect("Unable to open file");
 
     let mut src = String::new();
     file.read_to_string(&mut src).expect("Unable to read file");

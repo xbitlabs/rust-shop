@@ -17,13 +17,14 @@ pub mod AuthController {
     use rust_shop_core::extract::path_variable::PathVariable;
     use rust_shop_core::extract::request_param::RequestParam;
     use crate::StatusCode;
+    use anyhow::anyhow;
 
     #[derive(serde::Serialize,serde::Deserialize)]
     pub struct User{
         pub name:String
     }
 
-    //#[route("POST","/user/test")]
+    #[route("POST","/user/test")]
     pub async fn test(PathVariable(id):PathVariable<u32>,RequestParam(name):RequestParam<String>,Json(user):Json<User>)->anyhow::Result<Json<User>>{
         Ok(Json(user))
     }

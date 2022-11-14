@@ -484,10 +484,25 @@ impl Server {
                             current_user:None,
                             extensions
                         };
-                        let query = ctx.query_params.get("");
+                     /*   let query11 = ctx.query_params.get("");
                         let path = ctx.router_params.find("");
-                        let header = ctx.headers.get("");
 
+
+                        let mut header = ctx.headers.get("");
+
+                        let mut header_val : Option<String>= None;
+                        if header.is_some() {
+                            let header = header.unwrap();
+                            if header.is_some() {
+                                header_val = Some(header.unwrap());
+                            }else {
+
+                            }
+                        }else {
+
+                        }
+                        //let dd:Option<>
+                        if header.is_none() { Err(anyhow!(""))}*/
 
                         let resp_result = next.run(ctx).await;
                         match resp_result {
