@@ -23,23 +23,11 @@ pub mod AuthController {
         pub name:String
     }
 
-
-    #[route("POST","/user/login")]
-    pub async fn login(Json(user):Json<User>) ->anyhow::Result<Json<User>> {
-       Ok(Json(user))
-    }
-    #[route("POST","/user/create")]
-    pub async fn create(Json(user):Json<User>) ->anyhow::Result<Json<User>> {
-        Ok(Json(user))
-    }
-    #[route("POST","/user/del")]
-    pub async fn del(ctx:RequestCtx) ->anyhow::Result<Response<Body>> {
-        let parts = ctx.request.into_parts();
-        Ok(ResponseBuilder::with_status(StatusCode::OK))
-    }
+    //#[route("POST","/user/test")]
     pub async fn test(PathVariable(id):PathVariable<u32>,RequestParam(name):RequestParam<String>,Json(user):Json<User>)->anyhow::Result<Json<User>>{
         Ok(Json(user))
     }
+    //#[route("POST","/user/insert")]
     pub async fn test_main(ctx:RequestCtx)->anyhow::Result<Response<Body>>{
         let id : PathVariable<u32> = PathVariable(ctx.router_params.find("id").unwrap().parse().unwrap());
         let name:RequestParam<String> = RequestParam(ctx.query_params.get("name").unwrap().to_string());

@@ -81,6 +81,15 @@ impl Filter for AuthFilter {
 #[tokio::main]
 #[rust_shop_macro::scan_route("/src")]
 async fn main() ->anyhow::Result<()>{
+
+    let mut file = File::open("D:\\项目\\rust-shop\\src\\api\\auth_controller.rs").expect("Unable to open file");
+
+    let mut src = String::new();
+    file.read_to_string(&mut src).expect("Unable to read file");
+
+    let syntax = syn::parse_file(&src).expect("Unable to parse file");
+    println!("{:#?}", syntax);
+
     log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
     info!("booting up");
 
@@ -125,7 +134,7 @@ async fn main() ->anyhow::Result<()>{
     //静态文件
     srv.get("/static/:day/:file",StaticFileController::handle);
     srv.run(addr).await.unwrap();
-    register_route("","",auth_controller::AuthController::del);
+
     info!("server shutdown!");
     Ok(())
 }

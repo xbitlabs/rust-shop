@@ -15,7 +15,7 @@ pub mod extract;
 use std::any::{Any, TypeId};
 use std::borrow::{Borrow, BorrowMut};
 use std::cell::RefCell;
-use hyper::{Body, Request, Response, StatusCode};
+use hyper::{Body, HeaderMap, Request, Response, StatusCode};
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fmt::{Display, Formatter};
@@ -44,6 +44,7 @@ use crate::state::State;
 use std::sync::Mutex;
 use crate::security::UserDetails;
 use hyper::body::Buf;
+use hyper::header::{HeaderValue, ToStrError};
 use schemars::_private::NoSerialize;
 use serde_json::Value;
 use sqlx::encode::IsNull::No;
@@ -67,6 +68,7 @@ pub struct RequestCtx {
     pub router_params: Params,
     pub remote_addr: SocketAddr,
     pub query_params: HashMap<String, String>,
+    pub headers:HashMap<String,Option<String>>,
     pub request_states: Extensions,
     pub current_user:Option<Box<dyn UserDetails + Send + Sync>>,
     pub extensions:Arc<Extensions>,
@@ -460,15 +462,32 @@ impl Server {
                             let state = provider.unwrap().get_state(&extensions, &req);
                             request_states.insert(state);
                         }
+                        let mut headers = HashMap::new();
+                        for header in req.headers() {
+                            let value = match  header.1.to_str(){
+                                Ok(val) => {
+                                    Some(val.to_string())
+                                }
+                                Err(_) => {
+                                    None
+                                }
+                            };
+                            headers.insert(header.0.to_string(),value);
+                        }
                         let ctx = RequestCtx {
                             request: req,
                             router_params,
                             remote_addr,
                             query_params,
+                            headers,
                             request_states,
                             current_user:None,
                             extensions
                         };
+                        let query = ctx.query_params.get("");
+                        let path = ctx.router_params.find("");
+                        let header = ctx.headers.get("");
+
 
                         let resp_result = next.run(ctx).await;
                         match resp_result {

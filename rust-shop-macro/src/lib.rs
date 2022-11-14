@@ -4,7 +4,7 @@ use proc_macro::{Span, TokenStream};
 use std::any::{Any, TypeId};
 use std::iter::FromIterator;
 use chrono::NaiveDateTime;
-use syn::{Data, DeriveInput, Fields, FnArg, Ident, Item, ItemFn, parse_macro_input, Pat, Path, PatTuple, Type, TypePath};
+use syn::{Data, DeriveInput, Fields, FnArg, GenericArgument, Ident, Item, ItemFn, parse_macro_input, Pat, Path, PathArguments, PatTuple, PatType, Type, TypePath};
 use syn::__private::TokenStream2;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
@@ -12,6 +12,7 @@ use syn::token::Comma;
 use thiserror::Error;
 use std::alloc::System;
 use std::{env, fs};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -523,13 +524,53 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
     let handler_name = fn_name.clone() + "_handler";
     let handler_name = Ident::new(handler_name.as_str(), proc_macro2::Span::call_site());
 
+    let mut params = vec![];
+
     for arg in func.sig.inputs.iter() {
+        let mut one = "";
+        let mut two = "";
+        let mut three = "";
         if let FnArg::Typed(ty) = arg {
+            match *ty.pat {
+                Pat::Ident(ident) => {
+                }
+                Pat::TupleStruct(tuple_struct) => {
+                    let pat = tuple_struct.pat.elems.first().unwrap();
+                    match pat {
+                        Pat::Ident(ident) => {
+                            two = ident.ident.to_string().as_str();
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
             let ty = ty.ty.clone();
+
             match *ty {
                 Type::Path(path)=>{
                     let type_name = path.path.segments[0].ident.to_string();
+                    let arguments = path.path.segments.first().unwrap();
+                    match arguments.arguments{
+                        PathArguments::AngleBracketed(angle_bracketed) => {
+                            let arg = angle_bracketed.args.first().unwrap();
+                            match arg{
+                                GenericArgument::Type(arg_type) => {
+                                    match arg_type {
+                                        Type::Path(arg_path) => {
+                                            three = arg_path.path.segments.first().unwrap().ident.to_string().as_str();
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                        _ => {}
+                    }
                     if type_name == "Json" {
+                        //params.push("Json");
+                        one = "Json";
                         handler_fn = quote!{
                             pub async fn #handler_name (ctx:RequestCtx)->anyhow::Result<Response<Body>>{
                                 let extract_result = Json::from_request(ctx).await?;
@@ -539,6 +580,8 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                         }
                     }
                     else if type_name == "Form" {
+                        //params.push("Form");
+                        one = "Form";
                         handler_fn = quote!{
                             pub async fn #handler_name (ctx:RequestCtx)->anyhow::Result<Response<Body>>{
                                 let extract_result = Form::from_request(ctx).await?;
@@ -548,6 +591,8 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                         }
                     }
                     else if type_name == "Query" {
+                        //params.push("Query");
+                        one = "Query";
                         handler_fn = quote!{
                             pub async fn #handler_name (ctx:RequestCtx)->anyhow::Result<Response<Body>>{
                                 let extract_result = Query::from_request(ctx).await?;
@@ -555,16 +600,62 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                                 Ok(result.into_response())
                             }
                         }
-                    }else {
+                    }else if type_name == "Header" {
+                        //params.push("Header");
+                        one = "Header";
+                    } else if type_name == "PathVariable" {
+                        //params.push("PathVariable");
+                        one = "PathVariable";
+                    } else if type_name == "RequestParam" {
+                        //params.push("RequestParam");
+                        one = "RequestParam";
+                    }else if type_name == "RequestCtx" {
+                        //params.push("RequestCtx");
+                        one = "RequestCtx";
+                    } else {
                     }
                 }
                 _ =>{}
             }
-
+            params.push((one,two,three));
         }
     }
 
+    if params.is_empty() {
+        panic!("handler参数个数为0，请至少传入一个RequestCtx参数");
+    }
+    let mut handler_fn_body = String::from("");
+    let mut handler_name = handler_name.to_string();
+    let mut handler_inputs = vec![];
+    let mut i = 0;
+    for param in params {
+        if param.0 == "RequestCtx" {
+            handler_inputs.push("ctx");
+        }else {
+            if param.0 == "Json" {
+                handler_fn_body = handler_fn_body + "let " + param.1 + " = Json::from_request(ctx).await?;"
+            }
+            if param.0 == "Form" {
+                handler_fn_body = handler_fn_body + "let " + param.1 + " = Form::from_request(ctx).await?;"
+            }
+            if param.0 == "Query" {
+                handler_fn_body = handler_fn_body + "let " + param.1 + " = Query::from_request(ctx).await?;"
+            }
+            if param.0 == "Header" {
 
+                handler_fn_body = handler_fn_body + "let " + param.1 + " = ctx.headers.get(\"" + param.1 + "\").unwrap().unwrap()";
+            }
+            if param.0 == "PathVariable" {
+                handler_fn_body = handler_fn_body + "let " + param.1 + " = ctx.router_params.find(\"" + param.1 + "\").unwrap().to_string().parse().unwrap()";
+            }
+            if param.0 == "RequestParam" {
+                handler_fn_body = handler_fn_body + "let " + param.1 + " = ctx.query_params.get(\"" + param.1 + "\")";
+            }
+            handler_inputs.push(param.1);
+        }
+    }
+
+    //let handler_token_stream = TokenStream::from_str()
 
     let expanded = quote! {
         #func
@@ -573,7 +664,6 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
 
     expanded.into()
 }
-
 
 
 use walkdir::WalkDir;
