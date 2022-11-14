@@ -15,7 +15,7 @@ pub mod extract;
 use std::any::{Any, TypeId};
 use std::borrow::{Borrow, BorrowMut};
 use std::cell::RefCell;
-use hyper::{Body, Request, Response, StatusCode};
+use hyper::{Body, HeaderMap, http, Method, Request, Response, StatusCode, Uri, Version};
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fmt::{Display, Formatter};
@@ -49,6 +49,7 @@ use serde_json::Value;
 use sqlx::encode::IsNull::No;
 use time::OffsetDateTime;
 use crate::EndpointResultCode::{AccessDenied, ClientError, ServerError, SUCCESS, Unauthorized};
+use crate::extract::FromRequest;
 use crate::router::{get_routers, register_route, Router};
 use crate::security::{AuthenticationProcessingFilter, SecurityConfig};
 
@@ -63,14 +64,166 @@ macro_rules! register_method {
 }
 
 pub struct RequestCtx {
-    pub request: Request<Body>,
+    //pub request: Request<Body>,
     pub router_params: Params,
     pub remote_addr: SocketAddr,
     pub query_params: HashMap<String, String>,
-    pub request_states: Extensions,
+    pub extensions: http::Extensions,
     pub current_user:Option<Box<dyn UserDetails + Send + Sync>>,
-    pub extensions:Arc<Extensions>,
+    pub app_extensions:Arc<Extensions>,
+    method: Method,
+    uri: Uri,
+    version: Version,
+    headers: HeaderMap,
+    body: Option<Body>,
 }
+
+impl RequestCtx {
+    /// Create a new `RequestParts`.
+    ///
+    /// You generally shouldn't need to construct this type yourself, unless
+    /// using extractors outside of axum for example to implement a
+    /// [`tower::Service`].
+    ///
+    /// [`tower::Service`]: https://docs.rs/tower/lastest/tower/trait.Service.html
+    pub fn new(remote_addr: SocketAddr,
+               req: Request<Body>,
+               query_params: HashMap<String, String>,
+               router_parameter:Params,
+               app_extensions:Arc<Extensions>) -> Self {
+        let (
+            http::request::Parts {
+                method,
+                uri,
+                version,
+                headers,
+                extensions,
+                ..
+            },
+            body,
+        ) = req.into_parts();
+
+        RequestCtx {
+            router_params: router_parameter,
+            remote_addr,
+            query_params,
+            extensions,
+            current_user: None,
+            app_extensions,
+            method,
+            uri,
+            version,
+            headers,
+            body: Some(body),
+        }
+    }
+
+    pub async fn extract<E: FromRequest>(self) -> anyhow::Result<E, E::Rejection> {
+        E::from_request(self).await
+    }
+
+    /// Convert this `RequestParts` back into a [`Request`].
+    ///
+    /// Fails if The request body has been extracted, that is [`take_body`] has
+    /// been called.
+    ///
+    /// [`take_body`]: RequestParts::take_body
+    pub fn try_into_request(&self) -> anyhow::Result<Request<Body>> {
+        let Self {
+            method,
+            uri,
+            version,
+            headers,
+            extensions,
+            mut body, ..
+        } = self;
+
+        let mut req = if let Some(body) = body.take() {
+            Request::new(body)
+        } else {
+            return Err(anyhow!("request body has been extracted"));
+        };
+
+        *req.method_mut() = method.clone();
+        *req.uri_mut() = uri.clone();
+        *req.version_mut() = version.clone();
+        *req.headers_mut() = headers.clone();
+        *req.extensions_mut() = extensions.clone();
+
+        Ok(req)
+    }
+
+    /// Gets a reference to the request method.
+    pub fn method(&self) -> &Method {
+        &self.method
+    }
+
+    /// Gets a mutable reference to the request method.
+    pub fn method_mut(&mut self) -> &mut Method {
+        &mut self.method
+    }
+
+    /// Gets a reference to the request URI.
+    pub fn uri(&self) -> &Uri {
+        &self.uri
+    }
+
+    /// Gets a mutable reference to the request URI.
+    pub fn uri_mut(&mut self) -> &mut Uri {
+        &mut self.uri
+    }
+
+    /// Get the request HTTP version.
+    pub fn version(&self) -> Version {
+        self.version
+    }
+
+    /// Gets a mutable reference to the request HTTP version.
+    pub fn version_mut(&mut self) -> &mut Version {
+        &mut self.version
+    }
+
+    /// Gets a reference to the request headers.
+    pub fn headers(&self) -> &HeaderMap {
+        &self.headers
+    }
+
+    /// Gets a mutable reference to the request headers.
+    pub fn headers_mut(&mut self) -> &mut HeaderMap {
+        &mut self.headers
+    }
+
+    /// Gets a reference to the request extensions.
+    pub fn extensions(&self) -> &hyper::http::Extensions {
+        &self.extensions
+    }
+
+    /// Gets a mutable reference to the request extensions.
+    pub fn extensions_mut(&mut self) -> &mut hyper::http::Extensions {
+        &mut self.extensions
+    }
+
+    /// Gets a reference to the request body.
+    ///
+    /// Returns `None` if the body has been taken by another extractor.
+    pub fn body(&self) -> Option<&Body> {
+        self.body.as_ref()
+    }
+
+    /// Gets a mutable reference to the request body.
+    ///
+    /// Returns `None` if the body has been taken by another extractor.
+    // this returns `&mut Option<B>` rather than `Option<&mut B>` such that users can use it to set the body.
+    pub fn body_mut(&mut self) -> &mut Option<Body> {
+        &mut self.body
+    }
+
+    /// Takes the body out of the request, leaving a `None` in its place.
+    pub fn take_body(&mut self) -> Option<Body> {
+        self.body.take()
+    }
+}
+
 
 //处理http请求过程中状态保持
 //pub type RequestStateProvider = dyn Fn() -> State<T> + Send + Sync;
@@ -251,7 +404,7 @@ impl ResponseBuilder {
 
 #[async_trait::async_trait]
 pub trait HTTPHandler: Send + Sync + 'static {
-    async fn handle(&self, ctx: RequestCtx) -> anyhow::Result<Response<Body>>;
+    async fn handle(&self, ctx:RequestCtx) -> anyhow::Result<Response<Body>>;
 }
 
 type BoxHTTPHandler = Box<dyn HTTPHandler>;
@@ -262,7 +415,7 @@ impl<F: Send + Sync + 'static, Fut> HTTPHandler for F
         F: Fn(RequestCtx) -> Fut,
         Fut: Future<Output = anyhow::Result<Response<Body>>> + Send + 'static,
 {
-    async fn handle(&self, ctx: RequestCtx) -> anyhow::Result<Response<Body>> {
+    async fn handle(&self, ctx:RequestCtx) -> anyhow::Result<Response<Body>> {
         self(ctx).await
     }
 }
@@ -271,7 +424,7 @@ impl<F: Send + Sync + 'static, Fut> HTTPHandler for F
 
 #[async_trait::async_trait]
 pub trait Filter: Send + Sync + 'static {
-    async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>>;
+    async fn handle<'a>(&'a self, ctx:RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>>;
     fn url_patterns(&self) ->String;
 }
 
@@ -283,7 +436,7 @@ pub struct Next<'a> {
 
 impl<'a> Next<'a> {
     /// Asynchronously execute the remaining filter chain.
-    pub async fn run(mut self, ctx: RequestCtx) -> anyhow::Result<Response<Body>> {
+    pub async fn run(mut self, ctx:RequestCtx) -> anyhow::Result<Response<Body>> {
         if let Some((current, next)) = self.next_filter.split_first() {
             self.next_filter = next;
             current.handle(ctx, self).await
@@ -298,7 +451,7 @@ pub struct RequestStateResolver;
 impl  RequestStateResolver {
     pub fn get<'a, T: 'a + 'static>(ctx: &'a RequestCtx) -> &'a T
     {
-        let state: Option<&Box<dyn Any + Send + Sync>> = ctx.request_states.get();
+        let state: Option<&Box<dyn Any + Send + Sync>> = ctx.extensions.get();
         let state: Option<&T> = state.unwrap().downcast_ref();
         state.unwrap()
     }
@@ -308,10 +461,10 @@ pub struct AccessLogFilter;
 
 #[async_trait::async_trait]
 impl Filter for AccessLogFilter {
-    async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>> {
+    async fn handle<'a>(&'a self, ctx:RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>> {
         let start = Instant::now();
-        let method = ctx.request.method().to_string();
-        let path = ctx.request.uri().path().to_string();
+        let method = ctx.method().to_string();
+        let path = ctx.uri().path().to_string();
         let remote_addr = ctx.remote_addr;
 
         let res = next.run(ctx).await;
@@ -453,22 +606,14 @@ impl Server {
 
                         let url = req.uri().to_string();
 
-                        let mut request_states = Extensions::new();
+                        let mut request_states = http::Extensions::new();
 
                         for state_provider in request_state_providers.iter() {
                             let provider : Option<&Box<dyn RequestStateProvider + Sync + Send>> = request_state_providers.get();
                             let state = provider.unwrap().get_state(&extensions, &req);
                             request_states.insert(state);
                         }
-                        let ctx = RequestCtx {
-                            request: req,
-                            router_params,
-                            remote_addr,
-                            query_params,
-                            request_states,
-                            current_user:None,
-                            extensions
-                        };
+                        let ctx = RequestCtx::new(remote_addr,req,query_params,router_params,extensions);
 
                         let resp_result = next.run(ctx).await;
                         match resp_result {
@@ -496,7 +641,7 @@ impl Server {
         Ok(())
     }
 
-    async fn handle_not_found(_ctx: RequestCtx) -> anyhow::Result<Response<Body>> {
+    async fn handle_not_found(_ctx:RequestCtx) -> anyhow::Result<Response<Body>> {
         Ok(ResponseBuilder::with_status(StatusCode::NOT_FOUND))
     }
 }

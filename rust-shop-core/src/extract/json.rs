@@ -24,7 +24,8 @@ impl<T> FromRequest for Json<T>
 
     async fn from_request(ctx:RequestCtx) -> Result<Self, ExtractError> {
         if json_content_type(&ctx) {
-            let bytes = body_to_bytes(ctx.request).await;
+            let body = ctx.try_into_request().unwrap();
+            let bytes = body_to_bytes(body).await;
             if bytes.is_err() {
                 return Err(JsonIoError)
             }
@@ -59,7 +60,7 @@ impl<T> FromRequest for Json<T>
 }
 
 fn json_content_type(ctx:&RequestCtx) -> bool {
-    let content_type = if let Some(content_type) = ctx.request.headers().get(header::CONTENT_TYPE) {
+    let content_type = if let Some(content_type) = ctx.headers().get(header::CONTENT_TYPE) {
         content_type
     } else {
         return false;

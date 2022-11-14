@@ -25,8 +25,8 @@ impl<T> FromRequest for Form<T>
     type Rejection = ExtractError;
 
     async fn from_request(ctx:RequestCtx) -> anyhow::Result<Form<T>,ExtractError> {
-        if ctx.request.method() == Method::GET {
-            let query = ctx.request.uri().query().unwrap_or_default();
+        if ctx.method() == Method::GET {
+            let query = ctx.uri().query().unwrap_or_default();
             let value = serde_html_form::from_str(query)
                 .map_err(|_|ExtractError::FailedToDeserializeQueryString)?;
             Ok(Form(value))
@@ -34,8 +34,8 @@ impl<T> FromRequest for Form<T>
             if !has_content_type(&ctx, &mime::APPLICATION_WWW_FORM_URLENCODED) {
                 return Err(ExtractError::InvalidFormContentType);
             }
-
-            let bytes =  body_to_bytes(ctx.request).await;
+            let body = ctx.try_into_request().unwrap();
+            let bytes =  body_to_bytes(body).await;
             if bytes.is_err() {
                 return Err(ExtractError::FailedToDeserializeFormData);
             }
@@ -50,7 +50,7 @@ impl<T> FromRequest for Form<T>
 
 // this is duplicated in `axum/src/extract/mod.rs`
 fn has_content_type(ctx:&RequestCtx, expected_content_type: &mime::Mime) -> bool {
-    let content_type = if let Some(content_type) = ctx.request.headers().get(header::CONTENT_TYPE) {
+    let content_type = if let Some(content_type) = ctx.headers().get(header::CONTENT_TYPE) {
         content_type
     } else {
         return false;

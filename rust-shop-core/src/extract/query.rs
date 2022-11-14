@@ -15,7 +15,7 @@ impl<T> FromRequest for Query<T>
     type Rejection = ExtractError;
 
     async fn from_request(ctx:RequestCtx) -> Result<Self, ExtractError> {
-        let query = ctx.request.uri().query().unwrap_or_default();
+        let query = ctx.uri().query().unwrap_or_default();
         let value = serde_html_form::from_str(query)
             .map_err(|_|FailedToDeserializeQueryString)?;
         Ok(Query(value))
