@@ -3,6 +3,7 @@ pub mod json;
 pub mod query;
 pub mod path_variable;
 pub mod request_param;
+pub mod multipart;
 
 use std::io;
 use anyhow::anyhow;
