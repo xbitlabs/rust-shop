@@ -19,22 +19,39 @@ pub mod AuthController {
     use crate::StatusCode;
     use anyhow::anyhow;
     use std::convert::Infallible;
+    use rust_shop_core::extract::form::Form;
+    use rust_shop_core::extract::header::Header;
+    use rust_shop_core::extract::query::Query;
 
-    #[derive(serde::Serialize,serde::Deserialize)]
+    #[derive(serde::Serialize,serde::Deserialize,Debug)]
     pub struct User{
+        pub id:u32,
         pub name:String
     }
 
-    #[route("POST","/user/test")]
-    pub async fn test(PathVariable(id):PathVariable<u32>,RequestParam(name):RequestParam<String>,Json(user):Json<User>)->anyhow::Result<Json<User>>{
-        Ok(Json(user))
+    #[route("POST","/user/:id")]
+    pub async fn test(Header(token):Header<Option<String>>,
+                      PathVariable(id):PathVariable<Option<u32>>,
+                      RequestParam(name):RequestParam<Option<String>>,
+                      Form(user):Form<User>)->anyhow::Result<Json<User>>{
+        let u = User{
+            id:id.unwrap(),
+            name:name.unwrap()
+        };
+        if token.is_none() {
+            println!("token={}","None");
+        }else {
+            println!("token={}",token.unwrap());
+        }
+        println!("{:?}",u);
+
+        Ok(Json(u))
     }
-    //#[route("POST","/user/insert")]
-    pub async fn test_main(ctx:RequestCtx)->anyhow::Result<Response<Body>>{
-        let id : PathVariable<u32> = PathVariable(ctx.router_params.find("id").unwrap().parse().unwrap());
-        let name:RequestParam<String> = RequestParam(ctx.query_params.get("name").unwrap().to_string());
-        let user:Json<User> = Json::from_request(ctx).await?;
-        let result = test(id,name,user).await?;
-        Ok(result.into_response())
+    #[route("POST","/user")]
+    pub async fn test_handler11(ctx:RequestCtx)->anyhow::Result<Json<User>>{
+        Ok(Json(User{
+            id: 0,
+            name: "pgg".to_string()
+        }))
     }
 }

@@ -531,6 +531,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
         let mut one = String::from("");
         let mut two = String::from("");
         let mut three = String::from("");
+        let mut four = String::from("");
         if let FnArg::Typed(pat_type) = arg {
             match &*pat_type.pat {
                 Pat::Ident(_) => {
@@ -561,6 +562,24 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                                     match arg_type {
                                         Type::Path(arg_path) => {
                                             three = arg_path.path.segments.first().unwrap().ident.to_string();
+                                            let path_args = &arg_path.path.segments.first().unwrap().arguments;
+                                            match path_args {
+                                                PathArguments::AngleBracketed(angle_bracketed) => {
+                                                    let arg = angle_bracketed.args.first().unwrap();
+                                                    match arg {
+                                                        GenericArgument::Type(arg_type) => {
+                                                            match arg_type {
+                                                                Type::Path(arg_path) => {
+                                                                    four = arg_path.path.segments.first().unwrap().ident.to_string();
+                                                                }
+                                                                _ => {}
+                                                            }
+                                                        }
+                                                        _ => {}
+                                                    }
+                                                }
+                                                _ => {}
+                                            }
                                         }
                                         _ => {}
                                     }
@@ -573,35 +592,14 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                     if type_name == "Json" {
                         //params.push("Json");
                         one = "Json".to_string();
-                        handler_fn = quote!{
-                            pub async fn #handler_name (ctx:RequestCtx)->anyhow::Result<Response<Body>>{
-                                let extract_result = Json::from_request(ctx).await?;
-                                let result = #ident (extract_result).await?;
-                                Ok(result.into_response())
-                            }
-                        }
                     }
                     else if type_name == "Form" {
                         //params.push("Form");
                         one = "Form".to_string();
-                        handler_fn = quote!{
-                            pub async fn #handler_name (ctx:RequestCtx)->anyhow::Result<Response<Body>>{
-                                let extract_result = Form::from_request(ctx).await?;
-                                let result = #ident (extract_result).await?;
-                                Ok(result.into_response())
-                            }
-                        }
                     }
                     else if type_name == "Query" {
                         //params.push("Query");
                         one = "Query".to_string();
-                        handler_fn = quote!{
-                            pub async fn #handler_name (ctx:RequestCtx)->anyhow::Result<Response<Body>>{
-                                let extract_result = Query::from_request(ctx).await?;
-                                let result = #ident (extract_result).await?;
-                                Ok(result.into_response())
-                            }
-                        }
                     }else if type_name == "Header" {
                         //params.push("Header");
                         one = "Header".to_string();
@@ -619,17 +617,17 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                 }
                 _ =>{}
             }
-            params.push((one,two,three));
+            params.push((one,two,three,four));
         }
     }
-
+    //panic!("{:?}",params);
     if params.is_empty() {
         panic!("handler参数个数为0，请至少传入一个RequestCtx参数");
     }
     let mut handler_fn_body = String::from("");
     let mut handler_name = handler_name.to_string();
     let mut original_fn_inputs = vec![];
-    let mut i = 0;
+
     for param in params {
         if param.0 == "RequestCtx" {
             original_fn_inputs.push(String::from("ctx"));
@@ -644,8 +642,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                 handler_fn_body = handler_fn_body + "  let " + &*param.1 + " = Query::from_request(ctx).await?;\r\n"
             }
             if param.0 == "Header" {
-                if param.2.starts_with("Option<") {
-
+                if param.2.eq("Option") {
                     let header_tmp_var = param.1.clone() + "_tmp_var";
                     handler_fn_body = handler_fn_body +
                         &*format!(
@@ -654,12 +651,11 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                         if {1}.is_some() {{\r\n
                             let {1} = {1}.unwrap();\r\n
                             if {1}.is_some() {{\r\n
-                                {0} = Header(Some({1}.unwrap()));\r\n
+                                {0} = Header(Some({1}.as_ref().unwrap().to_string()));\r\n
                             }}\r\n
                         }}\r\n",
                         param.1.clone(),header_tmp_var);
                 }else {
-
                     let msg = format!("header '{}' is None",param.1);
                     let header_tmp_var_1 = param.1.clone() + "_tmp_var_1";
                     let header_tmp_var_2 = param.1.clone() + "_tmp_var_2";
@@ -673,7 +669,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                             if {1}.is_none() {{                       \r\n
                                 return Err(anyhow!(\"{2}\"));        \r\n
                             }}else {{                                  \r\n
-                                {0} = Some(Header({1}.unwrap()));    \r\n
+                                {0} = Some(Header({1}.as_ref().unwrap().to_string()));    \r\n
                             }}                                        \r\n
                         }}                                            \r\n
                         let {3}:Header<String> = {0}.unwrap();       \r\n", header_tmp_var_1,header_tmp_var_2, msg,param.1);
@@ -681,18 +677,24 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
 
             }
             if param.0 == "PathVariable" {
-                if param.2.starts_with("Option<") {
-
+                //panic!("{}",param.2);
+                if param.2.eq("Option") {
                     let header_tmp_var = param.1.clone() + "_tmp_var";
+                    let msg = format!("PathVariable '{}' is invalid", param.1.clone());
                     handler_fn_body = handler_fn_body + &*format!(
-                         "let mut {0}:PathVariable<Option<String>> = PathVariable(None);
+                         "let mut {0}:PathVariable<Option<{2}>> = PathVariable(None);
                         let {1} = ctx.router_params.find(\"{0}\");
                         if {1}.is_some() {{
-                            {0} = PathVariable(Some({1}.unwrap().to_string()));
+                            let {1} = {1}.unwrap().to_string();
+                            let {1} = {1}.parse::<{2}>();
+                            if {1}.is_err(){{
+                                return Err(anyhow!(\"{3}\"));
+                            }}else{{
+                                {0} = PathVariable(Some({1}.unwrap()));
+                            }}
                         }}",
-                        param.1, header_tmp_var);
+                        param.1, header_tmp_var,param.3,msg);
                 }else {
-
                     let msg_none = format!("router param '{}' is None",param.1);
                     let msg_invalid = format!("router param '{}' is invalid",param.1);
                     let header_tmp_var = param.1.clone() + "_tmp_var";
@@ -714,15 +716,22 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                 }
             }
             if param.0 == "RequestParam" {
-                if param.2.starts_with("Option<") {
+                if param.2.eq("Option") {
                     let header_tmp_var = param.1.clone() + "_tmp_var";
+                    let msg = format!("RequestParam '{}' is invalid", param.1.clone());
                     handler_fn_body = handler_fn_body + &*format!(
-                        "let mut {0}:RequestParam<Option<String>> = RequestParam(None);\r\n
-                        let {1} = ctx.query_params.get(\"{0}\");\r\n
-                        if {1}.is_some() {{\r\n
-                            {0} = RequestParam(Some({1}.unwrap().to_string()));\r\n
-                        }}\r\n"
-                        ,param.1, header_tmp_var);
+                        "let mut {0}:RequestParam<Option<{2}>> = RequestParam(None);
+                        let {1} = ctx.query_params.get(\"{0}\");
+                        if {1}.is_some() {{
+                            let {1} = {1}.unwrap().to_string();
+                            let {1} = {1}.parse::<{2}>();
+                            if {1}.is_err(){{
+                                return Err(anyhow!(\"{3}\"));
+                            }}else{{
+                                {0} = RequestParam(Some({1}.unwrap()));
+                            }}
+                        }}",
+                        param.1, header_tmp_var,param.3,msg);
                 }else {
 
                     let msg_none = format!("router param '{}' is None",param.1);
@@ -941,12 +950,12 @@ pub fn scan_route(args: TokenStream, input: TokenStream) -> TokenStream {
                                                 //动态生成路由注册函数
                                                 let mut handler_fn = String::from("");
                                                 let file_name = entry.file_name().to_str().unwrap().to_string().replace(".rs","");
-                                                if has_request_ctx_params {
+                                                /*if has_request_ctx_params {
                                                     handler_fn = file_name.clone() + "::" + &*mod_ident.to_string() + "::" + &*fn_ident.to_string();
-                                                }
-                                                if has_form_or_query_or_json {
-                                                    handler_fn = file_name.clone() + "::" + &*mod_ident.to_string() + "::" + &*fn_ident.to_string() + "_handler";
-                                                }
+                                                }*/
+                                                //if has_form_or_query_or_json {
+                                                handler_fn = file_name.clone() + "::" + &*mod_ident.to_string() + "::" + &*fn_ident.to_string() + "_handler";
+                                                //}
                                                 register_route_fn = register_route_fn + "  register_route(\"" + &*route_method + "\",\"" + &*route_url + "\"," + &*handler_fn + ");\r\n"
                                             }
                                             _ => {}

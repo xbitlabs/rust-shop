@@ -225,7 +225,7 @@ impl WeChatMiniAppService{
 
     }
 }
-macro_rules! aw {
+/*macro_rules! aw {
   ($e:expr) => {
       tokio_test::block_on($e)
   };
@@ -236,4 +236,4 @@ fn test_wechat_api(){
     let result = api.get_access_token();
     let result1 = aw!(result);
     println!("{:?}",result1);
-}
+}*/

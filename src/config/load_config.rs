@@ -11,11 +11,3 @@ lazy_static! {
     pub static ref APP_CONFIG: AppConfig = load_conf().unwrap();
 }
 
-
-#[test]
-fn test_load_env_conf_mysql() {
-    let pro = load_conf();
-    pro.as_ref().map(|a| {
-        println!("mysqlConfig:{}", serde_json::to_string(&a.mysql).unwrap());
-    });
-}
