@@ -18,6 +18,7 @@ pub mod AuthController {
     use rust_shop_core::extract::request_param::RequestParam;
     use crate::StatusCode;
     use anyhow::anyhow;
+    use std::convert::Infallible;
 
     #[derive(serde::Serialize,serde::Deserialize)]
     pub struct User{

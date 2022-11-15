@@ -50,6 +50,9 @@ use serde_json::Value;
 use sqlx::encode::IsNull::No;
 use time::OffsetDateTime;
 use crate::EndpointResultCode::{AccessDenied, ClientError, ServerError, SUCCESS, Unauthorized};
+use crate::extract::header::Header;
+use crate::extract::path_variable::PathVariable;
+use crate::extract::request_param::RequestParam;
 use crate::router::{get_routers, register_route, Router};
 use crate::security::{AuthenticationProcessingFilter, SecurityConfig};
 
@@ -484,25 +487,6 @@ impl Server {
                             current_user:None,
                             extensions
                         };
-                     /*   let query11 = ctx.query_params.get("");
-                        let path = ctx.router_params.find("");
-
-
-                        let mut header = ctx.headers.get("");
-
-                        let mut header_val : Option<String>= None;
-                        if header.is_some() {
-                            let header = header.unwrap();
-                            if header.is_some() {
-                                header_val = Some(header.unwrap());
-                            }else {
-
-                            }
-                        }else {
-
-                        }
-                        //let dd:Option<>
-                        if header.is_none() { Err(anyhow!(""))}*/
 
                         let resp_result = next.run(ctx).await;
                         match resp_result {

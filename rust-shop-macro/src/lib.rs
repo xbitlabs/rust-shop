@@ -645,58 +645,108 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
             }
             if param.0 == "Header" {
                 if param.2.starts_with("Option<") {
-                    handler_fn_body = handler_fn_body + "  let mut " + &*param.1 + ":Header(Option<String>) = Header(None);\r\n";
-                    handler_fn_body = handler_fn_body + "  let " + &*param.1 + "_1 = ctx.headers.get(\"" + &*param.1 + "\");\r\n";
-                    handler_fn_body = handler_fn_body + " if " + &*param.1 + "_1.is_some(){\r\n";
-                    handler_fn_body = handler_fn_body + "  let " + &*param.1 + "_1 = " + &*param.1 + "_1.unwrap();\r\n";
-                    handler_fn_body = handler_fn_body + " if " + &*param.1 + "_1.is_some(){\r\n";
-                    handler_fn_body = handler_fn_body  + &*param.1 + " = Header(Some("  + &*param.1 + "_1.unwrap()));";
-                    handler_fn_body = handler_fn_body + " }\r\n";
-                    handler_fn_body = handler_fn_body + " }\r\n";
+
+                    let header_tmp_var = param.1.clone() + "_tmp_var";
+                    handler_fn_body = handler_fn_body +
+                        &*format!(
+                        "let mut {0}:Header<Option<String>> = Header(None);\r\n
+                        let {1} = ctx.headers.get(\"{0}\");\r\n
+                        if {1}.is_some() {{\r\n
+                            let {1} = {1}.unwrap();\r\n
+                            if {1}.is_some() {{\r\n
+                                {0} = Header(Some({1}.unwrap()));\r\n
+                            }}\r\n
+                        }}\r\n",
+                        param.1.clone(),header_tmp_var);
                 }else {
 
                     let msg = format!("header '{}' is None",param.1);
-
-                    handler_fn_body = handler_fn_body + "  let mut " + &*param.1 + ":Header(String) = Header(String::from(\"\"));\r\n";
-                    handler_fn_body = handler_fn_body + "  let " + &*param.1 + "_1 = ctx.headers.get(\"" + &*param.1 + "\");\r\n";
-                    handler_fn_body = handler_fn_body + " if " + &*param.1 + "_1.is_some(){\r\n";
-                    handler_fn_body = handler_fn_body + "  let " + &*param.1 + "_1 = " + &*param.1 + "_1.unwrap();\r\n";
-                    handler_fn_body = handler_fn_body + " if " + &*param.1 + "_1.is_some(){\r\n";
-                    handler_fn_body = handler_fn_body  + &*param.1 + " = Header("  + &*param.1 + "_1.unwrap());";
-                    handler_fn_body = handler_fn_body + " }else{return Err(anyhow!(\"" + &*msg + "\"));}\r\n";
-                    handler_fn_body = handler_fn_body + " }else{ return Err(anyhow!(\"" + &*msg + "\"));}\r\n";
+                    let header_tmp_var_1 = param.1.clone() + "_tmp_var_1";
+                    let header_tmp_var_2 = param.1.clone() + "_tmp_var_2";
+                    handler_fn_body = handler_fn_body + &*format!(
+                        "let mut {0}:Option<Header<String>> = None;  \r\n
+                        let {1} = ctx.headers.get(\"{3}\");          \r\n
+                        if {1}.is_none() {{                           \r\n
+                            return Err(anyhow!(\"{2}\"));            \r\n
+                        }}else{{                                       \r\n
+                            let {1} = {1}.unwrap();                  \r\n
+                            if {1}.is_none() {{                       \r\n
+                                return Err(anyhow!(\"{2}\"));        \r\n
+                            }}else {{                                  \r\n
+                                {0} = Some(Header({1}.unwrap()));    \r\n
+                            }}                                        \r\n
+                        }}                                            \r\n
+                        let {3}:Header<String> = {0}.unwrap();       \r\n", header_tmp_var_1,header_tmp_var_2, msg,param.1);
                 }
 
             }
             if param.0 == "PathVariable" {
                 if param.2.starts_with("Option<") {
-                    handler_fn_body = handler_fn_body + "  let mut " + &*param.1 + ":PathVariable(Option<" + &*param.2 + ">) = PathVariable(None);\r\n";
-                    handler_fn_body = handler_fn_body + "  let mut " + &*param.1 + "_1 = ctx.router_params.find(\"" + &*param.1 + "\");\r\n";
-                    handler_fn_body = handler_fn_body + " if " + &*param.1 + "_1.is_some(){" + "\r\n";
-                    handler_fn_body = handler_fn_body + "  let "+  &*param.1 + " = " + &*param.1 + ".unwrap().to_string().parse()?;\r\n";
-                    handler_fn_body = handler_fn_body + "}\r\n" ;
+
+                    let header_tmp_var = param.1.clone() + "_tmp_var";
+                    handler_fn_body = handler_fn_body + &*format!(
+                         "let mut {0}:PathVariable<Option<String>> = PathVariable(None);
+                        let {1} = ctx.router_params.find(\"{0}\");
+                        if {1}.is_some() {{
+                            {0} = PathVariable(Some({1}.unwrap().to_string()));
+                        }}",
+                        param.1, header_tmp_var);
                 }else {
-                    handler_fn_body = handler_fn_body + "  let " + &*param.1 + " = ctx.router_params.find(\"" + &*param.1 + "\");\r\n";
-                    let msg = format!("router param '{}' is None",param.1);
-                    handler_fn_body = handler_fn_body + " if " + &*param.1 + ".is_none(){ return Err(anyhow!(\"" + &*msg + "\")); }\r\n";
-                    handler_fn_body = handler_fn_body + "  let " + &*param.1 + ":" + &*param.2 + " = " + &*param.1 + ".unwrap().to_string().parse()?;\r\n";
+
+                    let msg_none = format!("router param '{}' is None",param.1);
+                    let msg_invalid = format!("router param '{}' is invalid",param.1);
+                    let header_tmp_var = param.1.clone() + "_tmp_var";
+                    handler_fn_body = handler_fn_body + &*format!(
+                        "let mut {0}:Option<PathVariable<{4}>> = None;\r\n
+                         let {1} = ctx.router_params.find(\"{0}\");\r\n
+                         if {1}.is_none() {{\r\n
+                            return Err(anyhow!(\"{2}\"));\r\n
+                         }}else {{\r\n
+                             let parse_result = {1}.unwrap().to_string().parse::<{4}>();\r\n
+                             if parse_result.is_err() {{\r\n
+                                return Err(anyhow!(\"{3}\"));\r\n
+                             }}else {{\r\n
+                                {0} = Some(PathVariable(parse_result.unwrap()));\r\n
+                             }}\r\n
+                        }}\r\n
+                        let {0} = {0}.unwrap();\r\n"
+                        , param.1, header_tmp_var,msg_none,msg_invalid,param.2);
                 }
             }
             if param.0 == "RequestParam" {
                 if param.2.starts_with("Option<") {
-                    handler_fn_body = handler_fn_body + "  let mut " + &*param.1 + ":" + &*param.2 + " = None;\r\n";
-                    handler_fn_body = handler_fn_body + "  let mut " + &*param.1 + "_1 = ctx.query_params.get(\"" + &*param.1 + "\");\r\n";
-                    handler_fn_body = handler_fn_body + " if " + &*param.1 + "_1.is_some(){" + "\r\n";
-                    handler_fn_body = handler_fn_body +  &*param.1 + " = " + &*param.1 + ".unwrap().to_string().parse()?;\r\n";
-                    handler_fn_body = handler_fn_body + "}\r\n" ;
+                    let header_tmp_var = param.1.clone() + "_tmp_var";
+                    handler_fn_body = handler_fn_body + &*format!(
+                        "let mut {0}:RequestParam<Option<String>> = RequestParam(None);\r\n
+                        let {1} = ctx.query_params.get(\"{0}\");\r\n
+                        if {1}.is_some() {{\r\n
+                            {0} = RequestParam(Some({1}.unwrap().to_string()));\r\n
+                        }}\r\n"
+                        ,param.1, header_tmp_var);
                 }else {
-                    handler_fn_body = handler_fn_body + "  let " + &*param.1 + " = ctx.query_params.get(\"" + &*param.1 + "\");\r\n";
-                    let msg = format!("router param '{}' is None",param.1);
-                    handler_fn_body = handler_fn_body + " if " + &*param.1 + ".is_none(){ return Err(anyhow!(\"" + &*msg + "\")); }\r\n";
-                    handler_fn_body = handler_fn_body + "  let " + &*param.1 + ":" + &*param.2 + " = " + &*param.1 + ".unwrap().to_string().parse()?;\r\n";
+
+                    let msg_none = format!("router param '{}' is None",param.1);
+                    let msg_invalid = format!("router param '{}' is invalid",param.1);
+
+                    let header_tmp_var = param.1.clone() + "_tmp_var";
+                    handler_fn_body = handler_fn_body + &*format!(
+                        "let mut {0}:Option<RequestParam<{4}>> = None;\r\n
+                        let {1} = ctx.query_params.get(\"{0}\");\r\n
+                        if {1}.is_none() {{\r\n
+                            return Err(anyhow!(\"{2}\"));\r\n
+                        }}else {{\r\n
+                            let parse_result = {1}.unwrap().to_string().parse::<{4}>();\r\n
+                            if parse_result.is_err() {{\r\n
+                                return Err(anyhow!(\"{3}\"));\r\n
+                            }}else {{\r\n
+                                {0} = Some(RequestParam(parse_result.unwrap()));\r\n
+                            }}\r\n
+                        }}\r\n
+                        let {0} = {0}.unwrap();\r\n"
+                        , param.1, header_tmp_var,msg_none,msg_invalid,param.2);
                 }
             }
-            original_fn_inputs.push(String::from(param.1));
+            original_fn_inputs.push(String::from(param.1.clone()));
         }
     }
     let mut inputs = String::from("");
