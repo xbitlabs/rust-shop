@@ -488,14 +488,15 @@ impl Args {
     }
 }
 
+///handler的代理函数后缀
 const HANDLER_PROXY_FN_SUFFIX:&str = "_handler_proxy";
-
+///handler的参数
 struct HandlerParam{
     ///参数的类型，如：RequestParam,Json,Query等
     pub param_type:String,
     ///参数名，如：RequestParam(id):RequestParam<u32>，这里的id就是参数名
     pub param_name:String,
-    ///参数是否是Option，如：RequestParam(id):RequestParam<Option<u32>>，这样的参数就是Option，也有可能不是Option
+    ///参数是否是Option，如：RequestParam(id):RequestParam<Option<u32>>，这样的参数就是Option，也有可能不是Option，可以是一些原始类型，如u32,i64,String等
     pub param_option:String,
     ///参数Option的泛型类型，如：RequestParam(id):RequestParam<Option<u32>>，这样的参数的Option的泛型类型就是u32
     pub param_option_type:String
@@ -540,7 +541,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
         let mut handler_param_type = String::from("");
         //参数名，如：RequestParam(id):RequestParam<u32>，这里的id就是参数名
         let mut handler_param_name = String::from("");
-        //参数是否是Option，如：RequestParam(id):RequestParam<Option<u32>>，这样的参数就是Option，也有可能不是Option
+        //参数是否是Option，如：RequestParam(id):RequestParam<Option<u32>>，这样的参数就是Option，也有可能不是Option，可以是一些原始类型，如u32,i64,String等
         let mut handler_param_option = String::from("");
         //参数Option的泛型类型，如：RequestParam(id):RequestParam<Option<u32>>，这样的参数的Option的泛型类型就是u32
         let mut handler_param_option_type = String::from("");
