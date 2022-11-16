@@ -23,6 +23,7 @@ pub mod AuthController {
     use std::ops::Deref;
     use std::sync::Arc;
     use sqlx::{MySql, Pool};
+    use uuid::Uuid;
     use rust_shop_core::db_pool_manager::DbPoolManager;
     use rust_shop_core::extensions::Extensions;
     use rust_shop_core::extract::extension::Extension;
@@ -30,8 +31,12 @@ pub mod AuthController {
     use rust_shop_core::extract::header::Header;
     use rust_shop_core::extract::query::Query;
     use rust_shop_core::extract::request_state::RequestState;
+    use rust_shop_core::id_generator::ID_GENERATOR;
     use rust_shop_core::security::UserDetails;
     use rust_shop_core::state::State;
+    use crate::entity::entity::ProductCategory;
+    use crate::service::product_category_service::ProductCategoryService;
+    use chrono::Local;
 
     #[derive(serde::Serialize,serde::Deserialize,Debug)]
     pub struct User{
@@ -39,16 +44,49 @@ pub mod AuthController {
         pub name:String
     }
 
-    //#[route("POST","/user/:id/:age")]
+    #[route("POST","/user/:id/:age")]
     pub async fn test(extensions:Arc<Extensions>,
-        request_states:Arc<Extensions>,
-        Header(token):Header<Option<String>>,
+                      request_states:Arc<Extensions>,
+                      Header(token):Header<Option<String>>,
                       Header(cookie):Header<String>,
                       PathVariable(id):PathVariable<Option<u32>>,
                       PathVariable(age):PathVariable<u32>,
                       RequestParam(name):RequestParam<Option<String>>,
                       RequestParam(address):RequestParam<String>,
-                      Form(user):Form<User>)->anyhow::Result<Json<User>>{
+                      Form(user):Form<User>,
+                      pool: &mut DbPoolManager<'_, MySql>) ->anyhow::Result<Json<User>>{
+        pool.begin().await?;
+
+        let mut p = ProductCategoryService::new(pool);
+
+        p.test_tran().await?;
+
+        let user_id = ID_GENERATOR.lock().unwrap().real_time_generate();
+        let wx_open_id = Uuid::new_v4().to_string();
+        let rows_affected = sqlx::query!("insert into `user`(id,wx_open_id,created_time,enable) values(?,?,?,?)",user_id,wx_open_id,Local::now(),1)
+            .execute(pool.get_pool()).await?
+            .rows_affected();
+
+        let user_id = ID_GENERATOR.lock().unwrap().real_time_generate();
+        let wx_open_id = Uuid::new_v4().to_string();
+        let rows_affected = sqlx::query!("insert into `user`(id,wx_open_id,created_time,enable) values(?,?,?,?)",user_id,wx_open_id,Local::now(),1)
+            .execute(pool.get_pool()).await?
+            .rows_affected();
+
+        if true {
+            return Err(anyhow!("我故意抛出异常的"));
+        }
+
+        let user_id = ID_GENERATOR.lock().unwrap().real_time_generate();
+        let wx_open_id = Uuid::new_v4().to_string();
+        let rows_affected = sqlx::query!("insert into `user`(id,wx_open_id,created_time,enable) values(?,?,?,?)",user_id,wx_open_id,Local::now(),1)
+            .execute(pool.get_pool()).await?
+            .rows_affected();
+
+        let categories = sqlx::query_as!(ProductCategory,"SELECT * FROM product_category")
+            .fetch_all(pool.get_pool()).await?;
+        println!("查询到的数据有{}条",categories.len());
+
         println!("token={:?}",token);
         println!("cookie={:?}",cookie);
         println!("id={:?}",id);
@@ -68,10 +106,12 @@ pub mod AuthController {
 
         Ok(Json(u))
     }
-    pub async fn test_handler_proxy(
+   /* pub async fn test_handler_proxy(
         ctx: RequestCtx,
     ) -> anyhow::Result<Response<Body>> {
-        let mut db_pool: &State<DbPoolManager<MySql>> = ctx.request_states.get::<&State<DbPoolManager<MySql>>>().unwrap().borrow_mut();
+        let pool:&State<Pool<MySql>> = ctx.extensions.get().unwrap();
+        let mut db_pool: DbPoolManager<MySql> = DbPoolManager::new(pool.clone());
+
         let extensions: Arc<Extensions> = ctx.extensions.clone();
         let request_states: Arc<Extensions> = ctx.request_states.clone();
         let mut token: Header<Option<String>> = Header(None);
@@ -177,21 +217,25 @@ pub mod AuthController {
             name,
             address,
             user,
+            &db_pool
         )
             .await;
-        let tran = db_pool.deref().to_owned().as_ref().as_mut();
-        return if handler_result.is_err() {
-            if tran.is_some() {
-                tran.unwrap().rollback().await?;
+
+
+
+            return if handler_result.is_err() {
+                if db_pool.use_tran() {
+                    db_pool.rollback().await?;
+                }
+                Err(handler_result.err().unwrap())
+            } else {
+                if db_pool.use_tran() {
+                    db_pool.commit().await?;
+                }
+                Ok(handler_result.unwrap().into_response())
             }
-            Err(handler_result.err().unwrap())
-        } else {
-            if tran.is_some() {
-                tran.unwrap().commit().await?;
-            }
-            Ok(handler_result.unwrap().into_response())
-        }
-    }
+
+    }*/
 }
 
 

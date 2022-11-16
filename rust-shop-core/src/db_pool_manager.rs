@@ -74,16 +74,24 @@ pub async fn postgres_connection_pool() -> Result<Pool<Postgres>, Error> {
     pool.await
 }
 
-impl <'a> Deref for DbPoolManager<'a,MySql> {
-    type Target = Option<Transaction<'a,MySql>>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.tran
+pub struct TransactionManager<'a,Db:Database>{
+    pub tran:Transaction<'a,Db>
+}
+impl <'a,Db:Database> TransactionManager<'a,Db>{
+    pub async fn rollback(mut self)->anyhow::Result<()>{
+        self.tran.rollback().await?;
+        Ok(())
+    }
+    pub async fn commit(mut self)->anyhow::Result<()>{
+        self.tran.commit().await?;
+        Ok(())
+    }
+    pub fn tran(&mut self) ->&mut Transaction<'a,Db>{
+        self.tran.borrow_mut()
     }
 }
-
 pub struct DbPoolManager<'a,Db:Database>{
-    tran:Option<Transaction<'a,Db>>,
+    tran:Option<TransactionManager<'a,Db>>,
     pool_state:Option<State<Pool<Db>>>
 }
 
@@ -97,23 +105,48 @@ impl <'a,Db:Database> DbPoolManager<'a,Db> {
     pub fn get_pool(&self) -> &Pool<Db> {
         self.pool_state.as_ref().unwrap().as_ref()
     }
-    pub async fn begin(&mut self)->anyhow::Result<&Transaction<'a,Db>>{
+    pub async fn begin(&mut self)->anyhow::Result<()>{
+        println!("{}","开始事务");
         return if self.tran.is_some() {
-            let tran = &self.tran.as_ref().unwrap();
-            Ok(tran)
+            println!("{}","已存在事务");
+            Ok(())
         } else {
-            let tran = self.get_pool().begin().await?;
-            self.tran = Some(tran);
-            let tran = &self.tran.as_ref().unwrap();
-            Ok(tran)
+            println!("{}","开始新的事务");
+            let mut tran = self.get_pool().begin().await?;
+            self.tran = Some(TransactionManager{
+                tran
+            });
+            Ok(())
         }
     }
-
+    pub fn tran(&mut self) ->&TransactionManager<'a,Db>{
+        if self.tran.is_some() {
+            println!("{}","已存在事务");
+            return self.tran.as_ref().unwrap();
+        } else {
+            panic!("{}","找不到数据库事务");
+        }
+    }
+    pub async fn rollback(mut self)->anyhow::Result<()>{
+        return if self.tran.is_some() {
+            self.tran.unwrap().rollback().await?;
+            Ok(())
+        } else {
+            Err(anyhow!("找不到数据库事务"))
+        }
+    }
+    pub async fn commit(mut self)->anyhow::Result<()>{
+        return if self.tran.is_some() {
+            self.tran.unwrap().commit().await?;
+            Ok(())
+        } else {
+            Err(anyhow!("找不到数据库事务"))
+        }
+    }
     pub fn use_tran(&self)->bool{
         return self.tran.is_some()
     }
 }
-
 
 
 pub struct MysqlPoolStateProvider;

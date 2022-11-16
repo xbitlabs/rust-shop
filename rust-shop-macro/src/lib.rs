@@ -671,7 +671,13 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut handler_proxy_fn_body = String::from("");
     let mut original_fn_inputs = vec![];
 
+    let mut inject_db_pool = false;
+    let mut db_pool_param_name = String::from("");
     for param in params {
+        if param.param_type == "&DbPoolManager" {
+            inject_db_pool = true;
+            db_pool_param_name = param.param_name.clone();
+        }
         if param.param_type == "RequestCtx" {
             original_fn_inputs.push(String::from("ctx"));
         }else {
@@ -808,7 +814,11 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                     "let {0}:Arc<Extensions> = ctx.extensions.clone();",param.param_name
                 );
             }
-            original_fn_inputs.push(String::from(param.param_name.clone()));
+            if param.param_type == "&DbPoolManager" {
+                original_fn_inputs.push(String::from("&mut ") + &*param.param_name.clone());
+            }else {
+                original_fn_inputs.push(String::from(param.param_name.clone()));
+            }
         }
     }
     let mut inputs = String::from("");
@@ -821,23 +831,31 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
         }
         i = i + 1;
     }
+    let mut db_pool_code = String::from("");
+    let mut db_pool_commit_rollback_code = String::from("");
+    if inject_db_pool {
+        db_pool_code = format!("let pool:&State<Pool<MySql>> = ctx.extensions.get().unwrap();\r\n
+        let mut {0}: DbPoolManager<MySql> = DbPoolManager::new(pool.clone());",db_pool_param_name);
+        db_pool_commit_rollback_code = format!("return if handler_result.is_err() {{
+                if {0}.use_tran() {{
+                    println!(\"{{}}\",\"回滚事务\");
+                    {0}.rollback().await?;
+                }}
+                Err(handler_result.err().unwrap())
+            }} else {{
+                if {0}.use_tran() {{
+                    println!(\"{{}}\",\"提交事务\");
+                    {0}.commit().await?;
+                }}
+                Ok(handler_result.unwrap().into_response())
+            }}",db_pool_param_name);
+    }
     let original_fn_name = ident.to_string();
     let handler_proxy_fn = String::from("pub async fn ") + &*handler_proxy_name + "(ctx:RequestCtx)->anyhow::Result<Response<Body>>{\r\n" +
-        "let mut db_pool:&State<DbPoolManager<MySql>> = RequestStateResolver::get(&ctx);\r\n" +
+        &*db_pool_code +
         &*handler_proxy_fn_body +
         "let handler_result = " + &*original_fn_name + "(" + &*inputs + ").await;\r\n" +
-        "if handler_result.is_err(){\r\n
-            if db_pool.use_tran() {\r\n
-                db_pool.rollback().await?;\r\n
-            }\r\n
-            return Err(handler_result.err().unwrap());\r\n
-         }else{\r\n
-            if db_pool.use_tran() {\r\n
-                db_pool.commit().await?;\r\n
-            }\r\n
-            return Ok(handler_result.unwrap().into_response());\r\n
-         }\r\n" +
-
+        &*db_pool_commit_rollback_code +
         "}\r\n";
     //panic!("{:#?}",handler_fn);
     let handler_token_stream = TokenStream::from_str(handler_proxy_fn.as_str()).unwrap();

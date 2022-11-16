@@ -36,26 +36,8 @@ pub struct Test{
 pub struct IndexController;
 impl IndexController {
     pub async fn index(ctx: RequestCtx) -> anyhow::Result<hyper::Response<hyper::Body>> {
-        let query = ctx.query_params.get("query");
-        if query.is_some() {
-            println!("query = {}",query.unwrap());
-        }
-        let test_form_parser : TestFormParser = Test::build_form_parser();
-        let test:Test = test_form_parser.parse(ctx.request).await?;
-        println!("{:?}",test);
-        //let name = ctx.router_params.find("name").unwrap_or("world");
-        let rows = ProductCategoryService::list_all_categories().await;
-        match rows {
-            Ok(data)=>{
-                let endpoint_result = EndpointResult::ok_with_payload("", data);
-                Ok(ResponseBuilder::with_endpoint_result(endpoint_result))
-            }
-            Err(e)=>{
-                let endpoint_result:EndpointResult<String> = EndpointResult::server_error("内部服务器错误");
-                Ok(ResponseBuilder::with_endpoint_result(endpoint_result))
-            }
-        }
-
+        let endpoint_result = EndpointResult::ok_with_payload("", "");
+        Ok(ResponseBuilder::with_endpoint_result(endpoint_result))
     }
 
 }
