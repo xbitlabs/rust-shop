@@ -29,11 +29,20 @@ pub mod AuthController {
         pub name:String
     }
 
-    #[route("POST","/user/:id")]
+    #[route("POST","/user/:id/:age")]
     pub async fn test(Header(token):Header<Option<String>>,
+                      Header(cookie):Header<String>,
                       PathVariable(id):PathVariable<Option<u32>>,
+                      PathVariable(age):PathVariable<u32>,
                       RequestParam(name):RequestParam<Option<String>>,
+                      RequestParam(address):RequestParam<String>,
                       Form(user):Form<User>)->anyhow::Result<Json<User>>{
+        println!("token={:?}",token);
+        println!("cookie={:?}",cookie);
+        println!("id={:?}",id);
+        println!("age={:?}",age);
+        println!("name={:?}",name);
+        println!("address={:?}",address);
         let u = User{
             id:id.unwrap(),
             name:name.unwrap()

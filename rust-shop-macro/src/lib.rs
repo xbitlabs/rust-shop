@@ -488,16 +488,25 @@ impl Args {
     }
 }
 
+const HANDLER_PROXY_FN_SUFFIX:&str = "_handler_proxy";
+
+struct HandlerParam{
+    ///参数的类型，如：RequestParam,Json,Query等
+    pub param_type:String,
+    ///参数名，如：RequestParam(id):RequestParam<u32>，这里的id就是参数名
+    pub param_name:String,
+    ///参数是否是Option，如：RequestParam(id):RequestParam<Option<u32>>，这样的参数就是Option，也有可能不是Option
+    pub param_option:String,
+    ///参数Option的泛型类型，如：RequestParam(id):RequestParam<Option<u32>>，这样的参数的Option的泛型类型就是u32
+    pub param_option_type:String
+}
+
 #[proc_macro_attribute]
 pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
     //宏传入的参数，从里面提取请求方法及路径
     let args = parse_macro_input!(args as Args);
     //方法体
     let func = parse_macro_input!(input as ItemFn);
-
-    let mut handler_fn = quote!{
-
-    };
 
     let idents = func.sig.inputs.iter().filter_map(|param|{
         if let syn::FnArg::Typed(pat_type) = param {
@@ -521,17 +530,20 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
     let route = args.get_route().unwrap();
 
     let fn_name = ident.to_string();
-    let handler_name = fn_name.clone() + "_handler";
-    let handler_name = Ident::new(handler_name.as_str(), proc_macro2::Span::call_site());
+    let handler_proxy_name = fn_name.clone() + HANDLER_PROXY_FN_SUFFIX;
 
     let mut params = vec![];
 
     for arg in func.sig.inputs.iter() {
         //RequestParam,user,String
-        let mut one = String::from("");
-        let mut two = String::from("");
-        let mut three = String::from("");
-        let mut four = String::from("");
+        //参数的类型，如：RequestParam,Json,Query等
+        let mut handler_param_type = String::from("");
+        //参数名，如：RequestParam(id):RequestParam<u32>，这里的id就是参数名
+        let mut handler_param_name = String::from("");
+        //参数是否是Option，如：RequestParam(id):RequestParam<Option<u32>>，这样的参数就是Option，也有可能不是Option
+        let mut handler_param_option = String::from("");
+        //参数Option的泛型类型，如：RequestParam(id):RequestParam<Option<u32>>，这样的参数的Option的泛型类型就是u32
+        let mut handler_param_option_type = String::from("");
         if let FnArg::Typed(pat_type) = arg {
             match &*pat_type.pat {
                 Pat::Ident(_) => {
@@ -540,7 +552,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                     let pat = tuple_struct.pat.elems.first().unwrap();
                     match pat {
                         Pat::Ident(pat_ident) => {
-                            two = pat_ident.ident.to_string();
+                            handler_param_name = pat_ident.ident.to_string();
                         }
                         _ => {}
                     }
@@ -561,7 +573,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                                 GenericArgument::Type(arg_type) => {
                                     match arg_type {
                                         Type::Path(arg_path) => {
-                                            three = arg_path.path.segments.first().unwrap().ident.to_string();
+                                            handler_param_option = arg_path.path.segments.first().unwrap().ident.to_string();
                                             let path_args = &arg_path.path.segments.first().unwrap().arguments;
                                             match path_args {
                                                 PathArguments::AngleBracketed(angle_bracketed) => {
@@ -570,7 +582,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                                                         GenericArgument::Type(arg_type) => {
                                                             match arg_type {
                                                                 Type::Path(arg_path) => {
-                                                                    four = arg_path.path.segments.first().unwrap().ident.to_string();
+                                                                    handler_param_option_type = arg_path.path.segments.first().unwrap().ident.to_string();
                                                                 }
                                                                 _ => {}
                                                             }
@@ -590,61 +602,59 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                         _ => {}
                     }
                     if type_name == "Json" {
-                        //params.push("Json");
-                        one = "Json".to_string();
+                        handler_param_type = "Json".to_string();
                     }
                     else if type_name == "Form" {
-                        //params.push("Form");
-                        one = "Form".to_string();
+                        handler_param_type = "Form".to_string();
                     }
                     else if type_name == "Query" {
-                        //params.push("Query");
-                        one = "Query".to_string();
+                        handler_param_type = "Query".to_string();
                     }else if type_name == "Header" {
-                        //params.push("Header");
-                        one = "Header".to_string();
+                        handler_param_type = "Header".to_string();
                     } else if type_name == "PathVariable" {
-                        //params.push("PathVariable");
-                        one = "PathVariable".to_string();
+                        handler_param_type = "PathVariable".to_string();
                     } else if type_name == "RequestParam" {
-                        //params.push("RequestParam");
-                        one = "RequestParam".to_string();
+                        handler_param_type = "RequestParam".to_string();
                     }else if type_name == "RequestCtx" {
-                        //params.push("RequestCtx");
-                        one = "RequestCtx".to_string();
+                        handler_param_type = "RequestCtx".to_string();
                     } else {
                     }
                 }
                 _ =>{}
             }
-            params.push((one,two,three,four));
+            params.push(HandlerParam{
+                param_type: handler_param_type,
+                param_name: handler_param_name,
+                param_option: handler_param_option,
+                param_option_type: handler_param_option_type
+            });
         }
     }
     //panic!("{:?}",params);
     if params.is_empty() {
         panic!("handler参数个数为0，请至少传入一个RequestCtx参数");
     }
-    let mut handler_fn_body = String::from("");
-    let mut handler_name = handler_name.to_string();
+
+    let mut handler_proxy_fn_body = String::from("");
     let mut original_fn_inputs = vec![];
 
     for param in params {
-        if param.0 == "RequestCtx" {
+        if param.param_type == "RequestCtx" {
             original_fn_inputs.push(String::from("ctx"));
         }else {
-            if param.0 == "Json" {
-                handler_fn_body = handler_fn_body + "  let " + &*param.1 + " = Json::from_request(ctx).await?;\r\n"
+            if param.param_type == "Json" {
+                handler_proxy_fn_body = handler_proxy_fn_body + "  let " + &*param.param_name + " = Json::from_request(ctx).await?;\r\n"
             }
-            if param.0 == "Form" {
-                handler_fn_body = handler_fn_body + "  let " + &*param.1 + " = Form::from_request(ctx).await?;\r\n"
+            if param.param_type == "Form" {
+                handler_proxy_fn_body = handler_proxy_fn_body + "  let " + &*param.param_name + " = Form::from_request(ctx).await?;\r\n"
             }
-            if param.0 == "Query" {
-                handler_fn_body = handler_fn_body + "  let " + &*param.1 + " = Query::from_request(ctx).await?;\r\n"
+            if param.param_type == "Query" {
+                handler_proxy_fn_body = handler_proxy_fn_body + "  let " + &*param.param_name + " = Query::from_request(ctx).await?;\r\n"
             }
-            if param.0 == "Header" {
-                if param.2.eq("Option") {
-                    let header_tmp_var = param.1.clone() + "_tmp_var";
-                    handler_fn_body = handler_fn_body +
+            if param.param_type == "Header" {
+                if param.param_option.eq("Option") {
+                    let header_tmp_var = param.param_name.clone() + "_tmp_var";
+                    handler_proxy_fn_body = handler_proxy_fn_body +
                         &*format!(
                         "let mut {0}:Header<Option<String>> = Header(None);\r\n
                         let {1} = ctx.headers.get(\"{0}\");\r\n
@@ -654,12 +664,12 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                                 {0} = Header(Some({1}.as_ref().unwrap().to_string()));\r\n
                             }}\r\n
                         }}\r\n",
-                        param.1.clone(),header_tmp_var);
+                        param.param_name.clone(),header_tmp_var);
                 }else {
-                    let msg = format!("header '{}' is None",param.1);
-                    let header_tmp_var_1 = param.1.clone() + "_tmp_var_1";
-                    let header_tmp_var_2 = param.1.clone() + "_tmp_var_2";
-                    handler_fn_body = handler_fn_body + &*format!(
+                    let msg = format!("header '{}' is None",param.param_name);
+                    let header_tmp_var_1 = param.param_name.clone() + "_tmp_var_1";
+                    let header_tmp_var_2 = param.param_name.clone() + "_tmp_var_2";
+                    handler_proxy_fn_body = handler_proxy_fn_body + &*format!(
                         "let mut {0}:Option<Header<String>> = None;  \r\n
                         let {1} = ctx.headers.get(\"{3}\");          \r\n
                         if {1}.is_none() {{                           \r\n
@@ -672,16 +682,16 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                                 {0} = Some(Header({1}.as_ref().unwrap().to_string()));    \r\n
                             }}                                        \r\n
                         }}                                            \r\n
-                        let {3}:Header<String> = {0}.unwrap();       \r\n", header_tmp_var_1,header_tmp_var_2, msg,param.1);
+                        let {3}:Header<String> = {0}.unwrap();       \r\n", header_tmp_var_1,header_tmp_var_2, msg,param.param_name);
                 }
 
             }
-            if param.0 == "PathVariable" {
+            if param.param_type == "PathVariable" {
                 //panic!("{}",param.2);
-                if param.2.eq("Option") {
-                    let header_tmp_var = param.1.clone() + "_tmp_var";
-                    let msg = format!("PathVariable '{}' is invalid", param.1.clone());
-                    handler_fn_body = handler_fn_body + &*format!(
+                if param.param_option.eq("Option") {
+                    let header_tmp_var = param.param_name.clone() + "_tmp_var";
+                    let msg = format!("PathVariable '{}' is invalid", param.param_name.clone());
+                    handler_proxy_fn_body = handler_proxy_fn_body + &*format!(
                          "let mut {0}:PathVariable<Option<{2}>> = PathVariable(None);
                         let {1} = ctx.router_params.find(\"{0}\");
                         if {1}.is_some() {{
@@ -693,12 +703,12 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                                 {0} = PathVariable(Some({1}.unwrap()));
                             }}
                         }}",
-                        param.1, header_tmp_var,param.3,msg);
+                        param.param_name, header_tmp_var,param.param_option_type,msg);
                 }else {
-                    let msg_none = format!("router param '{}' is None",param.1);
-                    let msg_invalid = format!("router param '{}' is invalid",param.1);
-                    let header_tmp_var = param.1.clone() + "_tmp_var";
-                    handler_fn_body = handler_fn_body + &*format!(
+                    let msg_none = format!("router param '{}' is None",param.param_name);
+                    let msg_invalid = format!("router param '{}' is invalid",param.param_name);
+                    let header_tmp_var = param.param_name.clone() + "_tmp_var";
+                    handler_proxy_fn_body = handler_proxy_fn_body + &*format!(
                         "let mut {0}:Option<PathVariable<{4}>> = None;\r\n
                          let {1} = ctx.router_params.find(\"{0}\");\r\n
                          if {1}.is_none() {{\r\n
@@ -712,14 +722,14 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                              }}\r\n
                         }}\r\n
                         let {0} = {0}.unwrap();\r\n"
-                        , param.1, header_tmp_var,msg_none,msg_invalid,param.2);
+                        , param.param_name, header_tmp_var,msg_none,msg_invalid,param.param_option);
                 }
             }
-            if param.0 == "RequestParam" {
-                if param.2.eq("Option") {
-                    let header_tmp_var = param.1.clone() + "_tmp_var";
-                    let msg = format!("RequestParam '{}' is invalid", param.1.clone());
-                    handler_fn_body = handler_fn_body + &*format!(
+            if param.param_type == "RequestParam" {
+                if param.param_option.eq("Option") {
+                    let header_tmp_var = param.param_name.clone() + "_tmp_var";
+                    let msg = format!("RequestParam '{}' is invalid", param.param_name.clone());
+                    handler_proxy_fn_body = handler_proxy_fn_body + &*format!(
                         "let mut {0}:RequestParam<Option<{2}>> = RequestParam(None);
                         let {1} = ctx.query_params.get(\"{0}\");
                         if {1}.is_some() {{
@@ -731,14 +741,14 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                                 {0} = RequestParam(Some({1}.unwrap()));
                             }}
                         }}",
-                        param.1, header_tmp_var,param.3,msg);
+                        param.param_name, header_tmp_var,param.param_option_type,msg);
                 }else {
 
-                    let msg_none = format!("router param '{}' is None",param.1);
-                    let msg_invalid = format!("router param '{}' is invalid",param.1);
+                    let msg_none = format!("router param '{}' is None",param.param_name);
+                    let msg_invalid = format!("router param '{}' is invalid",param.param_name);
 
-                    let header_tmp_var = param.1.clone() + "_tmp_var";
-                    handler_fn_body = handler_fn_body + &*format!(
+                    let header_tmp_var = param.param_name.clone() + "_tmp_var";
+                    handler_proxy_fn_body = handler_proxy_fn_body + &*format!(
                         "let mut {0}:Option<RequestParam<{4}>> = None;\r\n
                         let {1} = ctx.query_params.get(\"{0}\");\r\n
                         if {1}.is_none() {{\r\n
@@ -752,10 +762,10 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                             }}\r\n
                         }}\r\n
                         let {0} = {0}.unwrap();\r\n"
-                        , param.1, header_tmp_var,msg_none,msg_invalid,param.2);
+                        , param.param_name, header_tmp_var,msg_none,msg_invalid,param.param_option);
                 }
             }
-            original_fn_inputs.push(String::from(param.1.clone()));
+            original_fn_inputs.push(String::from(param.param_name.clone()));
         }
     }
     let mut inputs = String::from("");
@@ -769,13 +779,13 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
         i = i + 1;
     }
     let original_fn_name = ident.to_string();
-    let handler_fn = String::from("pub async fn ") + &*handler_name + "(ctx:RequestCtx)->anyhow::Result<Response<Body>>{"
-     + &*handler_fn_body +
+    let handler_proxy_fn = String::from("pub async fn ") + &*handler_proxy_name + "(ctx:RequestCtx)->anyhow::Result<Response<Body>>{"
+     + &*handler_proxy_fn_body +
         "let handler_result = " + &*original_fn_name + "(" + &*inputs + ").await?;\r\n" +
          "Ok(handler_result.into_response())\r\n" +
         "}\r\n";
     //panic!("{:#?}",handler_fn);
-    let handler_token_stream = TokenStream::from_str(handler_fn.as_str()).unwrap();
+    let handler_token_stream = TokenStream::from_str(handler_proxy_fn.as_str()).unwrap();
 
     let expanded = quote! {
         #func
@@ -820,7 +830,6 @@ pub fn scan_route(args: TokenStream, input: TokenStream) -> TokenStream {
                     let syntax = syn::parse_file(&src).expect("Unable to parse file");
                     //println!("{:#?}", syntax);
                     for item in syntax.items {
-                        //let item_mod = item as ItemMod;
                         match item {
                             Item::Mod(item_mod)=>{
                                 let mod_ident = item_mod.ident;
@@ -950,12 +959,7 @@ pub fn scan_route(args: TokenStream, input: TokenStream) -> TokenStream {
                                                 //动态生成路由注册函数
                                                 let mut handler_fn = String::from("");
                                                 let file_name = entry.file_name().to_str().unwrap().to_string().replace(".rs","");
-                                                /*if has_request_ctx_params {
-                                                    handler_fn = file_name.clone() + "::" + &*mod_ident.to_string() + "::" + &*fn_ident.to_string();
-                                                }*/
-                                                //if has_form_or_query_or_json {
-                                                handler_fn = file_name.clone() + "::" + &*mod_ident.to_string() + "::" + &*fn_ident.to_string() + "_handler";
-                                                //}
+                                                handler_fn = file_name.clone() + "::" + &*mod_ident.to_string() + "::" + &*fn_ident.to_string() + HANDLER_PROXY_FN_SUFFIX;
                                                 register_route_fn = register_route_fn + "  register_route(\"" + &*route_method + "\",\"" + &*route_url + "\"," + &*handler_fn + ");\r\n"
                                             }
                                             _ => {}
