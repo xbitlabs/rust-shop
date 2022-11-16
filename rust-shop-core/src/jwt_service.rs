@@ -5,12 +5,12 @@ use chrono::NaiveDateTime;
 use jsonwebtoken::{Algorithm, decode, DecodingKey, encode, EncodingKey, Header, TokenData, Validation};
 use lazy_static::lazy_static;
 use log::info;
-use sqlx::Executor;
+use sqlx::{Database, Executor, MySql};
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 use serde::Serialize;
 use serde::Deserialize;
-use crate::db_pool_manager::MysqlPoolManager;
+use crate::db_pool_manager::DbPoolManager;
 use crate::jwt::{AccessToken, Claims, JwtService};
 use crate::app_config::load_mod_config;
 use crate::id_generator::ID_GENERATOR;
@@ -34,11 +34,11 @@ lazy_static! {
 }
 
 pub struct DefaultJwtService<'a,'b>{
-    mysql_pool_manager: &'a MysqlPoolManager<'b>
+    mysql_pool_manager: &'a DbPoolManager<'b,MySql>
 }
 
 impl <'a,'b> DefaultJwtService<'a,'b> {
-    pub fn new(mysql_pool_manager: &'a MysqlPoolManager<'b>) -> Self {
+    pub fn new(mysql_pool_manager: &'a DbPoolManager<'b,MySql>) -> Self {
         DefaultJwtService {
             mysql_pool_manager
         }

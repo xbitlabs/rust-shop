@@ -41,7 +41,7 @@ use rust_shop_core::{
     ResponseBuilder,
     Server
 };
-use rust_shop_core::db_pool_manager::{get_connection_pool, MysqlPoolManager, MysqlPoolStateProvider};
+use rust_shop_core::db_pool_manager::{ DbPoolManager, MysqlPoolStateProvider, mysql_connection_pool};
 use rust_shop_core::extensions::Extensions;
 use rust_shop_core::extract::{FromRequest, IntoResponse};
 use rust_shop_core::extract::json::Json;
@@ -82,13 +82,13 @@ impl Filter for AuthFilter {
 #[rust_shop_macro::scan_route("/src")]
 async fn main() ->anyhow::Result<()>{
 
-    /*let mut file = File::open("D:\\ProjectSourceCode\\rust-shop\\src\\api\\auth_controller.rs").expect("Unable to open file");
+    let mut file = File::open("D:\\项目\\rust-shop\\src\\api\\auth_controller.rs").expect("Unable to open file");
 
     let mut src = String::new();
     file.read_to_string(&mut src).expect("Unable to read file");
 
     let syntax = syn::parse_file(&src).expect("Unable to parse file");
-    println!("{:#?}", syntax);*/
+    println!("{:#?}", syntax);
 
     log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
     info!("booting up");
@@ -99,7 +99,7 @@ async fn main() ->anyhow::Result<()>{
 
     srv.filter(AccessLogFilter);
 
-    let conn_pool = get_connection_pool().await?;
+    let conn_pool = mysql_connection_pool().await?;
     srv.extension(State::new(conn_pool.clone()));
 
     let mut security_config = SecurityConfig::new();
@@ -114,7 +114,7 @@ async fn main() ->anyhow::Result<()>{
         LoadUserServiceFn::from(
             Box::new(|request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn LoadUserService + Send + Sync>{
                 let state: Option<&Box<dyn Any + Send + Sync>> = request_states.get();
-                let state: Option<&MysqlPoolManager> = state.unwrap().downcast_ref();
+                let state: Option<&DbPoolManager<MySql>> = state.unwrap().downcast_ref();
                 let pool = state.unwrap();
                 Box::new(WeChatUserService::new(pool))
             }))

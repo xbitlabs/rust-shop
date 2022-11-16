@@ -72,7 +72,7 @@ pub struct RequestCtx {
     pub remote_addr: SocketAddr,
     pub query_params: HashMap<String, String>,
     pub headers:HashMap<String,Option<String>>,
-    pub request_states: Extensions,
+    pub request_states: Arc<Extensions>,
     pub current_user:Option<Box<dyn UserDetails + Send + Sync>>,
     pub extensions:Arc<Extensions>,
 }
@@ -465,6 +465,7 @@ impl Server {
                             let state = provider.unwrap().get_state(&extensions, &req);
                             request_states.insert(state);
                         }
+                        let request_states = Arc::new(request_states);
                         let mut headers = HashMap::new();
                         for header in req.headers() {
                             let value = match  header.1.to_str(){

@@ -1,61 +1,103 @@
 use std::any::Any;
+use std::borrow::BorrowMut;
+use std::ops::Deref;
 use std::sync::Arc;
+use std::time::Duration;
+use anyhow::anyhow;
 use hyper::{Body, Request};
 use lazy_static::lazy_static;
-use sqlx::{Error, MySql, MySqlPool, Pool, Transaction};
+use sqlx::{Database, Error, MySql, MySqlPool, PgPool, Pool, Postgres, Transaction};
+use sqlx::mysql::MySqlPoolOptions;
+use sqlx::postgres::PgPoolOptions;
 use crate::state::State;
 use crate::app_config::load_mod_config;
 use crate::extensions::Extensions;
 use crate::RequestStateProvider;
 
 #[derive(Debug,serde::Serialize, serde::Deserialize)]
-pub struct MysqlConfig {
-    pub host: String,
-    pub port: u32,
-    pub user: String,
-    pub password: String,
-    pub db: String,
-    pub pool_min_idle: u64,
-    pub pool_max_open: u64,
-    pub timeout_seconds: u64,
+pub struct DbConfig {
+    pub url: String,
+    pub idle_timeout:Option<u64>,
+    pub max_connections:Option<u32>,
+    pub min_connections:Option<u32>,
+    pub max_lifetime:Option<u64>,
+    pub acquire_timeout:Option<u64>,
 }
 
 lazy_static! {
     ///
     /// 全局配置
     ///
-    pub static ref MYSQL_CONFIG: MysqlConfig = load_mod_config(String::from("db")).unwrap();
+    pub static ref DB_CONFIG: DbConfig = load_mod_config(String::from("db")).unwrap();
 }
 
-pub async fn get_connection_pool() -> Result<Pool<MySql>, Error> {
-    println!("获取mysql连接池");
-    let mysql_config = &MYSQL_CONFIG;
-    let conn = format!("mysql://{}:{}@{}:{}/{}?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=Asia/Shanghai",
-                       mysql_config.user,
-                       mysql_config.password,
-                       mysql_config.host,
-                       mysql_config.port,
-                       mysql_config.db);
-    let pool = MySqlPool::connect(conn.as_str());
+pub async fn mysql_connection_pool() -> Result<Pool<MySql>, Error> {
+    let db_config = &DB_CONFIG;
+    let mut options = MySqlPoolOptions::new();
+    if db_config.idle_timeout.is_some() {
+        options = options.idle_timeout(Duration::from_micros(db_config.idle_timeout.unwrap()));
+    }
+    if db_config.max_connections.is_some() {
+        options = options.max_connections(db_config.max_connections.unwrap());
+    }
+    if db_config.min_connections.is_some() {
+        options = options.min_connections(db_config.min_connections.unwrap());
+    }
+    if db_config.acquire_timeout.is_some() {
+        options = options.acquire_timeout(Duration::from_micros(db_config.acquire_timeout.unwrap()));
+    }
+    if db_config.max_lifetime.is_some() {
+        options = options.max_lifetime(Duration::from_micros(db_config.max_lifetime.unwrap()));
+    }
+    let pool = options.connect(db_config.url.as_str());
+    pool.await
+}
+pub async fn postgres_connection_pool() -> Result<Pool<Postgres>, Error> {
+    let db_config = &DB_CONFIG;
+    let mut options = PgPoolOptions::new();
+    if db_config.idle_timeout.is_some() {
+        options = options.idle_timeout(Duration::from_micros(db_config.idle_timeout.unwrap()));
+    }
+    if db_config.max_connections.is_some() {
+        options = options.max_connections(db_config.max_connections.unwrap());
+    }
+    if db_config.min_connections.is_some() {
+        options = options.min_connections(db_config.min_connections.unwrap());
+    }
+    if db_config.acquire_timeout.is_some() {
+        options = options.acquire_timeout(Duration::from_micros(db_config.acquire_timeout.unwrap()));
+    }
+    if db_config.max_lifetime.is_some() {
+        options = options.max_lifetime(Duration::from_micros(db_config.max_lifetime.unwrap()));
+    }
+    let pool = options.connect(db_config.url.as_str());
     pool.await
 }
 
-pub struct MysqlPoolManager<'a>{
-    tran:Option<Transaction<'a,MySql>>,
-    pool_state:Option<State<Pool<MySql>>>
+impl <'a> Deref for DbPoolManager<'a,MySql> {
+    type Target = Option<Transaction<'a,MySql>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.tran
+    }
 }
 
-impl <'a> MysqlPoolManager<'a> {
-    pub fn new(pool_state:State<Pool<MySql>>) ->Self{
-        MysqlPoolManager{
+pub struct DbPoolManager<'a,Db:Database>{
+    tran:Option<Transaction<'a,Db>>,
+    pool_state:Option<State<Pool<Db>>>
+}
+
+impl <'a,Db:Database> DbPoolManager<'a,Db> {
+    pub fn new(pool_state:State<Pool<Db>>) ->Self{
+        DbPoolManager {
             pool_state : Some(pool_state),
             tran:None
         }
     }
-    pub fn get_pool(&self) -> &Pool<MySql> {
+    pub fn get_pool(&self) -> &Pool<Db> {
         self.pool_state.as_ref().unwrap().as_ref()
     }
-    pub async fn begin(&mut self)->anyhow::Result<&Transaction<'a,MySql>>{
+    pub async fn begin(&mut self)->anyhow::Result<&Transaction<'a,Db>>{
         return if self.tran.is_some() {
             let tran = &self.tran.as_ref().unwrap();
             Ok(tran)
@@ -66,13 +108,12 @@ impl <'a> MysqlPoolManager<'a> {
             Ok(tran)
         }
     }
-}
 
-impl <'a> Drop for MysqlPoolManager<'a> {
-    fn drop(&mut self) {
-        println!("释放MysqlPoolManager");
+    pub fn use_tran(&self)->bool{
+        return self.tran.is_some()
     }
 }
+
 
 
 pub struct MysqlPoolStateProvider;
@@ -80,11 +121,6 @@ pub struct MysqlPoolStateProvider;
 impl <'a> RequestStateProvider for  MysqlPoolStateProvider{
     fn get_state(&self, extensions: &Arc<Extensions>, req: &Request<Body>) -> Box<dyn Any + Send + Sync> {
         let pool_state : &State<Pool<MySql>> = extensions.get().unwrap();
-        Box::new(MysqlPoolManager::new(pool_state.clone()))
-    }
-}
-impl Drop for MysqlPoolStateProvider{
-    fn drop(&mut self) {
-        println!("释放MysqlPoolStateProvider");
+        Box::new(State::new(DbPoolManager::new(pool_state.clone())))
     }
 }

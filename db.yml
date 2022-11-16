@@ -1,11 +1,11 @@
-host: 127.0.0.1
-port: 3306
-user: root
-password: 123456
-db: rust_shop
-#最小连接数
-pool_min_idle: 8
+url: mysql://root:123456@127.0.0.1:3306/rust_shop?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=Asia/Shanghai
+#连接空闲超时，毫秒
+idle_timeout:
 #最大连接数
-pool_max_open: 32
-#连接超时时间单位秒
-timeout_seconds: 15
+max_connections:
+#最小连接数
+min_connections:
+#最大存活时间，毫秒
+max_lifetime:
+#获取连接超时时间，毫秒
+acquire_timeout:

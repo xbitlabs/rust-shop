@@ -5,7 +5,7 @@ use anyhow::anyhow;
 use bcrypt::{DEFAULT_COST, hash, verify};
 use hyper::{Body, Request, Response};
 use crate::{EndpointResult, Filter, Next, parse_form_params, RequestCtx, ResponseBuilder};
-use crate::db_pool_manager::MysqlPoolManager;
+use crate::db_pool_manager::DbPoolManager;
 use crate::extensions::Extensions;
 use crate::jwt::{AccessToken, JwtService};
 use crate::state::State;
@@ -14,6 +14,7 @@ use crate::wechat_service::WeChatMiniAppService;
 use crate::entity::User;
 use crate::id_generator::ID_GENERATOR;
 use chrono::Local;
+use sqlx::MySql;
 use crate::jwt_service::DefaultJwtService;
 
 #[async_trait::async_trait]
@@ -94,11 +95,11 @@ impl AuthenticationTokenResolver for WeChatMiniAppAuthenticationTokenResolver {
     }
 }
 pub struct WeChatUserService<'a,'b>{
-    mysql_pool_manager: &'a MysqlPoolManager<'b>
+    mysql_pool_manager: &'a DbPoolManager<'b, MySql>
 }
 
 impl <'a,'b> WeChatUserService<'a,'b> {
-    pub fn new(mysql_pool_manager: &'a MysqlPoolManager<'b>)->Self{
+    pub fn new(mysql_pool_manager: &'a DbPoolManager<'b, MySql>) ->Self{
         WeChatUserService{
             mysql_pool_manager
         }
@@ -321,11 +322,11 @@ impl AuthenticationToken for UsernamePasswordAuthenticationToken{
     }
 }
 pub struct DefaultLoadUserService<'a,'b>{
-    mysql_pool_manager: &'a MysqlPoolManager<'b>
+    mysql_pool_manager: &'a DbPoolManager<'b,MySql>
 }
 
 impl <'a,'b> DefaultLoadUserService<'a,'b> {
-    pub fn new(mysql_pool_manager: &'a MysqlPoolManager<'b>)->Self{
+    pub fn new(mysql_pool_manager: &'a DbPoolManager<'b,MySql>) ->Self{
         DefaultLoadUserService{
             mysql_pool_manager
         }
@@ -619,7 +620,7 @@ impl SecurityConfig {
             jwt_service: JwtServiceFn::from(
                 Box::new(|request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn JwtService + Send + Sync>{
                     let state: Option<&Box<dyn Any + Send + Sync>> = request_states.get();
-                    let state: Option<&MysqlPoolManager> = state.unwrap().downcast_ref();
+                    let state: Option<&DbPoolManager<MySql>> = state.unwrap().downcast_ref();
                     let pool = state.unwrap();
                     Box::new(DefaultJwtService::new(pool))
                 })
@@ -629,7 +630,7 @@ impl SecurityConfig {
             load_user_service: LoadUserServiceFn::from(
                 Box::new(|request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn LoadUserService + Send + Sync>{
                     let state: Option<&Box<dyn Any + Send + Sync>> = request_states.get();
-                    let state: Option<&MysqlPoolManager> = state.unwrap().downcast_ref();
+                    let state: Option<&DbPoolManager<MySql>> = state.unwrap().downcast_ref();
                     let pool = state.unwrap();
                     Box::new(DefaultLoadUserService::new(pool))
                 })),

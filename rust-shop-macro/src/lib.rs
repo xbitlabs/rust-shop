@@ -491,6 +491,7 @@ impl Args {
 ///handler的代理函数后缀
 const HANDLER_PROXY_FN_SUFFIX:&str = "_handler_proxy";
 ///handler的参数
+#[derive(Debug)]
 struct HandlerParam{
     ///参数的类型，如：RequestParam,Json,Query等
     pub param_type:String,
@@ -547,7 +548,8 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
         let mut handler_param_option_type = String::from("");
         if let FnArg::Typed(pat_type) = arg {
             match &*pat_type.pat {
-                Pat::Ident(_) => {
+                Pat::Ident(pat_ident) => {
+                    handler_param_name = pat_ident.ident.to_string();
                 }
                 Pat::TupleStruct(tuple_struct) => {
                     let pat = tuple_struct.pat.elems.first().unwrap();
@@ -563,8 +565,38 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
             let ty = pat_type.ty.clone();
 
             match *ty {
+                Type::Reference(reference)=>{
+                    let ref_ele = reference.elem;
+                    match *ref_ele {
+                        Type::Path(ref_type_path) => {
+                            handler_param_type = String::from("&") + &*ref_type_path.path.segments[0].ident.to_string();
+                            let arguments = ref_type_path.path.segments.first().unwrap();
+                            let path_args = &arguments.arguments;
+                            if !path_args.is_empty() {
+                                match path_args {
+                                    PathArguments::AngleBracketed(angle_bracketed) => {
+                                        let arg = angle_bracketed.args.first().unwrap();
+                                        match arg {
+                                            GenericArgument::Type(arg_type) => {
+                                                match arg_type {
+                                                    Type::Path(arg_path) => {
+                                                        handler_param_type = handler_param_type + "<" + &*arg_path.path.segments.first().unwrap().ident.to_string() + ">";
+                                                    }
+                                                    _ => {}
+                                                }
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
                 Type::Path(path)=>{
-                    let type_name = path.path.segments[0].ident.to_string();
+                    handler_param_type = path.path.segments[0].ident.to_string();
                     let arguments = path.path.segments.first().unwrap();
                     let path_args = &arguments.arguments;
                     match path_args{
@@ -602,7 +634,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                         }
                         _ => {}
                     }
-                    if type_name == "Json" {
+                    /*if type_name == "Json" {
                         handler_param_type = "Json".to_string();
                     }
                     else if type_name == "Form" {
@@ -619,7 +651,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                     }else if type_name == "RequestCtx" {
                         handler_param_type = "RequestCtx".to_string();
                     } else {
-                    }
+                    }*/
                 }
                 _ =>{}
             }
@@ -766,6 +798,16 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                         , param.param_name, header_tmp_var,msg_none,msg_invalid,param.param_option);
                 }
             }
+            if param.param_type == "Arc" && param.param_option == "Extensions" && param.param_name == "request_states" {
+                handler_proxy_fn_body = handler_proxy_fn_body + &*format!(
+                    "let {0}:Arc<Extensions> = ctx.request_states.clone();",param.param_name
+                );
+            }
+            if param.param_type == "Arc" && param.param_option == "Extensions" && param.param_name == "extensions" {
+                handler_proxy_fn_body = handler_proxy_fn_body + &*format!(
+                    "let {0}:Arc<Extensions> = ctx.extensions.clone();",param.param_name
+                );
+            }
             original_fn_inputs.push(String::from(param.param_name.clone()));
         }
     }
@@ -780,10 +822,22 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
         i = i + 1;
     }
     let original_fn_name = ident.to_string();
-    let handler_proxy_fn = String::from("pub async fn ") + &*handler_proxy_name + "(ctx:RequestCtx)->anyhow::Result<Response<Body>>{"
-     + &*handler_proxy_fn_body +
-        "let handler_result = " + &*original_fn_name + "(" + &*inputs + ").await?;\r\n" +
-         "Ok(handler_result.into_response())\r\n" +
+    let handler_proxy_fn = String::from("pub async fn ") + &*handler_proxy_name + "(ctx:RequestCtx)->anyhow::Result<Response<Body>>{\r\n" +
+        "let mut db_pool:&State<DbPoolManager<MySql>> = RequestStateResolver::get(&ctx);\r\n" +
+        &*handler_proxy_fn_body +
+        "let handler_result = " + &*original_fn_name + "(" + &*inputs + ").await;\r\n" +
+        "if handler_result.is_err(){\r\n
+            if db_pool.use_tran() {\r\n
+                db_pool.rollback().await?;\r\n
+            }\r\n
+            return Err(handler_result.err().unwrap());\r\n
+         }else{\r\n
+            if db_pool.use_tran() {\r\n
+                db_pool.commit().await?;\r\n
+            }\r\n
+            return Ok(handler_result.unwrap().into_response());\r\n
+         }\r\n" +
+
         "}\r\n";
     //panic!("{:#?}",handler_fn);
     let handler_token_stream = TokenStream::from_str(handler_proxy_fn.as_str()).unwrap();
