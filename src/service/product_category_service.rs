@@ -10,10 +10,10 @@ use chrono::Local;
 
 
 pub struct ProductCategoryService<'a,'b>{
-    mysql_pool_manager: &'a mut DbPoolManager<'b,MySql>
+    mysql_pool_manager: &'a DbPoolManager<'b,MySql>
 }
 impl <'a,'b> ProductCategoryService<'a,'b> {
-    pub fn new(mysql_pool_manager:&'b mut DbPoolManager<MySql>) ->Self{
+    pub fn new(mysql_pool_manager:&'b DbPoolManager<MySql>) ->Self{
         ProductCategoryService{
             mysql_pool_manager
         }
@@ -26,7 +26,7 @@ impl <'a,'b> ProductCategoryService<'a,'b> {
         Ok(categories)
     }
     pub async fn test_tran(&mut self) ->anyhow::Result<()>  {
-        let user_id = ID_GENERATOR.lock().unwrap().real_time_generate();
+      /*  let user_id = ID_GENERATOR.lock().unwrap().real_time_generate();
         let wx_open_id = Uuid::new_v4().to_string();
         let mut aag = self.mysql_pool_manager.tran();
         let mut aa: &mut &TransactionManager<MySql> = aag.borrow_mut();
@@ -34,7 +34,7 @@ impl <'a,'b> ProductCategoryService<'a,'b> {
         let  f = aa.tran();
         let rows_affected = sqlx::query!("insert into `user`(id,wx_open_id,created_time,enable) values(?,?,?,?)",user_id,wx_open_id,Local::now(),1)
             .execute(f).await?
-            .rows_affected();
+            .rows_affected();*/
         Ok(())
     }
 }

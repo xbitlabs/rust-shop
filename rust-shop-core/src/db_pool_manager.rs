@@ -6,7 +6,7 @@ use std::time::Duration;
 use anyhow::anyhow;
 use hyper::{Body, Request};
 use lazy_static::lazy_static;
-use sqlx::{Database, Error, MySql, MySqlPool, PgPool, Pool, Postgres, Transaction};
+use sqlx::{Acquire, Database, Error, MySql, MySqlPool, PgPool, Pool, Postgres, Transaction};
 use sqlx::mysql::MySqlPoolOptions;
 use sqlx::postgres::PgPoolOptions;
 use crate::state::State;
@@ -74,10 +74,20 @@ pub async fn postgres_connection_pool() -> Result<Pool<Postgres>, Error> {
     pool.await
 }
 
-pub struct TransactionManager<'a,Db:Database>{
-    pub tran:Transaction<'a,Db>
+pub struct TransactionManager<'a,'b,Db:Database>{
+    pool:&'b Pool<Db>,
+    tran:Transaction<'a,Db>,
+    rollback_only:bool
 }
-impl <'a,Db:Database> TransactionManager<'a,Db>{
+impl <'a,'b,Db:Database> TransactionManager<'a,'b,Db>{
+    pub async fn new(pool:&'b Pool<Db>) ->Self{
+        let tran = pool.begin().await?;
+        TransactionManager{
+            pool: &(),
+            tran,
+            rollback_only: false
+        }
+    }
     pub async fn rollback(mut self)->anyhow::Result<()>{
         self.tran.rollback().await?;
         Ok(())
@@ -86,8 +96,11 @@ impl <'a,Db:Database> TransactionManager<'a,Db>{
         self.tran.commit().await?;
         Ok(())
     }
-    pub fn tran(&mut self) ->&mut Transaction<'a,Db>{
+    pub fn transaction(&mut self) ->&mut Transaction<'a,Db>{
         self.tran.borrow_mut()
+    }
+    pub fn rollback_only(&mut self){
+        self.rollback_only = true;
     }
 }
 pub struct DbPoolManager<'a,Db:Database>{

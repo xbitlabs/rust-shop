@@ -22,7 +22,7 @@ pub mod AuthController {
     use std::convert::Infallible;
     use std::ops::Deref;
     use std::sync::Arc;
-    use sqlx::{MySql, Pool};
+    use sqlx::{Arguments, MySql, Pool, Row};
     use uuid::Uuid;
     use rust_shop_core::db_pool_manager::DbPoolManager;
     use rust_shop_core::extensions::Extensions;
@@ -61,8 +61,12 @@ pub mod AuthController {
 
         p.test_tran().await?;
 
+
+
         let user_id = ID_GENERATOR.lock().unwrap().real_time_generate();
         let wx_open_id = Uuid::new_v4().to_string();
+
+
         let rows_affected = sqlx::query!("insert into `user`(id,wx_open_id,created_time,enable) values(?,?,?,?)",user_id,wx_open_id,Local::now(),1)
             .execute(pool.get_pool()).await?
             .rows_affected();
@@ -72,6 +76,14 @@ pub mod AuthController {
         let rows_affected = sqlx::query!("insert into `user`(id,wx_open_id,created_time,enable) values(?,?,?,?)",user_id,wx_open_id,Local::now(),1)
             .execute(pool.get_pool()).await?
             .rows_affected();
+
+        let mut args = sqlx::mysql::MySqlArguments::default();
+        args.add(1);
+        let result:Vec<ProductCategory> = sqlx::query_as_with("select * from product_category where id = ?",args)
+            .fetch_all(pool.get_pool()).await?;
+
+        println!("{:#?}",*result.get(0).unwrap());
+
 
         if true {
             return Err(anyhow!("我故意抛出异常的"));
