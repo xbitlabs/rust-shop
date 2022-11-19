@@ -5,7 +5,6 @@ use anyhow::anyhow;
 use bcrypt::{DEFAULT_COST, hash, verify};
 use hyper::{Body, Request, Response};
 use crate::{EndpointResult, Filter, Next, parse_form_params, RequestCtx, ResponseBuilder};
-use crate::db_pool_manager::DbPoolManager;
 use crate::extensions::Extensions;
 use crate::jwt::{AccessToken, JwtService};
 use crate::state::State;
@@ -14,7 +13,9 @@ use crate::wechat_service::WeChatMiniAppService;
 use crate::entity::User;
 use crate::id_generator::ID_GENERATOR;
 use chrono::Local;
-use sqlx::MySql;
+use sqlx::{Arguments, MySql};
+use sqlx::mysql::MySqlArguments;
+use crate::db::SqlCommandExecutor;
 use crate::jwt_service::DefaultJwtService;
 
 #[async_trait::async_trait]
@@ -95,23 +96,23 @@ impl AuthenticationTokenResolver for WeChatMiniAppAuthenticationTokenResolver {
     }
 }
 pub struct WeChatUserService<'a,'b>{
-    mysql_pool_manager: &'a DbPoolManager<'b, MySql>
+    sql_command_executor: &'b SqlCommandExecutor<'a,'b>
 }
 
 impl <'a,'b> WeChatUserService<'a,'b> {
-    pub fn new(mysql_pool_manager: &'a DbPoolManager<'b, MySql>) ->Self{
+    pub fn new(sql_command_executor: &'b SqlCommandExecutor<'a,'b>) ->Self{
         WeChatUserService{
-            mysql_pool_manager
+            sql_command_executor
         }
     }
 }
 #[async_trait::async_trait]
 impl <'a,'b> LoadUserService for WeChatUserService<'a,'b>{
-    async fn load_user(&self, identity: &String) -> anyhow::Result<Box<dyn UserDetails + Send + Sync>> {
-        let pool = self.mysql_pool_manager.get_pool();
-        let user = sqlx::query_as!(User,"select * from user where wx_open_id=?",identity.to_string())
-            .fetch_one(pool).await;
-        if user.is_ok() {
+    async fn load_user(&mut self, identity: &String) -> anyhow::Result<Box<dyn UserDetails + Send + Sync>> {
+        let mut args = MySqlArguments::default();
+        args.add(identity.to_string());
+        let user:Option<User> = self.sql_command_executor.find_option_with("select * from user where wx_open_id=?", args).await?;
+        if user.is_some() {
             let user = user.unwrap();
             let username: String = if user.username.is_some() {
                 user.username.unwrap()
@@ -132,9 +133,12 @@ impl <'a,'b> LoadUserService for WeChatUserService<'a,'b>{
             }))
         }else {
             let id: i64 = ID_GENERATOR.lock().unwrap().real_time_generate();
-            let rows_affected = sqlx::query!("insert into `user`(id,wx_open_id,created_time,enable) values(?,?,?,?)",id,identity.to_string(),Local::now(),1)
-                .execute(pool).await?
-                .rows_affected();
+            let mut args = MySqlArguments::default();
+            args.add(id);
+            args.add(identity.to_string());
+            args.add(Local::now());
+            args.add(1);
+            let rows_affected = self.sql_command_executor.execute_with("insert into `user`(id,wx_open_id,created_time,enable) values(?,?,?,?)",args).await?;
             if rows_affected > 0 {
                 Ok(Box::new(DefaultUserDetails {
                     id,
@@ -322,30 +326,34 @@ impl AuthenticationToken for UsernamePasswordAuthenticationToken{
     }
 }
 pub struct DefaultLoadUserService<'a,'b>{
-    mysql_pool_manager: &'a DbPoolManager<'b,MySql>
+    sql_command_executor: &'b SqlCommandExecutor<'a,'b>
 }
 
 impl <'a,'b> DefaultLoadUserService<'a,'b> {
-    pub fn new(mysql_pool_manager: &'a DbPoolManager<'b,MySql>) ->Self{
+    pub fn new(sql_command_executor: &'b SqlCommandExecutor<'a,'b>) ->Self{
         DefaultLoadUserService{
-            mysql_pool_manager
+            sql_command_executor
         }
     }
 }
 #[async_trait::async_trait]
 impl <'a,'b> LoadUserService for DefaultLoadUserService<'a,'b>{
-    async fn load_user(&self, username: &String) -> anyhow::Result<Box<dyn UserDetails + Send + Sync>> {
-        let pool = self.mysql_pool_manager.get_pool();
-        let user = sqlx::query_as!(User,"select * from `user` where username=?",username).fetch_one(pool)
-            .await?;
-        let user_details = DefaultUserDetails{
-            id: user.id,
-            username: user.username.unwrap(),
-            password: user.password.unwrap(),
-            authorities: vec![],
-            enable: user.enable == 1,
-        };
-        Ok(Box::new(user_details))
+    async fn load_user(&mut self, username: &String) -> anyhow::Result<Box<dyn UserDetails + Send + Sync>> {
+        let mut args = MySqlArguments::default();
+        args.add(username);
+        let user:Option<User> = self.sql_command_executor.find_option_with("select * from `user` where username=?",args).await?;
+        if user.is_some() {
+            let user_details = DefaultUserDetails {
+                id: user.id,
+                username: user.username.unwrap(),
+                password: user.password.unwrap(),
+                authorities: vec![],
+                enable: user.enable == 1,
+            };
+            Ok(Box::new(user_details))
+        }else {
+            Err(anyhow!(format!("user '{}' not exists!",username)))
+        }
     }
 }
 pub struct DefaultAuthenticationProvider {

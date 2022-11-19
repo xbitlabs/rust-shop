@@ -10,7 +10,6 @@ use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 use serde::Serialize;
 use serde::Deserialize;
-use crate::db_pool_manager::DbPoolManager;
 use crate::jwt::{AccessToken, Claims, JwtService};
 use crate::app_config::load_mod_config;
 use crate::id_generator::ID_GENERATOR;

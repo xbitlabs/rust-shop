@@ -41,7 +41,7 @@ use rust_shop_core::{
     ResponseBuilder,
     Server
 };
-use rust_shop_core::db_pool_manager::{ DbPoolManager, MysqlPoolStateProvider, mysql_connection_pool};
+use rust_shop_core::db::{DbPoolManager, MysqlPoolStateProvider, mysql_connection_pool};
 use rust_shop_core::extensions::Extensions;
 use rust_shop_core::extract::{FromRequest, IntoResponse};
 use rust_shop_core::extract::json::Json;

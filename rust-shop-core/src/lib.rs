@@ -3,7 +3,7 @@ pub mod state;
 pub mod security;
 pub mod router;
 pub mod jwt;
-pub mod db_pool_manager;
+pub mod db;
 pub mod wechat_service;
 pub mod app_config;
 pub mod jwt_service;

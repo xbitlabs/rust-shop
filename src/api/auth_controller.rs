@@ -24,7 +24,7 @@ pub mod AuthController {
     use std::sync::Arc;
     use sqlx::{Arguments, MySql, Pool, Row};
     use uuid::Uuid;
-    use rust_shop_core::db_pool_manager::DbPoolManager;
+    use rust_shop_core::db::DbPoolManager;
     use rust_shop_core::extensions::Extensions;
     use rust_shop_core::extract::extension::Extension;
     use rust_shop_core::extract::form::Form;

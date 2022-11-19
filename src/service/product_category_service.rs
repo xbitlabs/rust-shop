@@ -2,7 +2,7 @@ use std::borrow::BorrowMut;
 use std::fmt::Error;
 use sqlx::{MySql, MySqlPool};
 use uuid::Uuid;
-use rust_shop_core::db_pool_manager::{mysql_connection_pool, TransactionManager};
+use rust_shop_core::db::{mysql_connection_pool, TransactionManager};
 use rust_shop_core::id_generator::ID_GENERATOR;
 use crate::entity::entity::ProductCategory;
 use crate::{DbPoolManager};
