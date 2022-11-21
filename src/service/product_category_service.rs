@@ -6,6 +6,7 @@ use rust_shop_core::db::{mysql_connection_pool, SqlCommandExecutor, TransactionM
 use rust_shop_core::id_generator::ID_GENERATOR;
 use crate::entity::entity::ProductCategory;
 use chrono::Local;
+use rust_shop_core::jwt_service::DefaultJwtService;
 
 
 pub struct ProductCategoryService<'a,'b>{
@@ -20,6 +21,9 @@ impl <'a,'b> ProductCategoryService<'a,'b> {
     pub async fn list_all_categories(&mut self)->anyhow::Result<Vec<ProductCategory>>  {
         let categories = self.sql_command_executor.find_all("SELECT * FROM product_category").await?;
         println!("查询到的数据有{}条",categories.len());
+
+        let jwt_service = DefaultJwtService::new(self.sql_command_executor);
+
         Ok(categories)
     }
     pub async fn test_tran(&mut self) ->anyhow::Result<()>  {
