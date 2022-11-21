@@ -831,7 +831,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
         }
         i = i + 1;
     }
-    let mut db_pool_code = String::from("");
+/*    let mut db_pool_code = String::from("");
     let mut db_pool_commit_rollback_code = String::from("");
     if inject_db_pool {
         db_pool_code = format!("let pool:&State<Pool<MySql>> = ctx.extensions.get().unwrap();\r\n
@@ -849,13 +849,14 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                 }}
                 Ok(handler_result.unwrap().into_response())
             }}",db_pool_param_name);
-    }
+    }*/
     let original_fn_name = ident.to_string();
     let handler_proxy_fn = String::from("pub async fn ") + &*handler_proxy_name + "(ctx:RequestCtx)->anyhow::Result<Response<Body>>{\r\n" +
-        &*db_pool_code +
+        //&*db_pool_code +
         &*handler_proxy_fn_body +
         "let handler_result = " + &*original_fn_name + "(" + &*inputs + ").await;\r\n" +
-        &*db_pool_commit_rollback_code +
+        "Ok(handler_result.unwrap().into_response())\r\n" +
+        //&*db_pool_commit_rollback_code +
         "}\r\n";
     //panic!("{:#?}",handler_fn);
     let handler_token_stream = TokenStream::from_str(handler_proxy_fn.as_str()).unwrap();

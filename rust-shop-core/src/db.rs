@@ -91,7 +91,7 @@ impl TransactionManager{
     }
     pub async fn commit(mut self)->anyhow::Result<()>{
         if self.rollback_only {
-            return Err(anyhow!("current transaction rollback only"));
+            return Err(anyhow!("current transaction support rollback only"));
         }
         self.tran.commit().await?;
         Ok(())
@@ -104,13 +104,13 @@ impl TransactionManager{
     }
 }
 
-
 pub enum SqlCommandExecutor<'db,'a> {
     UseTransaction(&'a mut TransactionManager),
     WithoutTransaction(&'db Pool<MySql>),
 }
 
 impl<'db,'a> SqlCommandExecutor<'db,'a> {
+
     pub async fn execute(&mut self, query: &str) -> anyhow::Result<u64> {
         return match self {
             Self::UseTransaction(ref mut tran_manager) =>{

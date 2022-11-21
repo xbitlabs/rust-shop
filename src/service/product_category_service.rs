@@ -2,26 +2,23 @@ use std::borrow::BorrowMut;
 use std::fmt::Error;
 use sqlx::{MySql, MySqlPool};
 use uuid::Uuid;
-use rust_shop_core::db::{mysql_connection_pool, TransactionManager};
+use rust_shop_core::db::{mysql_connection_pool, SqlCommandExecutor, TransactionManager};
 use rust_shop_core::id_generator::ID_GENERATOR;
 use crate::entity::entity::ProductCategory;
-use crate::{DbPoolManager};
 use chrono::Local;
 
 
 pub struct ProductCategoryService<'a,'b>{
-    mysql_pool_manager: &'a DbPoolManager<'b,MySql>
+    sql_command_executor: &'b mut SqlCommandExecutor<'a,'b>
 }
 impl <'a,'b> ProductCategoryService<'a,'b> {
-    pub fn new(mysql_pool_manager:&'b DbPoolManager<MySql>) ->Self{
+    pub fn new(sql_command_executor:&'b mut SqlCommandExecutor<'a,'b>) ->Self{
         ProductCategoryService{
-            mysql_pool_manager
+            sql_command_executor
         }
     }
-    pub async fn list_all_categories(&self)->anyhow::Result<Vec<ProductCategory>>  {
-        let pool = mysql_connection_pool().await?;
-        let categories = sqlx::query_as!(ProductCategory,"SELECT * FROM product_category")
-            .fetch_all(self.mysql_pool_manager.get_pool()).await?;
+    pub async fn list_all_categories(&mut self)->anyhow::Result<Vec<ProductCategory>>  {
+        let categories = self.sql_command_executor.find_all("SELECT * FROM product_category").await?;
         println!("查询到的数据有{}条",categories.len());
         Ok(categories)
     }

@@ -5,15 +5,18 @@ use chrono::NaiveDateTime;
 use jsonwebtoken::{Algorithm, decode, DecodingKey, encode, EncodingKey, Header, TokenData, Validation};
 use lazy_static::lazy_static;
 use log::info;
-use sqlx::{Database, Executor, MySql};
+use sqlx::{Arguments, Database, Executor, MySql};
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 use serde::Serialize;
 use serde::Deserialize;
+use sqlx::mysql::MySqlArguments;
 use crate::jwt::{AccessToken, Claims, JwtService};
 use crate::app_config::load_mod_config;
+use crate::db::SqlCommandExecutor;
 use crate::id_generator::ID_GENERATOR;
 use crate::entity::UserJwt;
+use crate::security::LoadUserService;
 
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -33,20 +36,20 @@ lazy_static! {
 }
 
 pub struct DefaultJwtService<'a,'b>{
-    mysql_pool_manager: &'a DbPoolManager<'b,MySql>
+    sql_command_executor: &'b mut SqlCommandExecutor<'a,'b>
 }
 
 impl <'a,'b> DefaultJwtService<'a,'b> {
-    pub fn new(mysql_pool_manager: &'a DbPoolManager<'b,MySql>) -> Self {
-        DefaultJwtService {
-            mysql_pool_manager
-        }
+    pub fn new(sql_command_executor: &'b mut SqlCommandExecutor<'a,'b>) -> Box<dyn JwtService + Send + Sync + 'b> {
+        Box::new(DefaultJwtService {
+            sql_command_executor
+        })
     }
 }
 
 #[async_trait::async_trait]
 impl <'a,'b> JwtService for DefaultJwtService<'a,'b> {
-    async fn grant_access_token(&self,user_id: i64) -> anyhow::Result<AccessToken> {
+    async fn grant_access_token(&mut self, user_id: i64) -> anyhow::Result<AccessToken> {
         let jwt_config = &JWT_CONFIG;
         let iat = OffsetDateTime::now_utc();
         let access_token_exp = iat + Duration::days(jwt_config.access_token_validity / 60 / 60 / 24);
@@ -69,9 +72,18 @@ impl <'a,'b> JwtService for DefaultJwtService<'a,'b> {
         let access_token =  encode(&Header::default(), &access_token_claims, &EncodingKey::from_secret(JWT_CONFIG.secret.as_ref()))?;
         let refresh_token = encode(&Header::default(), &refresh_token_claims, &EncodingKey::from_secret(JWT_CONFIG.secret.as_ref()))?;
 
-        let conn_pool = self.mysql_pool_manager.get_pool();
+        //let conn_pool = self.mysql_pool_manager.get_pool();
         let user_jwt_id = ID_GENERATOR.lock().unwrap().real_time_generate();
-        sqlx::query!(r#"insert into user_jwt(id,user_id,token_id,access_token,refresh_token,issue_time) values(?,?,?,?,?,?)"#,
+        let mut args = MySqlArguments::default();
+        args.add(user_jwt_id);
+        args.add(user_id);
+        args.add(token_id.as_str().to_string());
+        args.add(access_token.as_str().to_string());
+        args.add(refresh_token.as_str().to_string());
+        args.add(NaiveDateTime::from_timestamp(iat.unix_timestamp(),0),);
+
+        let rows_affected = self.sql_command_executor.execute_with("insert into user_jwt(id,user_id,token_id,access_token,refresh_token,issue_time) values(?,?,?,?,?,?)",args).await?;
+        /*sqlx::query!(r#"insert into user_jwt(id,user_id,token_id,access_token,refresh_token,issue_time) values(?,?,?,?,?,?)"#,
                     user_jwt_id,
                     user_id,
                     token_id.as_str().to_string(),
@@ -80,12 +92,17 @@ impl <'a,'b> JwtService for DefaultJwtService<'a,'b> {
                     NaiveDateTime::from_timestamp(iat.unix_timestamp(),0),
              )
             .execute(conn_pool).await?
-            .rows_affected();
-        Ok(AccessToken{
-            access_token,
-            refresh_token,
-            exp:jwt_config.access_token_validity,
-        })
+            .rows_affected();*/
+        return if rows_affected > 0 {
+            Ok(AccessToken{
+                access_token,
+                refresh_token,
+                exp:jwt_config.access_token_validity,
+            })
+        }else {
+            Err(anyhow!("grant_access_token failed!"))
+        }
+
     }
 
     async fn decode_access_token(&self,access_token: String) -> anyhow::Result<Claims> {
@@ -102,39 +119,43 @@ impl <'a,'b> JwtService for DefaultJwtService<'a,'b> {
         Ok(token_data.claims)
     }
 
-    async fn refresh_token(&self,refresh_token: String) -> anyhow::Result<AccessToken> {
+    async fn refresh_token(&mut self, refresh_token: String) -> anyhow::Result<AccessToken> {
         println!("当前线程id={:?}",thread::current().id());
         let decode_refresh_token = self.decode_refresh_token(refresh_token).await?;
 
-        let conn_pool = self.mysql_pool_manager.get_pool();
+        //let conn_pool = self.mysql_pool_manager.get_pool();
+        let mut args = MySqlArguments::default();
+        args.add(decode_refresh_token.user_id);
+        args.add(decode_refresh_token.token_id.clone());
 
-        let user_jwt_iter = sqlx::query_as!(UserJwt,"select * from user_jwt where user_id=? and token_id=?",
-                decode_refresh_token.user_id,
-                decode_refresh_token.token_id)
-            .fetch_all(conn_pool)
-            .await?;
-        if user_jwt_iter.len() == 0 {
+        let user_jwt_iter:Option<UserJwt> = self.sql_command_executor.find_option_with("select * from user_jwt where user_id=? and token_id=?",
+                args).await?;
+
+        if user_jwt_iter.is_none() {
             return Err(anyhow!("refresh_token不存在"));
         }
-        let rows_affected = sqlx::query!("delete from user_jwt where user_id=? and token_id=?",
-                decode_refresh_token.user_id,
-                decode_refresh_token.token_id)
-            .execute(conn_pool)
-            .await?
-            .rows_affected();
+
+        let mut args = MySqlArguments::default();
+        args.add(decode_refresh_token.user_id);
+        args.add(decode_refresh_token.token_id);
+
+        let rows_affected = self.sql_command_executor.execute_with("delete from user_jwt where user_id=? and token_id=?",
+                args).await?;
         info!("refresh_token删除旧token影响行数：{}",rows_affected);
         self.grant_access_token(decode_refresh_token.user_id).await
     }
 
 
 
-    async fn remove_access_token(&self, access_token: String) -> anyhow::Result<bool> {
+    async fn remove_access_token(&mut self, access_token: String) -> anyhow::Result<bool> {
         let decode_access_token = self.decode_access_token(access_token).await?;
-        let pool = self.mysql_pool_manager.get_pool();
-        let rows_affected = sqlx::query!("delete from user_jwt where user_id=? and token_id=?",decode_access_token.user_id,decode_access_token.token_id)
-            .execute(pool)
-            .await?
-            .rows_affected();
+        //let pool = self.mysql_pool_manager.get_pool();
+        let mut args = MySqlArguments::default();
+        args.add(decode_access_token.user_id);
+        args.add(decode_access_token.token_id);
+
+        let rows_affected = self.sql_command_executor.execute_with("delete from user_jwt where user_id=? and token_id=?",args)
+            .await?;
         Ok(rows_affected > 0)
     }
 }

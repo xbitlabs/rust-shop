@@ -81,6 +81,7 @@ pub struct RequestCtx {
 //pub type RequestStateProvider = dyn Fn() -> State<T> + Send + Sync;
 pub trait RequestStateProvider{
     fn get_state(&self, extensions: &Arc<Extensions>, req: &Request<Body>) ->Box<dyn Any + Send + Sync>;
+    fn matches(&self,ctx:&RequestCtx)->bool;
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

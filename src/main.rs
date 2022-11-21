@@ -41,19 +41,11 @@ use rust_shop_core::{
     ResponseBuilder,
     Server
 };
-use rust_shop_core::db::{DbPoolManager, MysqlPoolStateProvider, mysql_connection_pool};
+use rust_shop_core::db::{mysql_connection_pool, SqlCommandExecutor};
 use rust_shop_core::extensions::Extensions;
 use rust_shop_core::extract::{FromRequest, IntoResponse};
 use rust_shop_core::extract::json::Json;
-use rust_shop_core::security::{
-    AuthenticationTokenResolver,
-    AuthenticationTokenResolverFn,
-    LoadUserService,
-    LoadUserServiceFn,
-    SecurityConfig,
-    WeChatMiniAppAuthenticationTokenResolver,
-    WeChatUserService
-};
+use rust_shop_core::security::{AuthenticationTokenResolver, AuthenticationTokenResolverFn, DefaultLoadUserService, LoadUserService, LoadUserServiceFn, SecurityConfig, WeChatMiniAppAuthenticationTokenResolver, WeChatUserService};
 use rust_shop_core::state::State;
 use rust_shop_core::router::register_route;
 use rust_shop_core::security::NopPasswordEncoder;
@@ -77,6 +69,9 @@ impl Filter for AuthFilter {
     }
 }
 
+fn load_user_service_fn<'a,'b>(sql_command_executor:&'b mut SqlCommandExecutor<'a,'b>) ->Box<dyn LoadUserService + Send + Sync + 'b>{
+    WeChatUserService::new(sql_command_executor)
+}
 
 #[tokio::main]
 #[rust_shop_macro::scan_route("/src")]
@@ -112,17 +107,14 @@ async fn main() ->anyhow::Result<()>{
     security_config.password_encoder(Box::new(NopPasswordEncoder{}));
     security_config.load_user_service(
         LoadUserServiceFn::from(
-            Box::new(|request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn LoadUserService + Send + Sync>{
-                let state: Option<&Box<dyn Any + Send + Sync>> = request_states.get();
-                let state: Option<&DbPoolManager<MySql>> = state.unwrap().downcast_ref();
-                let pool = state.unwrap();
-                Box::new(WeChatUserService::new(pool))
+            Box::new( |request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn for<'c,'d> Fn(&'d mut SqlCommandExecutor<'c,'d>)->Box<(dyn LoadUserService + Send + Sync + 'd)> + Send + Sync>{
+                Box::new(load_user_service_fn)
             }))
     );
     srv.security_config(security_config);
 
-    let mysql_pool_state_provider : Box<dyn RequestStateProvider + Sync + Send> = Box::new(MysqlPoolStateProvider);
-    srv.request_state(mysql_pool_state_provider);
+    //let mysql_pool_state_provider : Box<dyn RequestStateProvider + Sync + Send> = Box::new(MysqlPoolStateProvider);
+    //srv.request_state(mysql_pool_state_provider);
 
     srv.post("/", IndexController::index);
     //登录

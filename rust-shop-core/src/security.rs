@@ -1,5 +1,6 @@
 use std::any::Any;
 use std::collections::HashMap;
+use std::ops::DerefMut;
 use std::sync::Arc;
 use anyhow::anyhow;
 use bcrypt::{DEFAULT_COST, hash, verify};
@@ -13,15 +14,15 @@ use crate::wechat_service::WeChatMiniAppService;
 use crate::entity::User;
 use crate::id_generator::ID_GENERATOR;
 use chrono::Local;
-use sqlx::{Arguments, MySql};
+use sqlx::{Acquire, Arguments, MySql, Pool};
 use sqlx::mysql::MySqlArguments;
-use crate::db::SqlCommandExecutor;
+use crate::db::{SqlCommandExecutor, TransactionManager};
 use crate::jwt_service::DefaultJwtService;
 
 #[async_trait::async_trait]
 pub trait  LoadUserService
 {
-    async fn load_user(&self, identity: &String) -> anyhow::Result<Box<dyn UserDetails + Send + Sync>>;
+    async fn load_user(&mut self, identity: &String) -> anyhow::Result<Box<dyn UserDetails + Send + Sync>>;
 }
 //获取登陆凭证
 #[async_trait::async_trait]
@@ -96,16 +97,17 @@ impl AuthenticationTokenResolver for WeChatMiniAppAuthenticationTokenResolver {
     }
 }
 pub struct WeChatUserService<'a,'b>{
-    sql_command_executor: &'b SqlCommandExecutor<'a,'b>
+    sql_command_executor: &'b mut SqlCommandExecutor<'a,'b>
 }
 
 impl <'a,'b> WeChatUserService<'a,'b> {
-    pub fn new(sql_command_executor: &'b SqlCommandExecutor<'a,'b>) ->Self{
-        WeChatUserService{
+    pub fn new(sql_command_executor: &'b mut SqlCommandExecutor<'a,'b>) ->Box<dyn LoadUserService + Send + Sync + 'b>{
+        Box::new(WeChatUserService{
             sql_command_executor
-        }
+        })
     }
 }
+
 #[async_trait::async_trait]
 impl <'a,'b> LoadUserService for WeChatUserService<'a,'b>{
     async fn load_user(&mut self, identity: &String) -> anyhow::Result<Box<dyn UserDetails + Send + Sync>> {
@@ -326,14 +328,14 @@ impl AuthenticationToken for UsernamePasswordAuthenticationToken{
     }
 }
 pub struct DefaultLoadUserService<'a,'b>{
-    sql_command_executor: &'b SqlCommandExecutor<'a,'b>
+    sql_command_executor: &'b mut SqlCommandExecutor<'a,'b>
 }
 
 impl <'a,'b> DefaultLoadUserService<'a,'b> {
-    pub fn new(sql_command_executor: &'b SqlCommandExecutor<'a,'b>) ->Self{
-        DefaultLoadUserService{
+    pub fn new(sql_command_executor: &'b mut SqlCommandExecutor<'a,'b>) ->Box<dyn LoadUserService + Send + Sync + 'b>{
+        Box::new(DefaultLoadUserService{
             sql_command_executor
-        }
+        })
     }
 }
 #[async_trait::async_trait]
@@ -343,6 +345,7 @@ impl <'a,'b> LoadUserService for DefaultLoadUserService<'a,'b>{
         args.add(username);
         let user:Option<User> = self.sql_command_executor.find_option_with("select * from `user` where username=?",args).await?;
         if user.is_some() {
+            let user = user.unwrap();
             let user_details = DefaultUserDetails {
                 id: user.id,
                 username: user.username.unwrap(),
@@ -356,12 +359,14 @@ impl <'a,'b> LoadUserService for DefaultLoadUserService<'a,'b>{
         }
     }
 }
-pub struct DefaultAuthenticationProvider {
+pub struct DefaultAuthenticationProvider<'a,'b> {
+    sql_command_executor:&'b mut SqlCommandExecutor<'a,'b>
 }
-impl DefaultAuthenticationProvider {
-    pub fn new()->Self{
-        DefaultAuthenticationProvider {
-        }
+impl <'a,'b> DefaultAuthenticationProvider<'a,'b> {
+    pub fn new(sql_command_executor:&'b mut SqlCommandExecutor<'a,'b>)->Box<dyn AuthenticationProvider + Send + Sync + 'b>{
+        Box::new(DefaultAuthenticationProvider {
+            sql_command_executor
+        })
     }
 }
 pub struct UsernamePasswordAuthentication{
@@ -401,8 +406,15 @@ impl Authentication for UsernamePasswordAuthentication {
     }
 }
 #[async_trait::async_trait]
-impl AuthenticationProvider for DefaultAuthenticationProvider {
+impl <'a,'b> AuthenticationProvider for DefaultAuthenticationProvider<'a,'b> {
     async fn authenticate(&self, request_states:Arc<Extensions>,app_extensions:Arc<Extensions>,authentication_token: Box<dyn AuthenticationToken + Send + Sync>) -> anyhow::Result<Box<dyn Authentication + Send + Sync>> {
+
+        let pool_state:Option<&State<Pool<MySql>>> = app_extensions.get();
+        let pool = pool_state.unwrap().get_ref();
+        let tran = pool.begin().await?;
+        let mut tran_manager = TransactionManager::new(tran);
+        let mut sql_command_executor = SqlCommandExecutor::UseTransaction(&mut tran_manager);
+
         let identify:Option<&String> = authentication_token.get_principal().downcast_ref();
 
         let  security_config:&State<SecurityConfig> = app_extensions.get().unwrap();
@@ -411,7 +423,10 @@ impl AuthenticationProvider for DefaultAuthenticationProvider {
 
         let identify = identify.unwrap();
 
-        let load_user_service : Box<dyn LoadUserService + Send + Sync> = security_config.get_load_user_service()(&request_states, &Arc::clone(&app_extensions));
+        //let user_service = security_config.get_load_user_service()(&request_states, &Arc::clone(&app_extensions))(&mut sql_command_executor);
+
+        let load_user_service_fn  = security_config.get_load_user_service()(&request_states, &Arc::clone(&app_extensions));
+        let mut load_user_service = load_user_service_fn(&mut sql_command_executor);
         let details = load_user_service.load_user(identify).await?;
         let user_details_checker:Box<dyn UserDetailsChecker + Send + Sync> = security_config.get_user_details_checker()(&request_states, &Arc::clone(&app_extensions));
         user_details_checker.check(&details).await?;
@@ -538,15 +553,22 @@ pub struct AuthenticationProcessingFilter{
 impl Filter for AuthenticationProcessingFilter{
     async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>> {
 
+        let pool_state:Option<&State<Pool<MySql>>> = ctx.extensions.get();
+        let pool = pool_state.unwrap().get_ref();
+        let tran = pool.begin().await?;
+        let mut tran_manager = TransactionManager::new(tran);
+        let mut sql_command_executor = SqlCommandExecutor::UseTransaction(&mut tran_manager);
+        let sql_command_executor = &mut sql_command_executor;
+
         let  security_config:&State<SecurityConfig> = ctx.extensions.get().unwrap();
         let request_states = Arc::new(ctx.request_states);
         let request_states = Arc::clone(&request_states);
 
         let authentication_token_resolver= security_config.get_authentication_token_resolver()(&request_states, &Arc::clone(&ctx.extensions));
-        let jwt_service = security_config.get_jwt_service()(&request_states, &Arc::clone(&ctx.extensions));
+        let mut jwt_service = security_config.get_jwt_service()(&request_states, &Arc::clone(&ctx.extensions))(sql_command_executor);
         let success_handler = security_config.get_authentication_success_handler();
         let fail_handler = security_config.get_authentication_failure_handler();
-        let auth_provider = security_config.get_authentication_provider()(&request_states, &Arc::clone(&ctx.extensions));
+        let auth_provider = security_config.get_authentication_provider()(&request_states, &Arc::clone(&ctx.extensions))(sql_command_executor);
         let authentication_token = authentication_token_resolver.resolve(ctx.request).await?;
 
         let authentication = auth_provider.authenticate(Arc::clone(&request_states), Arc::clone(&ctx.extensions),authentication_token).await;
@@ -597,12 +619,15 @@ pub trait  AuthenticationFailureHandler{
 }
 
 pub type AuthenticationTokenResolverFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>) -> Box<dyn AuthenticationTokenResolver + Send + Sync + 'a> + Send + Sync>;
-pub type JwtServiceFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)->Box<dyn JwtService + Send + Sync + 'a> + Send + Sync>;
+pub type JwtServiceFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)->Box<dyn for<'c,'d> Fn(&'d mut SqlCommandExecutor<'c,'d>)->Box<dyn JwtService + Send + Sync + 'd> + Send + Sync> + Send + Sync>;
 pub type AuthenticationSuccessHandlerFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)->Box<dyn AuthenticationSuccessHandler + Send + Sync + 'a> + Send + Sync>;
 pub type AuthenticationFailureHandlerFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)->Box<dyn AuthenticationFailureHandler + Send + Sync + 'a> + Send + Sync>;
-pub type LoadUserServiceFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)-> Box<dyn LoadUserService + Send + Sync + 'a> + Send + Sync>;
-pub type AuthenticationProviderFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)->Box<dyn AuthenticationProvider + Send + Sync + 'a> + Send + Sync>;
+pub type LoadUserServiceFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)-> Box<dyn for<'c,'d> Fn(&'d mut SqlCommandExecutor<'c,'d>)->Box<dyn LoadUserService + Send + Sync + 'd> + Send + Sync> + Send + Sync>;
+pub type AuthenticationProviderFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)->Box<dyn for<'c,'d> Fn(&'d mut SqlCommandExecutor<'c,'d>)->Box<dyn AuthenticationProvider + Send + Sync + 'd> + Send + Sync> + Send + Sync>;
 pub type UserDetailsCheckerFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>)->Box<dyn UserDetailsChecker + Send + Sync + 'a> + Send + Sync>;
+
+pub type LoadUserFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>,&mut SqlCommandExecutor,&String)-> anyhow::Result<Box<dyn UserDetails + Send + Sync>>>;
+pub type GrantAccessTokenFn = Box<dyn for<'a,'b> Fn(&'a Arc<Extensions>,&'b Arc<Extensions>,&mut SqlCommandExecutor,i64)-> anyhow::Result<AccessToken>>;
 
 
 pub struct SecurityConfig{
@@ -617,6 +642,15 @@ pub struct SecurityConfig{
     password_encoder:Box<dyn PasswordEncoder + Send + Sync>
 }
 
+fn load_user_service_fn<'a,'b>(sql_command_executor:&'b mut SqlCommandExecutor<'a,'b>) ->Box<dyn LoadUserService + Send + Sync + 'b>{
+    DefaultLoadUserService::new(sql_command_executor)
+}
+fn jwt_service_fn<'a,'b>(sql_command_executor:&'b mut SqlCommandExecutor<'a,'b>) ->Box<dyn JwtService + Send + Sync + 'b>{
+    DefaultJwtService::new(sql_command_executor)
+}
+fn authentication_provider_fn<'a,'b>(sql_command_executor:&'b mut SqlCommandExecutor<'a,'b>) ->Box<dyn AuthenticationProvider + Send + Sync + 'b>{
+    DefaultAuthenticationProvider::new(sql_command_executor)
+}
 impl SecurityConfig {
     pub fn new()->Self {
         SecurityConfig {
@@ -626,25 +660,19 @@ impl SecurityConfig {
                     Box::new(UsernamePasswordAuthenticationTokenResolver::new())
                 })),
             jwt_service: JwtServiceFn::from(
-                Box::new(|request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn JwtService + Send + Sync>{
-                    let state: Option<&Box<dyn Any + Send + Sync>> = request_states.get();
-                    let state: Option<&DbPoolManager<MySql>> = state.unwrap().downcast_ref();
-                    let pool = state.unwrap();
-                    Box::new(DefaultJwtService::new(pool))
+                Box::new( |request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn for<'c,'d> Fn(&'d mut SqlCommandExecutor<'c,'d>)->Box<(dyn JwtService + Send + Sync + 'd)> + Send + Sync>{
+                    Box::new(jwt_service_fn)
                 })
             ),
             authentication_success_handler: None,
             authentication_failure_handler: None,
             load_user_service: LoadUserServiceFn::from(
-                Box::new(|request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn LoadUserService + Send + Sync>{
-                    let state: Option<&Box<dyn Any + Send + Sync>> = request_states.get();
-                    let state: Option<&DbPoolManager<MySql>> = state.unwrap().downcast_ref();
-                    let pool = state.unwrap();
-                    Box::new(DefaultLoadUserService::new(pool))
+                Box::new( |request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn for<'c,'d> Fn(&'d mut SqlCommandExecutor<'c,'d>)->Box<(dyn LoadUserService + Send + Sync + 'd)> + Send + Sync>{
+                    Box::new(load_user_service_fn)
                 })),
             authentication_provider: AuthenticationProviderFn::from(
-                Box::new(|request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn AuthenticationProvider + Send + Sync>{
-                    Box::new(DefaultAuthenticationProvider::new())
+                Box::new( |request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn for<'c,'d> Fn(&'d mut SqlCommandExecutor<'c,'d>)->Box<(dyn AuthenticationProvider + Send + Sync + 'd)> + Send + Sync>{
+                    Box::new(authentication_provider_fn)
                 })),
             user_details_checker: UserDetailsCheckerFn::from(
                 Box::new(|request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn UserDetailsChecker + Send + Sync>{

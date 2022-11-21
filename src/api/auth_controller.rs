@@ -24,7 +24,6 @@ pub mod AuthController {
     use std::sync::Arc;
     use sqlx::{Arguments, MySql, Pool, Row};
     use uuid::Uuid;
-    use rust_shop_core::db::DbPoolManager;
     use rust_shop_core::extensions::Extensions;
     use rust_shop_core::extract::extension::Extension;
     use rust_shop_core::extract::form::Form;
@@ -53,68 +52,12 @@ pub mod AuthController {
                       PathVariable(age):PathVariable<u32>,
                       RequestParam(name):RequestParam<Option<String>>,
                       RequestParam(address):RequestParam<String>,
-                      Form(user):Form<User>,
-                      pool: &mut DbPoolManager<'_, MySql>) ->anyhow::Result<Json<User>>{
-        pool.begin().await?;
+                      Form(user):Form<User>) ->anyhow::Result<Json<User>>{
 
-        let mut p = ProductCategoryService::new(pool);
-
-        p.test_tran().await?;
-
-
-
-        let user_id = ID_GENERATOR.lock().unwrap().real_time_generate();
-        let wx_open_id = Uuid::new_v4().to_string();
-
-
-        let rows_affected = sqlx::query!("insert into `user`(id,wx_open_id,created_time,enable) values(?,?,?,?)",user_id,wx_open_id,Local::now(),1)
-            .execute(pool.get_pool()).await?
-            .rows_affected();
-
-        let user_id = ID_GENERATOR.lock().unwrap().real_time_generate();
-        let wx_open_id = Uuid::new_v4().to_string();
-        let rows_affected = sqlx::query!("insert into `user`(id,wx_open_id,created_time,enable) values(?,?,?,?)",user_id,wx_open_id,Local::now(),1)
-            .execute(pool.get_pool()).await?
-            .rows_affected();
-
-        let mut args = sqlx::mysql::MySqlArguments::default();
-        args.add(1);
-        let result:Vec<ProductCategory> = sqlx::query_as_with("select * from product_category where id = ?",args)
-            .fetch_all(pool.get_pool()).await?;
-
-        println!("{:#?}",*result.get(0).unwrap());
-
-
-        if true {
-            return Err(anyhow!("我故意抛出异常的"));
-        }
-
-        let user_id = ID_GENERATOR.lock().unwrap().real_time_generate();
-        let wx_open_id = Uuid::new_v4().to_string();
-        let rows_affected = sqlx::query!("insert into `user`(id,wx_open_id,created_time,enable) values(?,?,?,?)",user_id,wx_open_id,Local::now(),1)
-            .execute(pool.get_pool()).await?
-            .rows_affected();
-
-        let categories = sqlx::query_as!(ProductCategory,"SELECT * FROM product_category")
-            .fetch_all(pool.get_pool()).await?;
-        println!("查询到的数据有{}条",categories.len());
-
-        println!("token={:?}",token);
-        println!("cookie={:?}",cookie);
-        println!("id={:?}",id);
-        println!("age={:?}",age);
-        println!("name={:?}",name);
-        println!("address={:?}",address);
         let u = User{
             id:id.unwrap(),
             name:name.unwrap()
         };
-        if token.is_none() {
-            println!("token={}","None");
-        }else {
-            println!("token={}",token.unwrap());
-        }
-        println!("{:?}",u);
 
         Ok(Json(u))
     }

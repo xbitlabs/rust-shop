@@ -57,9 +57,9 @@ pub struct AccessToken{
 }
 #[async_trait::async_trait]
 pub trait JwtService{
-    async fn grant_access_token(&self,user_id: i64) -> anyhow::Result<AccessToken>;
+    async fn grant_access_token(&mut self,user_id: i64) -> anyhow::Result<AccessToken>;
     async fn decode_access_token(&self,access_token: String) -> anyhow::Result<Claims>;
     async fn decode_refresh_token(&self,refresh_token: String) -> anyhow::Result<Claims>;
-    async fn refresh_token(&self,refresh_token: String) -> anyhow::Result<AccessToken>;
-    async fn remove_access_token(&self, access_token: String) -> anyhow::Result<bool>;
+    async fn refresh_token(&mut self,refresh_token: String) -> anyhow::Result<AccessToken>;
+    async fn remove_access_token(&mut self, access_token: String) -> anyhow::Result<bool>;
 }
