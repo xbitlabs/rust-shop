@@ -565,25 +565,26 @@ impl Filter for AuthenticationProcessingFilter{
         let request_states = Arc::clone(&request_states);
 
         let authentication_token_resolver= security_config.get_authentication_token_resolver()(&request_states, &Arc::clone(&ctx.extensions));
-        let mut jwt_service = security_config.get_jwt_service()(&request_states, &Arc::clone(&ctx.extensions))(sql_command_executor);
-        let success_handler = security_config.get_authentication_success_handler();
-        let fail_handler = security_config.get_authentication_failure_handler();
         let auth_provider = security_config.get_authentication_provider()(&request_states, &Arc::clone(&ctx.extensions))(sql_command_executor);
         let authentication_token = authentication_token_resolver.resolve(ctx.request).await?;
 
         let authentication = auth_provider.authenticate(Arc::clone(&request_states), Arc::clone(&ctx.extensions),authentication_token).await;
+
         if authentication.is_ok() {
             let authentication = authentication.unwrap();
+            let success_handler = security_config.get_authentication_success_handler();
             if success_handler.is_some() {
                 let result = success_handler.as_ref().unwrap()(&Arc::clone(&request_states), &Arc::clone(&ctx.extensions)).handle(authentication).await?;
                 Ok(result)
             }else {
                 let user_details:Option<&Box<dyn UserDetails + Send + Sync>> = authentication.get_details().downcast_ref();
+                let mut jwt_service = security_config.get_jwt_service()(&request_states, &Arc::clone(&ctx.extensions))(sql_command_executor);
                 let access_token = jwt_service.grant_access_token(*user_details.unwrap().get_id()).await?;
                 let endpoint_result:EndpointResult<AccessToken> = EndpointResult::ok_with_payload("",access_token);
                 Ok(ResponseBuilder::with_endpoint_result(endpoint_result))
             }
         }else {
+            let fail_handler = security_config.get_authentication_failure_handler();
             if fail_handler.is_some() {
                 let result = fail_handler.as_ref().unwrap()(&Arc::clone(&request_states), &Arc::clone(&ctx.extensions)).handle(authentication.err().unwrap()).await?;
                 Ok(result)
