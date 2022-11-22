@@ -39,108 +39,17 @@ pub mod AuthController {
     use crate::service::product_category_service::ProductCategoryService;
     use crate::StatusCode;
     use rust_shop_core::db::TransactionManager;
+    use rust_shop_core::APP_EXTENSIONS;
+
 
     #[derive(serde::Serialize, serde::Deserialize, Debug)]
     pub struct User {
         pub id: u32,
         pub name: String,
     }
-    pub async fn test_handler_proxy11(ctx: RequestCtx) -> anyhow::Result<Response<Body>> {
-        let pool_state: Option<&State<Pool<MySql>>> = ctx.extensions.get();
-        let pool = pool_state.unwrap().get_ref();
-        let mut sql_exe = SqlCommandExecutor::WithoutTransaction(pool);
-        let extensions: Arc<Extensions> = ctx.extensions.clone();
-        let request_states: Arc<Extensions> = ctx.request_states.clone();
-        let mut token: Header<Option<String>> = Header(None);
-        let token_tmp_var = ctx.headers.get("token");
-        if token_tmp_var.is_some() {
-            let token_tmp_var = token_tmp_var.unwrap();
-            if token_tmp_var.is_some() {
-                token = Header(Some(token_tmp_var.as_ref().unwrap().to_string()));
-            }
-        }
-        let mut cookie_tmp_var_1: Option<Header<String>> = None;
-        let cookie_tmp_var_2 = ctx.headers.get("cookie");
-        if cookie_tmp_var_2.is_none() {
-            return Err(anyhow!("header 'cookie' is None"));
-        } else {
-            let cookie_tmp_var_2 = cookie_tmp_var_2.unwrap();
-            if cookie_tmp_var_2.is_none() {
-                return Err(anyhow!("header 'cookie' is None"));
-            } else {
-                cookie_tmp_var_1 = Some(Header(cookie_tmp_var_2.as_ref().unwrap().to_string()));
-            }
-        }
-        let cookie: Header<String> = cookie_tmp_var_1.unwrap();
-        let mut id: PathVariable<Option<u32>> = PathVariable(None);
-        let id_tmp_var = ctx.router_params.find("id");
-        if id_tmp_var.is_some() {
-            let id_tmp_var = id_tmp_var.unwrap().to_string();
-            let id_tmp_var = id_tmp_var.parse::<u32>();
-            if id_tmp_var.is_err() {
-                return Err(anyhow!("PathVariable 'id' is invalid"));
-            } else {
-                id = PathVariable(Some(id_tmp_var.unwrap()));
-            }
-        }
-        let mut age: Option<PathVariable<u32>> = None;
-        let age_tmp_var = ctx.router_params.find("age");
-        if age_tmp_var.is_none() {
-            return Err(anyhow!("router param 'age' is None"));
-        } else {
-            let parse_result = age_tmp_var.unwrap().to_string().parse::<u32>();
-            if parse_result.is_err() {
-                return Err(anyhow!("router param 'age' is invalid"));
-            } else {
-                age = Some(PathVariable(parse_result.unwrap()));
-            }
-        }
-        let age = age.unwrap();
-        let mut name: RequestParam<Option<String>> = RequestParam(None);
-        let name_tmp_var = ctx.query_params.get("name");
-        if name_tmp_var.is_some() {
-            let name_tmp_var = name_tmp_var.unwrap().to_string();
-            let name_tmp_var = name_tmp_var.parse::<String>();
-            if name_tmp_var.is_err() {
-                return Err(anyhow!("RequestParam 'name' is invalid"));
-            } else {
-                name = RequestParam(Some(name_tmp_var.unwrap()));
-            }
-        }
-        let mut address: Option<RequestParam<String>> = None;
-        let address_tmp_var = ctx.query_params.get("address");
-        if address_tmp_var.is_none() {
-            return Err(anyhow!("router param 'address' is None"));
-        } else {
-            let parse_result = address_tmp_var.unwrap().to_string().parse::<String>();
-            if parse_result.is_err() {
-                return Err(anyhow!("router param 'address' is invalid"));
-            } else {
-                address = Some(RequestParam(parse_result.unwrap()));
-            }
-        }
-        let address = address.unwrap();
-        let user = Form::from_request(ctx).await?;
-        let handler_result = test(
-            extensions,
-            request_states,
-            token,
-            cookie,
-            id,
-            age,
-            name,
-            address,
-            user,
-            &mut sql_exe,
-        )
-            .await?;
-        Ok(handler_result.into_response())
-    }
 
-    #[route("POST", "/user/:id/:age")]
+    //#[route("POST", "/user/:id/:age")]
     pub async fn test(
-        extensions: Arc<Extensions>,
-        request_states: Arc<Extensions>,
         Header(token): Header<Option<String>>,
         Header(cookie): Header<String>,
         PathVariable(id): PathVariable<Option<u32>>,

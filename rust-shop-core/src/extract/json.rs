@@ -1,6 +1,8 @@
+use std::borrow::BorrowMut;
 use std::ops::{Deref, DerefMut};
 
 use async_trait::async_trait;
+use bytes::Buf;
 use hyper::body::{Bytes, HttpBody};
 use hyper::header::HeaderValue;
 use hyper::{header, Body, Response, StatusCode};
@@ -12,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::extract::ExtractError::{
     JsonDataError, JsonIoError, JsonSyntaxError, MissingJsonContentType,
 };
-use crate::extract::{body_to_bytes, ExtractError, FromRequest, IntoResponse};
+use crate::extract::{ ExtractError, FromRequest, IntoResponse};
 use crate::{BoxError, EndpointResult, RequestCtx, ResponseBuilder};
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -26,9 +28,9 @@ where
 {
     type Rejection = ExtractError;
 
-    async fn from_request(ctx: RequestCtx) -> Result<Self, ExtractError> {
+    async fn from_request(ctx:&mut RequestCtx) -> Result<Self, ExtractError> {
         if json_content_type(&ctx) {
-            let bytes = body_to_bytes(ctx.request).await;
+            let bytes = body_to_bytes(ctx.body.borrow_mut()).await;
             if bytes.is_err() {
                 return Err(JsonIoError);
             }
@@ -63,7 +65,7 @@ where
 }
 
 fn json_content_type(ctx: &RequestCtx) -> bool {
-    let content_type = if let Some(content_type) = ctx.request.headers().get(header::CONTENT_TYPE) {
+    let content_type = if let Some(content_type) = ctx.parts.headers.get(header::CONTENT_TYPE) {
         content_type
     } else {
         return false;
@@ -86,7 +88,37 @@ fn json_content_type(ctx: &RequestCtx) -> bool {
 
     is_json_content_type
 }
+pub(crate) async fn body_to_bytes<T>(body:&mut T) -> Result<Bytes,T::Error>
+    where
+        T: http_body::Body + std::marker::Unpin,
+{
+    futures_util::pin_mut!(body);
 
+    // If there's only 1 chunk, we can just return Buf::to_bytes()
+    let mut first = if let Some(buf) = body.data().await {
+        buf?
+    } else {
+        return Ok(Bytes::new());
+    };
+
+    let second = if let Some(buf) = body.data().await {
+        buf?
+    } else {
+        return Ok(first.copy_to_bytes(first.remaining()));
+    };
+
+    // With more than 1 buf, we gotta flatten into a Vec first.
+    let cap = first.remaining() + second.remaining() + body.size_hint().lower() as usize;
+    let mut vec = Vec::with_capacity(cap);
+    vec.put(first);
+    vec.put(second);
+
+    while let Some(buf) = body.data().await {
+        vec.put(buf?);
+    }
+
+    Ok(vec.into())
+}
 impl<T> Deref for Json<T> {
     type Target = T;
 

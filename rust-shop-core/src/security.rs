@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::borrow::BorrowMut;
 use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::sync::Arc;
@@ -20,7 +21,7 @@ use crate::jwt::{AccessToken, JwtService};
 use crate::jwt_service::DefaultJwtService;
 use crate::state::State;
 use crate::wechat_service::WeChatMiniAppService;
-use crate::{parse_form_params, EndpointResult, Filter, Next, RequestCtx, ResponseBuilder};
+use crate::{parse_form_params, EndpointResult, Filter, Next, RequestCtx, ResponseBuilder, APP_EXTENSIONS};
 
 #[async_trait::async_trait]
 pub trait LoadUserService {
@@ -35,7 +36,7 @@ pub trait LoadUserService {
 pub trait AuthenticationTokenResolver {
     async fn resolve(
         &self,
-        req: Request<Body>,
+        ctx:&mut RequestCtx,
     ) -> anyhow::Result<Box<dyn AuthenticationToken + Send + Sync>>;
 }
 
@@ -51,7 +52,7 @@ impl UsernamePasswordAuthenticationTokenResolver {
 impl AuthenticationTokenResolver for UsernamePasswordAuthenticationTokenResolver {
     async fn resolve(
         &self,
-        req: Request<Body>,
+        req:&mut RequestCtx,
     ) -> anyhow::Result<Box<dyn AuthenticationToken + Send + Sync>> {
         let params: HashMap<String, String> = parse_form_params(req).await;
         let username = params.get("username");
@@ -90,7 +91,7 @@ pub struct WeChatMiniAppAuthenticationTokenResolver {}
 impl AuthenticationTokenResolver for WeChatMiniAppAuthenticationTokenResolver {
     async fn resolve(
         &self,
-        req: Request<Body>,
+        req:&mut RequestCtx ,
     ) -> anyhow::Result<Box<dyn AuthenticationToken + Send + Sync>> {
         let params: HashMap<String, String> = parse_form_params(req).await;
         let js_code = params.get("jsCode");
@@ -471,75 +472,73 @@ impl Authentication for UsernamePasswordAuthentication {
 impl<'r,'a, 'b> AuthenticationProvider for DefaultAuthenticationProvider<'r,'a, 'b> {
     async fn authenticate(
         &mut self,
-        request_states: Arc<Extensions>,
-        app_extensions: Arc<Extensions>,
+        req:&mut RequestCtx,
         authentication_token: Box<dyn AuthenticationToken + Send + Sync>,
     ) -> anyhow::Result<Box<dyn Authentication + Send + Sync>> {
 
         let identify: Option<&String> = authentication_token.get_principal().downcast_ref();
+        unsafe {
+            let mut security_config: &mut SecurityConfig = APP_EXTENSIONS.get_mut::<SecurityConfig>().unwrap().borrow_mut();
 
-        let security_config: &State<SecurityConfig> = app_extensions.get().unwrap();
+            let identify = identify.unwrap();
 
-        let request_states = Arc::clone(&request_states);
-
-        let identify = identify.unwrap();
-
-        let load_user_service_fn =
-            security_config.get_load_user_service()(&request_states, &Arc::clone(&app_extensions));
-        let mut load_user_service = load_user_service_fn(self.sql_command_executor);
-        let details = load_user_service.load_user(identify).await?;
-        //手动释放load_user_service，不然无法第二次借用可变sql_command_executor
-        drop(load_user_service);
-        let user_details_checker: Box<dyn UserDetailsChecker + Send + Sync> = security_config
-            .get_user_details_checker()(
-            &request_states,
-            &Arc::clone(&app_extensions),
-        );
-        user_details_checker.check(&details).await?;
-        self.additional_authentication_checks(
-            Arc::clone(&request_states),
-            Arc::clone(&app_extensions),
-            &details,
-            &authentication_token,
-        )
-        .await?;
-        let mut authorities = vec![];
-        for authority in details.get_authorities() {
-            authorities.push(authority.to_string());
+            let load_user_service_fn =
+                security_config.get_load_user_service()(req);
+            let mut load_user_service = load_user_service_fn(self.sql_command_executor);
+            let details = load_user_service.load_user(identify).await?;
+            //手动释放load_user_service，不然无法第二次借用可变sql_command_executor
+            drop(load_user_service);
+            let user_details_checker: Box<dyn UserDetailsChecker + Send + Sync> = security_config
+                .get_user_details_checker()(
+                req
+            );
+            user_details_checker.check(&details).await?;
+            drop(user_details_checker);
+            self.additional_authentication_checks(
+                req,
+                &details,
+                &authentication_token,
+            )
+                .await?;
+            let mut authorities = vec![];
+            for authority in details.get_authorities() {
+                authorities.push(authority.to_string());
+            }
+            let password: Option<&String> = authentication_token.get_credentials().downcast_ref();
+            let password = password.unwrap();
+            let authentication: UsernamePasswordAuthentication = UsernamePasswordAuthentication {
+                authentication_token: UsernamePasswordAuthenticationToken {
+                    username: identify.to_string(),
+                    password: password.to_string(),
+                },
+                authorities: Some(authorities),
+                authenticated: true,
+                details: Box::new(details),
+            };
+            Ok(Box::new(authentication))
         }
-        let password: Option<&String> = authentication_token.get_credentials().downcast_ref();
-        let password = password.unwrap();
-        let authentication: UsernamePasswordAuthentication = UsernamePasswordAuthentication {
-            authentication_token: UsernamePasswordAuthenticationToken {
-                username: identify.to_string(),
-                password: password.to_string(),
-            },
-            authorities: Some(authorities),
-            authenticated: true,
-            details: Box::new(details),
-        };
-        Ok(Box::new(authentication))
     }
 
     async fn additional_authentication_checks(
         &mut self,
-        request_states: Arc<Extensions>,
-        app_extensions: Arc<Extensions>,
+        req:&mut RequestCtx,
         user_details: &Box<dyn UserDetails + Send + Sync>,
         authentication_token: &Box<dyn AuthenticationToken + Send + Sync>,
     ) -> anyhow::Result<()> {
         //let details : Box<DefaultUserDetails> = user_details.downcast().unwrap();
-        let security_config: &State<SecurityConfig> = app_extensions.get().unwrap();
-        let password: Option<&String> = authentication_token.get_credentials().downcast_ref();
-        let password = password.unwrap();
-        let matches = security_config
-            .get_password_encoder()
-            .matches(password, user_details.get_password())?;
-        return if matches {
-            Ok(())
-        } else {
-            Err(anyhow!("无效密码"))
-        };
+        unsafe {
+            let security_config: & mut SecurityConfig = APP_EXTENSIONS.get_mut::<SecurityConfig>().unwrap();
+            let password: Option<&String> = authentication_token.get_credentials().downcast_ref();
+            let password = password.unwrap();
+            let matches = security_config
+                .get_password_encoder()
+                .matches(password, user_details.get_password())?;
+            return if matches {
+                Ok(())
+            } else {
+                Err(anyhow!("无效密码"))
+            };
+        }
     }
 }
 
@@ -620,14 +619,12 @@ impl UserDetailsChecker for DefaultUserDetailsChecker {
 pub trait AuthenticationProvider {
     async fn authenticate(
         &mut self,
-        request_states: Arc<Extensions>,
-        app_extensions: Arc<Extensions>,
+        req:&mut RequestCtx,
         authentication_token: Box<dyn AuthenticationToken + Send + Sync>,
     ) -> anyhow::Result<Box<dyn Authentication + Send + Sync>>;
     async fn additional_authentication_checks(
         &mut self,
-        request_states: Arc<Extensions>,
-        app_extensions: Arc<Extensions>,
+        req:&mut RequestCtx,
         user_details: &Box<dyn UserDetails + Send + Sync>,
         authentication_token: &Box<dyn AuthenticationToken + Send + Sync>,
     ) -> anyhow::Result<()>;
@@ -647,78 +644,73 @@ pub struct AuthenticationProcessingFilter {}
 impl Filter for AuthenticationProcessingFilter {
     async fn handle<'a>(
         &'a self,
-        ctx: RequestCtx,
+        ctx:&mut RequestCtx,
         next: Next<'a>,
     ) -> anyhow::Result<Response<Body>> {
-        let pool_state: Option<&State<Pool<MySql>>> = ctx.extensions.get();
-        let pool = pool_state.unwrap().get_ref();
-        let tran = pool.begin().await?;
-        let mut tran_manager = TransactionManager::new(tran);
-        let mut sql_command_executor = SqlCommandExecutor::WithTransaction(&mut tran_manager);
+        unsafe {
+            let pool_state: Option<&State<Pool<MySql>>> = APP_EXTENSIONS.get();
+            let pool = pool_state.unwrap().get_ref();
+            let tran = pool.begin().await?;
+            let mut tran_manager = TransactionManager::new(tran);
+            let mut sql_command_executor = SqlCommandExecutor::WithTransaction(&mut tran_manager);
 
-        let security_config: &State<SecurityConfig> = ctx.extensions.get().unwrap();
-        let request_states = Arc::new(ctx.request_states);
-        let request_states = Arc::clone(&request_states);
+            let security_config: &mut SecurityConfig = APP_EXTENSIONS.get_mut::<SecurityConfig>().unwrap();
+            //let request_states = Arc::new(ctx.request_states);
+            //let request_states = Arc::clone(&request_states);
 
-        let authentication_token_resolver = security_config.get_authentication_token_resolver()(
-            &request_states,
-            &Arc::clone(&ctx.extensions),
-        );
-        let mut auth_provider = security_config.get_authentication_provider()(
-            &request_states,
-            &Arc::clone(&ctx.extensions),
-        )(&mut sql_command_executor);
-        let authentication_token = authentication_token_resolver.resolve(ctx.request).await?;
+            let authentication_token_resolver = security_config.get_authentication_token_resolver()();
+            let authentication_token = authentication_token_resolver.resolve(ctx).await?;
+            drop(authentication_token_resolver);
 
-        let authentication = auth_provider
-            .authenticate(
-                Arc::clone(&request_states),
-                Arc::clone(&ctx.extensions),
-                authentication_token,
-            )
-            .await;
-        //手动释放load_user_service，不然无法第二次借用可变sql_command_executor
-        drop(auth_provider);
-
-        if authentication.is_ok() {
-            let authentication = authentication.unwrap();
-            let success_handler = security_config.get_authentication_success_handler();
-            if success_handler.is_some() {
-                let result = success_handler.as_ref().unwrap()(
-                    &Arc::clone(&request_states),
-                    &Arc::clone(&ctx.extensions),
+            let mut auth_provider = security_config.get_authentication_provider()(
+                ctx
+            )(&mut sql_command_executor);
+            let authentication = auth_provider
+                .authenticate(
+                    ctx,
+                    authentication_token,
                 )
-                .handle(authentication)
-                .await?;
-                Ok(result)
+                .await;
+            //手动释放load_user_service，不然无法第二次借用可变sql_command_executor
+            drop(auth_provider);
+
+            if authentication.is_ok() {
+                let authentication = authentication.unwrap();
+                let success_handler = security_config.get_authentication_success_handler();
+                if success_handler.is_some() {
+                    let result = success_handler.as_ref().unwrap()(
+                        ctx
+                    )
+                        .handle(authentication)
+                        .await?;
+                    Ok(result)
+                } else {
+                    let user_details: Option<&Box<dyn UserDetails + Send + Sync>> =
+                        authentication.get_details().downcast_ref();
+                    let mut jwt_service = security_config.get_jwt_service()(
+                        ctx
+                    )(&mut sql_command_executor);
+                    let access_token = jwt_service
+                        .grant_access_token(*user_details.unwrap().get_id())
+                        .await?;
+                    let endpoint_result: EndpointResult<AccessToken> =
+                        EndpointResult::ok_with_payload("", access_token);
+                    Ok(ResponseBuilder::with_endpoint_result(endpoint_result))
+                }
             } else {
-                let user_details: Option<&Box<dyn UserDetails + Send + Sync>> =
-                    authentication.get_details().downcast_ref();
-                let mut jwt_service = security_config.get_jwt_service()(
-                    &request_states,
-                    &Arc::clone(&ctx.extensions),
-                )(&mut sql_command_executor);
-                let access_token = jwt_service
-                    .grant_access_token(*user_details.unwrap().get_id())
-                    .await?;
-                let endpoint_result: EndpointResult<AccessToken> =
-                    EndpointResult::ok_with_payload("", access_token);
-                Ok(ResponseBuilder::with_endpoint_result(endpoint_result))
-            }
-        } else {
-            let fail_handler = security_config.get_authentication_failure_handler();
-            if fail_handler.is_some() {
-                let result = fail_handler.as_ref().unwrap()(
-                    &Arc::clone(&request_states),
-                    &Arc::clone(&ctx.extensions),
-                )
-                .handle(authentication.err().unwrap())
-                .await?;
-                Ok(result)
-            } else {
-                let endpoint_result: EndpointResult<AccessToken> =
-                    EndpointResult::unauthorized("登录凭证无效");
-                Ok(ResponseBuilder::with_endpoint_result(endpoint_result))
+                let fail_handler = security_config.get_authentication_failure_handler();
+                if fail_handler.is_some() {
+                    let result = fail_handler.as_ref().unwrap()(
+                        ctx
+                    )
+                        .handle(authentication.err().unwrap())
+                        .await?;
+                    Ok(result)
+                } else {
+                    let endpoint_result: EndpointResult<AccessToken> =
+                        EndpointResult::unauthorized("登录凭证无效");
+                    Ok(ResponseBuilder::with_endpoint_result(endpoint_result))
+                }
             }
         }
     }
@@ -730,7 +722,7 @@ impl Filter for AuthenticationProcessingFilter {
 
 pub struct UsernamePasswordAuthenticationFilter {}
 
-#[derive(FormParser, serde::Deserialize, serde::Serialize, Debug)]
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
 pub struct UsernamePassword {
     pub username: String,
     pub password: String,
@@ -750,17 +742,13 @@ pub trait AuthenticationFailureHandler {
 }
 
 pub type AuthenticationTokenResolverFn = Box<
-    dyn for<'a, 'b> Fn(
-            &'a Arc<Extensions>,
-            &'b Arc<Extensions>,
-        ) -> Box<dyn AuthenticationTokenResolver + Send + Sync + 'a>
+    dyn Fn()-> Box<dyn AuthenticationTokenResolver + Send + Sync>
         + Send
         + Sync,
 >;
 pub type JwtServiceFn = Box<
-    dyn for<'a, 'b> Fn(
-            &'a Arc<Extensions>,
-            &'b Arc<Extensions>,
+    dyn for<'a> Fn(
+            &'a  mut RequestCtx
         ) -> Box<
             dyn for<'r,'c, 'd> Fn(
                     &'r mut SqlCommandExecutor<'c, 'd>,
@@ -771,25 +759,22 @@ pub type JwtServiceFn = Box<
         + Sync,
 >;
 pub type AuthenticationSuccessHandlerFn = Box<
-    dyn for<'a, 'b> Fn(
-            &'a Arc<Extensions>,
-            &'b Arc<Extensions>,
+    dyn for<'a> Fn(
+            &'a  mut RequestCtx
         ) -> Box<dyn AuthenticationSuccessHandler + Send + Sync + 'a>
         + Send
         + Sync,
 >;
 pub type AuthenticationFailureHandlerFn = Box<
-    dyn for<'a, 'b> Fn(
-            &'a Arc<Extensions>,
-            &'b Arc<Extensions>,
+    dyn for<'a> Fn(
+            &'a  mut RequestCtx
         ) -> Box<dyn AuthenticationFailureHandler + Send + Sync + 'a>
         + Send
         + Sync,
 >;
 pub type LoadUserServiceFn = Box<
-    dyn for<'a, 'b> Fn(
-            &'a Arc<Extensions>,
-            &'b Arc<Extensions>,
+    dyn for<'a> Fn(
+            &'a  mut RequestCtx,
         ) -> Box<
             dyn for<'r,'c, 'd> Fn(
                     &'r mut SqlCommandExecutor<'c, 'd>,
@@ -800,9 +785,8 @@ pub type LoadUserServiceFn = Box<
         + Sync,
 >;
 pub type AuthenticationProviderFn = Box<
-    dyn for<'a, 'b> Fn(
-            &'a Arc<Extensions>,
-            &'b Arc<Extensions>,
+    dyn for<'a> Fn(
+            &'a mut RequestCtx,
         ) -> Box<
             dyn for<'r,'c, 'd> Fn(
                     &'r mut SqlCommandExecutor<'c, 'd>,
@@ -814,9 +798,8 @@ pub type AuthenticationProviderFn = Box<
         + Sync,
 >;
 pub type UserDetailsCheckerFn = Box<
-    dyn for<'a, 'b> Fn(
-            &'a Arc<Extensions>,
-            &'b Arc<Extensions>,
+    dyn for<'a> Fn(
+            &'a  mut RequestCtx,
         ) -> Box<dyn UserDetailsChecker + Send + Sync + 'a>
         + Send
         + Sync,
@@ -858,15 +841,12 @@ impl SecurityConfig {
         SecurityConfig {
             enable_security: false,
             authentication_token_resolver: AuthenticationTokenResolverFn::from(Box::new(
-                |request_states: &Arc<Extensions>,
-                 app_extensions: &Arc<Extensions>|
-                 -> Box<dyn AuthenticationTokenResolver + Send + Sync> {
+                || -> Box<dyn AuthenticationTokenResolver + Send + Sync> {
                     Box::new(UsernamePasswordAuthenticationTokenResolver::new())
                 },
             )),
             jwt_service: JwtServiceFn::from(Box::new(
-                |request_states: &Arc<Extensions>,
-                 app_extensions: &Arc<Extensions>|
+                |req:& mut RequestCtx|
                  -> Box<
                     dyn for<'r,'c, 'd> Fn(
                             &'r mut SqlCommandExecutor<'c, 'd>,
@@ -879,8 +859,7 @@ impl SecurityConfig {
             authentication_success_handler: None,
             authentication_failure_handler: None,
             load_user_service: LoadUserServiceFn::from(Box::new(
-                |request_states: &Arc<Extensions>,
-                 app_extensions: &Arc<Extensions>|
+                |req:& mut RequestCtx|
                  -> Box<
                     dyn for<'r,'c, 'd> Fn(
                             &'r mut SqlCommandExecutor<'c, 'd>,
@@ -891,8 +870,7 @@ impl SecurityConfig {
                 > { Box::new(load_user_service_fn) },
             )),
             authentication_provider: AuthenticationProviderFn::from(Box::new(
-                |request_states: &Arc<Extensions>,
-                 app_extensions: &Arc<Extensions>|
+                |re:& mut RequestCtx|
                  -> Box<
                     dyn for<'r,'c, 'd> Fn(
                             &'r mut SqlCommandExecutor<'c, 'd>,
@@ -903,8 +881,7 @@ impl SecurityConfig {
                 > { Box::new(authentication_provider_fn) },
             )),
             user_details_checker: UserDetailsCheckerFn::from(Box::new(
-                |request_states: &Arc<Extensions>,
-                 app_extensions: &Arc<Extensions>|
+                |req:& mut RequestCtx|
                  -> Box<dyn UserDetailsChecker + Send + Sync> {
                     Box::new(DefaultUserDetailsChecker::new())
                 },
@@ -979,7 +956,7 @@ impl SecurityConfig {
     pub fn get_authentication_failure_handler(&self) -> &Option<AuthenticationFailureHandlerFn> {
         &self.authentication_failure_handler
     }
-    pub fn get_load_user_service(&self) -> &LoadUserServiceFn {
+    pub fn get_load_user_service(&mut self) -> &LoadUserServiceFn {
         &self.load_user_service
     }
     pub fn get_authentication_provider(&self) -> &AuthenticationProviderFn {

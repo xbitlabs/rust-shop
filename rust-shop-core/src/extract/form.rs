@@ -1,3 +1,4 @@
+use std::borrow::BorrowMut;
 use std::ops::Deref;
 
 use hyper::body::{Bytes, HttpBody};
@@ -5,8 +6,9 @@ use hyper::{header, Body, Error, Method, Request};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
-use crate::extract::{body_to_bytes, ExtractError, FromRequest};
+use crate::extract::{ ExtractError, FromRequest};
 use crate::{BoxError, RequestCtx};
+use crate::extract::json::body_to_bytes;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Form<T>(pub T);
@@ -28,7 +30,7 @@ where
 
     async fn from_request(ctx:&mut RequestCtx) -> anyhow::Result<Form<T>, ExtractError> {
         if ctx.parts.method == Method::GET {
-            let query = ctx.request.uri().query().unwrap_or_default();
+            let query = ctx.parts.uri.query().unwrap_or_default();
             let value = serde_html_form::from_str(query)
                 .map_err(|_| ExtractError::FailedToDeserializeQueryString)?;
             Ok(Form(value))
@@ -37,7 +39,7 @@ where
                 return Err(ExtractError::InvalidFormContentType);
             }
 
-            let bytes = body_to_bytes(ctx.request).await;
+            let bytes = body_to_bytes(ctx.body.borrow_mut()).await;
             if bytes.is_err() {
                 return Err(ExtractError::FailedToDeserializeFormData);
             }
@@ -52,7 +54,7 @@ where
 
 // this is duplicated in `axum/src/extract/mod.rs`
 fn has_content_type(ctx: &RequestCtx, expected_content_type: &mime::Mime) -> bool {
-    let content_type = if let Some(content_type) = ctx.request.headers().get(header::CONTENT_TYPE) {
+    let content_type = if let Some(content_type) = ctx.parts.headers.get(header::CONTENT_TYPE) {
         content_type
     } else {
         return false;

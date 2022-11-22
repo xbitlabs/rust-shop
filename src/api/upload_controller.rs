@@ -1,4 +1,4 @@
-use std::borrow::{Borrow, BorrowMut};
+/*use std::borrow::{Borrow, BorrowMut};
 use std::convert::Infallible;
 use std::error::Error;
 use std::fs;
@@ -22,7 +22,7 @@ use crate::{EndpointResult, RequestCtx, ResponseBuilder};
 pub struct UploadController;
 
 impl UploadController {
-    pub async fn upload(ctx: RequestCtx) -> anyhow::Result<Response<Body>> {
+    pub async fn upload(ctx:&mut RequestCtx) -> anyhow::Result<Response<Body>> {
         let upload_result = UploadController::handle(ctx.request).await;
         match upload_result {
             Ok(result) => Ok(result),
@@ -200,3 +200,4 @@ impl UploadController {
         return Ok(endpoint_result);
     }
 }
+*/

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+/*use std::path::PathBuf;
 use std::sync::Arc;
 
 use hyper::{Body, Response, StatusCode, Uri};
@@ -37,3 +37,4 @@ pub fn custom_path_resolver(root_path: &str, request_uri: &str) -> PathBuf {
     file_path = file_path + paths.1;
     PathBuf::from(file_path)
 }
+*/

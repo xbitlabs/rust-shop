@@ -38,8 +38,8 @@ pub struct Test {
 
 pub struct IndexController;
 
-impl IndexController {
-    pub async fn index(ctx: RequestCtx) -> anyhow::Result<hyper::Response<hyper::Body>> {
+impl <'a> IndexController{
+    pub async fn index(ctx: &'a mut RequestCtx) -> anyhow::Result<hyper::Response<hyper::Body>> {
         let endpoint_result = EndpointResult::ok_with_payload("", "");
         Ok(ResponseBuilder::with_endpoint_result(endpoint_result))
     }

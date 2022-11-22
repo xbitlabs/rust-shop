@@ -19,7 +19,7 @@ pub fn get_routers() -> &'static mut Router {
     unsafe { &mut GLOBAL_ROUTER }
 }
 
-pub fn register_route<'a>(method: &'a str, path: &'a str, handler: impl HTTPHandler) -> bool {
+pub fn register_route<'a>(method: String, path: String, handler: impl HTTPHandler) -> bool {
     static MUTEX: Mutex<()> = Mutex::new(());
     let lock_result = MUTEX.lock();
     match lock_result {

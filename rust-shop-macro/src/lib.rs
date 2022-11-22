@@ -435,7 +435,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 impl #ident_builder {
                     //#builder_set_fields
 
-                    pub async fn parse(self,req:Request<Body>) -> anyhow::Result<#ident> {
+                    pub async fn parse(self,req:&mut RequestCtx) -> anyhow::Result<#ident> {
                         let form_params = parse_form_params(req).await;
                         #build_lets
                         Ok(#ident { #build_values })
@@ -868,26 +868,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                         );
                 }
             }
-            if param.param_type == "Arc"
-                && param.param_option == "Extensions"
-                && param.param_name == "request_states"
-            {
-                handler_proxy_fn_body = handler_proxy_fn_body
-                    + &*format!(
-                        "let {0}:Arc<Extensions> = ctx.request_states.clone();",
-                        param.param_name
-                    );
-            }
-            if param.param_type == "Arc"
-                && param.param_option == "Extensions"
-                && param.param_name == "extensions"
-            {
-                handler_proxy_fn_body = handler_proxy_fn_body
-                    + &*format!(
-                        "let {0}:Arc<Extensions> = ctx.extensions.clone();",
-                        param.param_name
-                    );
-            }
+
             if param.param_type == "&mut SqlCommandExecutor" {
                 original_fn_inputs.push(String::from("&mut ") + &*param.param_name.clone());
             } else {
@@ -915,7 +896,8 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
         "Ok(handler_result.into_response())\r\n";
     if inject_sql_command_executor {
         sql_command_executor_inject_code =
-            "let pool_state: Option<&State<Pool<MySql>>> = ctx.extensions.get();
+            "let mut pool_state: Option<&State<Pool<MySql>>> = None;
+            unsafe{ pool_state = APP_EXTENSIONS.get(); }
             let pool = pool_state.unwrap().get_ref();
         ".to_string();
         if with_tran {
@@ -943,7 +925,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
 
     }
 
-    let handler_proxy_fn = String::from("pub async fn ") + &*handler_proxy_name + "(ctx:RequestCtx)->anyhow::Result<Response<Body>>{\r\n" +
+    let handler_proxy_fn = String::from("pub async fn ") + &*handler_proxy_name + "(ctx:&mut RequestCtx)->anyhow::Result<Response<Body>>{\r\n" +
         &*sql_command_executor_inject_code +
         &*handler_proxy_fn_body +
         &*handle_result +
@@ -1173,9 +1155,9 @@ pub fn scan_route(args: TokenStream, input: TokenStream) -> TokenStream {
                                                 register_route_fn = register_route_fn
                                                     + "  register_route(\""
                                                     + &*route_method
-                                                    + "\",\""
+                                                    + "\".to_string(),\""
                                                     + &*route_url
-                                                    + "\","
+                                                    + "\".to_string(),"
                                                     + &*handler_fn
                                                     + ");\r\n"
                                             }

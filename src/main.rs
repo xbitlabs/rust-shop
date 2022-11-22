@@ -38,8 +38,6 @@ use rust_shop_core::{
 
 use crate::api::auth_controller;
 use crate::api::index_controller::IndexController;
-use crate::api::static_file_controller::StaticFileController;
-use crate::api::upload_controller::UploadController;
 use crate::config::load_config::APP_CONFIG;
 
 pub mod api;
@@ -60,7 +58,7 @@ pub struct AuthFilter;
 impl Filter for AuthFilter {
     async fn handle<'a>(
         &'a self,
-        ctx: RequestCtx,
+        ctx:& mut RequestCtx,
         next: Next<'a>,
     ) -> anyhow::Result<hyper::Response<hyper::Body>> {
         let endpoint_result: EndpointResult<String> = EndpointResult::server_error("无权限");
@@ -106,16 +104,13 @@ async fn main() -> anyhow::Result<()> {
     let mut security_config = SecurityConfig::new();
     security_config.enable_security(false);
     security_config.authentication_token_resolver(AuthenticationTokenResolverFn::from(Box::new(
-        |request_states: &Arc<Extensions>,
-         app_extensions: &Arc<Extensions>|
-         -> Box<dyn AuthenticationTokenResolver + Send + Sync> {
+        || -> Box<dyn AuthenticationTokenResolver + Send + Sync> {
             Box::new(WeChatMiniAppAuthenticationTokenResolver {})
         },
     )));
     security_config.password_encoder(Box::new(NopPasswordEncoder {}));
     security_config.load_user_service(LoadUserServiceFn::from(Box::new(
-        |request_states: &Arc<Extensions>,
-         app_extensions: &Arc<Extensions>|
+        |req:& mut RequestCtx|
          -> Box<
             dyn for<'r,'c, 'd> Fn(
                     &'r mut SqlCommandExecutor<'c, 'd>,
@@ -129,15 +124,15 @@ async fn main() -> anyhow::Result<()> {
     //let mysql_pool_state_provider : Box<dyn RequestStateProvider + Sync + Send> = Box::new(MysqlPoolStateProvider);
     //srv.request_state(mysql_pool_state_provider);
 
-    srv.post("/", IndexController::index);
+    srv.post("/", &IndexController::index);
     //登录
     //srv.post("/login", AuthController::login);
     //srv.post("/logout", AuthController::logout);
     //srv.post("/refresh_token",AuthController::refresh_token);
     //上传
-    srv.post("/upload", UploadController::upload);
+    //srv.post("/upload", UploadController::upload);
     //静态文件
-    srv.get("/static/:day/:file", StaticFileController::handle);
+    //srv.get("/static/:day/:file", StaticFileController::handle);
     srv.run(addr).await.unwrap();
 
     info!("server shutdown!");

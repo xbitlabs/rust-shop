@@ -30,7 +30,7 @@ pub trait FromRequest: Sized {
     /// a kind of error that can be converted into a response.
     type Rejection: IntoResponse;
     /// Perform the extraction.
-    async fn from_request(req: RequestCtx) -> anyhow::Result<Self, Self::Rejection>;
+    async fn from_request(req:&mut RequestCtx) -> anyhow::Result<Self, Self::Rejection>;
 }
 
 #[derive(Error, Debug)]
@@ -59,8 +59,4 @@ impl IntoResponse for ExtractError {
         error!("转换url参数/form表单为对象时异常");
         builder.body(Body::from("无效请求")).unwrap()
     }
-}
-
-async fn body_to_bytes(req: Request<Body>) -> Result<Bytes, Error> {
-    hyper::body::to_bytes(req).await
 }
