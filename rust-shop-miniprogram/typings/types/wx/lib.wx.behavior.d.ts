@@ -22,32 +22,27 @@ SOFTWARE.
 
 declare namespace WechatMiniprogram.Behavior {
     type BehaviorIdentifier = string
-    type Instance<
-        TData extends DataOption,
+    type Instance<TData extends DataOption,
         TProperty extends PropertyOption,
         TMethod extends MethodOption,
-        TCustomInstanceProperty extends IAnyObject = Record<string, never>
-    > = Component.Instance<TData, TProperty, TMethod, TCustomInstanceProperty>
+        TCustomInstanceProperty extends IAnyObject = Record<string, never>> = Component.Instance<TData, TProperty, TMethod, TCustomInstanceProperty>
     type TrivialInstance = Instance<IAnyObject, IAnyObject, IAnyObject>
     type TrivialOption = Options<IAnyObject, IAnyObject, IAnyObject>
-    type Options<
-        TData extends DataOption,
+    type Options<TData extends DataOption,
         TProperty extends PropertyOption,
         TMethod extends MethodOption,
-        TCustomInstanceProperty extends IAnyObject = Record<string, never>
-    > = Partial<Data<TData>> &
+        TCustomInstanceProperty extends IAnyObject = Record<string, never>> = Partial<Data<TData>> &
         Partial<Property<TProperty>> &
         Partial<Method<TMethod>> &
         Partial<OtherOption> &
         Partial<Lifetimes> &
         ThisType<Instance<TData, TProperty, TMethod, TCustomInstanceProperty>>
+
     interface Constructor {
-        <
-            TData extends DataOption,
+        <TData extends DataOption,
             TProperty extends PropertyOption,
             TMethod extends MethodOption,
-            TCustomInstanceProperty extends IAnyObject = Record<string, never>
-        >(
+            TCustomInstanceProperty extends IAnyObject = Record<string, never>>(
             options: Options<TData, TProperty, TMethod, TCustomInstanceProperty>
         ): BehaviorIdentifier
     }

@@ -21,66 +21,54 @@ SOFTWARE.
 ***************************************************************************** */
 
 declare namespace WechatMiniprogram.Component {
-    type Instance<
-        TData extends DataOption,
+    type Instance<TData extends DataOption,
         TProperty extends PropertyOption,
         TMethod extends Partial<MethodOption>,
         TCustomInstanceProperty extends IAnyObject = {},
-        TIsPage extends boolean = false
-    > = InstanceProperties &
+        TIsPage extends boolean = false> = InstanceProperties &
         InstanceMethods<TData> &
         TMethod &
         (TIsPage extends true ? Page.ILifetime : {}) &
         TCustomInstanceProperty & {
-            /** 组件数据，**包括内部数据和属性值** */
-            data: TData & PropertyOptionToData<TProperty>
-            /** 组件数据，**包括内部数据和属性值**（与 `data` 一致） */
-            properties: TData & PropertyOptionToData<TProperty>
-        }
-    type TrivialInstance = Instance<
+        /** 组件数据，**包括内部数据和属性值** */
+        data: TData & PropertyOptionToData<TProperty>
+        /** 组件数据，**包括内部数据和属性值**（与 `data` 一致） */
+        properties: TData & PropertyOptionToData<TProperty>
+    }
+    type TrivialInstance = Instance<IAnyObject,
         IAnyObject,
         IAnyObject,
-        IAnyObject,
-        IAnyObject
-    >
+        IAnyObject>
     type TrivialOption = Options<IAnyObject, IAnyObject, IAnyObject, IAnyObject>
-    type Options<
-        TData extends DataOption,
+    type Options<TData extends DataOption,
         TProperty extends PropertyOption,
         TMethod extends MethodOption,
         TCustomInstanceProperty extends IAnyObject = {},
-        TIsPage extends boolean = false
-    > = Partial<Data<TData>> &
+        TIsPage extends boolean = false> = Partial<Data<TData>> &
         Partial<Property<TProperty>> &
         Partial<Method<TMethod, TIsPage>> &
         Partial<OtherOption> &
         Partial<Lifetimes> &
-        ThisType<
-            Instance<
-                TData,
-                TProperty,
-                TMethod,
-                TCustomInstanceProperty,
-                TIsPage
-            >
-        >
+        ThisType<Instance<TData,
+            TProperty,
+            TMethod,
+            TCustomInstanceProperty,
+            TIsPage>>
+
     interface Constructor {
-        <
-            TData extends DataOption,
+        <TData extends DataOption,
             TProperty extends PropertyOption,
             TMethod extends MethodOption,
             TCustomInstanceProperty extends IAnyObject = {},
-            TIsPage extends boolean = false
-        >(
-            options: Options<
-                TData,
+            TIsPage extends boolean = false>(
+            options: Options<TData,
                 TProperty,
                 TMethod,
                 TCustomInstanceProperty,
-                TIsPage
-            >
+                TIsPage>
         ): string
     }
+
     type DataOption = Record<string, any>
     type PropertyOption = Record<string, AllProperty>
     type MethodOption = Record<string, Function>
@@ -89,14 +77,17 @@ declare namespace WechatMiniprogram.Component {
         /** 组件的内部数据，和 `properties` 一同用于组件的模板渲染 */
         data?: D
     }
+
     interface Property<P extends PropertyOption> {
         /** 组件的对外属性，是属性名到属性设置的映射表 */
         properties: P
     }
+
     interface Method<M extends MethodOption, TIsPage extends boolean = false> {
         /** 组件的方法，包括事件响应函数和任意的自定义方法，关于事件响应函数的使用，参见 [组件间通信与事件](https://developers.weixin.qq.com/miniprogram/dev/framework/custom-component/events.html) */
         methods: M & (TIsPage extends true ? Partial<Page.ILifetime> : {})
     }
+
     type PropertyType =
         | StringConstructor
         | NumberConstructor
@@ -107,16 +98,16 @@ declare namespace WechatMiniprogram.Component {
     type ValueType<T extends PropertyType> = T extends null
         ? any
         : T extends StringConstructor
-        ? string
-        : T extends NumberConstructor
-        ? number
-        : T extends BooleanConstructor
-        ? boolean
-        : T extends ArrayConstructor
-        ? any[]
-        : T extends ObjectConstructor
-        ? IAnyObject
-        : never
+            ? string
+            : T extends NumberConstructor
+                ? number
+                : T extends BooleanConstructor
+                    ? boolean
+                    : T extends ArrayConstructor
+                        ? any[]
+                        : T extends ObjectConstructor
+                            ? IAnyObject
+                            : never
     type FullProperty<T extends PropertyType> = {
         /** 属性类型 */
         type: T
@@ -126,10 +117,10 @@ declare namespace WechatMiniprogram.Component {
         observer?:
             | string
             | ((
-                  newVal: ValueType<T>,
-                  oldVal: ValueType<T>,
-                  changedPath: Array<string | number>
-              ) => void)
+            newVal: ValueType<T>,
+            oldVal: ValueType<T>,
+            changedPath: Array<string | number>
+        ) => void)
         /** 属性的类型（可以指定多个） */
         optionalTypes?: ShortProperty[]
     }
@@ -191,48 +182,59 @@ declare namespace WechatMiniprogram.Component {
 
         /** 检查组件是否具有 `behavior` （检查时会递归检查被直接或间接引入的所有behavior） */
         hasBehavior(behavior: Behavior.BehaviorIdentifier): void
+
         /** 触发事件，参见组件事件 */
         triggerEvent<DetailType = any>(
             name: string,
             detail?: DetailType,
             options?: TriggerEventOption
         ): void
+
         /** 创建一个 SelectorQuery 对象，选择器选取范围为这个组件实例内 */
         createSelectorQuery(): SelectorQuery
+
         /** 创建一个 IntersectionObserver 对象，选择器选取范围为这个组件实例内 */
         createIntersectionObserver(
             options: CreateIntersectionObserverOption
         ): IntersectionObserver
+
         /** 使用选择器选择组件实例节点，返回匹配到的第一个组件实例对象（会被 `wx://component-export` 影响） */
         selectComponent(selector: string): TrivialInstance
+
         /** 使用选择器选择组件实例节点，返回匹配到的全部组件实例对象组成的数组 */
         selectAllComponents(selector: string): TrivialInstance[]
+
         /**
          * 选取当前组件节点所在的组件实例（即组件的引用者），返回它的组件实例对象（会被 `wx://component-export` 影响）
          *
          * 最低基础库版本：[`2.8.2`](https://developers.weixin.qq.com/miniprogram/dev/framework/compatibility.html)
          **/
         selectOwnerComponent(): TrivialInstance
+
         /** 获取这个关系所对应的所有关联节点，参见 组件间关系 */
         getRelationNodes(relationKey: string): TrivialInstance[]
+
         /**
          * 立刻执行 callback ，其中的多个 setData 之间不会触发界面绘制（只有某些特殊场景中需要，如用于在不同组件同时 setData 时进行界面绘制同步）
          *
          * 最低基础库版本：[`2.4.0`](https://developers.weixin.qq.com/miniprogram/dev/framework/compatibility.html)
          **/
         groupSetData(callback?: () => void): void
+
         /**
          * 返回当前页面的 custom-tab-bar 的组件实例
          *
          * 最低基础库版本：[`2.6.2`](https://developers.weixin.qq.com/miniprogram/dev/framework/compatibility.html)
          **/
         getTabBar(): TrivialInstance
+
         /**
          * 返回页面标识符（一个字符串），可以用来判断几个自定义组件实例是不是在同一个页面内
          *
          * 最低基础库版本：[`2.7.1`](https://developers.weixin.qq.com/miniprogram/dev/framework/compatibility.html)
          **/
         getPageId(): string
+
         /**
          * 执行关键帧动画，详见[动画](https://developers.weixin.qq.com/miniprogram/dev/framework/view/animation.html)
          *
@@ -244,6 +246,7 @@ declare namespace WechatMiniprogram.Component {
             duration: number,
             callback?: () => void
         ): void
+
         /**
          * 执行关键帧动画，详见[动画](https://developers.weixin.qq.com/miniprogram/dev/framework/view/animation.html)
          *
@@ -255,12 +258,14 @@ declare namespace WechatMiniprogram.Component {
             duration: number,
             scrollTimeline: ScrollTimelineOption
         ): void
+
         /**
          * 清除关键帧动画，详见[动画](https://developers.weixin.qq.com/miniprogram/dev/framework/view/animation.html)
          *
          * 最低基础库版本：[`2.9.0`](https://developers.weixin.qq.com/miniprogram/dev/framework/compatibility.html)
          **/
         clearAnimation(selector: string, callback: () => void): void
+
         /**
          * 清除关键帧动画，详见[动画](https://developers.weixin.qq.com/miniprogram/dev/framework/view/animation.html)
          *
@@ -271,12 +276,14 @@ declare namespace WechatMiniprogram.Component {
             options?: ClearAnimationOptions,
             callback?: () => void
         ): void
+
         /**
          * 当从另一页面跳转到该页面时，获得与来源页面实例通信当事件通道，详见 [wx.navigateTo]((wx.navigateTo))
          *
          * 最低基础库版本：[`2.7.3`](https://developers.weixin.qq.com/miniprogram/dev/framework/compatibility.html)
          */
         getOpenerEventChannel(): EventChannel
+
         /**
          * 获取更新性能统计信息，详见 [获取更新性能统计信息]((custom-component/update-perf-stat))
          *
@@ -338,14 +345,17 @@ declare namespace WechatMiniprogram.Component {
     interface RelationOption {
         /** 目标组件的相对关系 */
         type: 'parent' | 'child' | 'ancestor' | 'descendant'
-        /** 关系生命周期函数，当关系被建立在页面节点树中时触发，触发时机在组件attached生命周期之后 */
-        linked?(target: TrivialInstance): void
-        /** 关系生命周期函数，当关系在页面节点树中发生改变时触发，触发时机在组件moved生命周期之后 */
-        linkChanged?(target: TrivialInstance): void
-        /** 关系生命周期函数，当关系脱离页面节点树时触发，触发时机在组件detached生命周期之后 */
-        unlinked?(target: TrivialInstance): void
         /** 如果这一项被设置，则它表示关联的目标节点所应具有的behavior，所有拥有这一behavior的组件节点都会被关联 */
         target?: string
+
+        /** 关系生命周期函数，当关系被建立在页面节点树中时触发，触发时机在组件attached生命周期之后 */
+        linked?(target: TrivialInstance): void
+
+        /** 关系生命周期函数，当关系在页面节点树中发生改变时触发，触发时机在组件moved生命周期之后 */
+        linkChanged?(target: TrivialInstance): void
+
+        /** 关系生命周期函数，当关系脱离页面节点树时触发，触发时机在组件detached生命周期之后 */
+        unlinked?(target: TrivialInstance): void
     }
 
     interface PageLifetimes {
@@ -354,11 +364,13 @@ declare namespace WechatMiniprogram.Component {
          * 页面显示/切入前台时触发。
          */
         show(): void
+
         /** 页面生命周期回调—监听页面隐藏
          *
          * 页面隐藏/切入后台时触发。 如 `navigateTo` 或底部 `tab` 切换到其他页面，小程序切入后台等。
          */
         hide(): void
+
         /** 页面生命周期回调—监听页面尺寸变化
          *
          * 所在页面尺寸变化时执行
@@ -415,6 +427,7 @@ declare namespace WechatMiniprogram.Component {
              */
             error(err: Error): void
         }>
+
         /**
          * @deprecated 旧式的定义方式，基础库 `2.2.3` 起请在 lifetimes 中定义
          *
@@ -423,6 +436,7 @@ declare namespace WechatMiniprogram.Component {
          * 最低基础库版本：[`1.6.3`](https://developers.weixin.qq.com/miniprogram/dev/framework/compatibility.html)
          */
         created(): void
+
         /**
          * @deprecated 旧式的定义方式，基础库 `2.2.3` 起请在 lifetimes 中定义
          *
@@ -431,6 +445,7 @@ declare namespace WechatMiniprogram.Component {
          * 最低基础库版本：[`1.6.3`](https://developers.weixin.qq.com/miniprogram/dev/framework/compatibility.html)
          */
         attached(): void
+
         /**
          * @deprecated 旧式的定义方式，基础库 `2.2.3` 起请在 lifetimes 中定义
          *
@@ -439,6 +454,7 @@ declare namespace WechatMiniprogram.Component {
          * 最低基础库版本：[`1.6.3`](https://developers.weixin.qq.com/miniprogram/dev/framework/compatibility.html)
          */
         ready(): void
+
         /**
          * @deprecated 旧式的定义方式，基础库 `2.2.3` 起请在 lifetimes 中定义
          *
@@ -447,6 +463,7 @@ declare namespace WechatMiniprogram.Component {
          * 最低基础库版本：[`1.6.3`](https://developers.weixin.qq.com/miniprogram/dev/framework/compatibility.html)
          */
         moved(): void
+
         /**
          * @deprecated 旧式的定义方式，基础库 `2.2.3` 起请在 lifetimes 中定义
          *
@@ -455,6 +472,7 @@ declare namespace WechatMiniprogram.Component {
          * 最低基础库版本：[`1.6.3`](https://developers.weixin.qq.com/miniprogram/dev/framework/compatibility.html)
          */
         detached(): void
+
         /**
          * @deprecated 旧式的定义方式，基础库 `2.2.3` 起请在 lifetimes 中定义
          *
@@ -561,6 +579,7 @@ declare namespace WechatMiniprogram.Component {
         /** Z 方向位移，即 CSS transform translateZ */
         translateZ?: number | string
     }
+
     interface ClearAnimationOptions {
         /** 基点位置，即 CSS transform-origin */
         transformOrigin?: boolean
@@ -621,12 +640,15 @@ declare namespace WechatMiniprogram.Component {
         /** Z 方向位移，即 CSS transform translateZ */
         translateZ?: boolean
     }
+
     interface ScrollTimelineKeyframe {
         composite?: 'replace' | 'add' | 'accumulate' | 'auto'
         easing?: string
         offset?: number | null
+
         [property: string]: string | number | null | undefined
     }
+
     interface ScrollTimelineOption {
         /** 指定滚动元素的选择器（只支持 scroll-view），该元素滚动时会驱动动画的进度 */
         scrollSource: string
@@ -644,9 +666,11 @@ declare namespace WechatMiniprogram.Component {
         /** 是否返回变更的 data 字段信息 */
         withDataPaths?: WithDataPath
     }
+
     interface UpdatePerformanceListener<WithDataPath> {
         (res: UpdatePerformance<WithDataPath>): void
     }
+
     interface UpdatePerformance<WithDataPath> {
         /** 此次更新过程的 ID */
         updateProcessId: number

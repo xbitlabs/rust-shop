@@ -13,7 +13,7 @@ edition = "2021"
 #https://zhuanlan.zhihu.com/p/343170504
 #https://zhuanlan.zhihu.com/p/344701514
 # 由于派生宏的使用场景相对固定（目前只能作用于struct、enum、union），syn库中已提供了派生宏输入项的封装——DeriveInput
-syn = {version = "1.0" ,features = ["full","extra-traits"]}
+syn = { version = "1.0", features = ["full", "extra-traits"] }
 
 #用quote!宏生成TokenStream
 quote = "1.0"
@@ -24,11 +24,11 @@ anyhow = "1.0.65"
 validator = "0.16.0"
 validator_derive = "0.16.0"
 proc-macro2 = "1.0.47"
-uuid = {version ="1.1.2" , features = [
-    "v4",                # Lets you generate random UUIDs
-    "fast-rng",          # Use a faster (but still sufficiently random) RNG
+uuid = { version = "1.1.2", features = [
+    "v4", # Lets you generate random UUIDs
+    "fast-rng", # Use a faster (but still sufficiently random) RNG
     "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
-]}
+] }
 
 walkdir = "2.3.2"
 

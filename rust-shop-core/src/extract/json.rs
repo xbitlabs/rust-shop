@@ -1,15 +1,19 @@
 use std::ops::{Deref, DerefMut};
+
 use async_trait::async_trait;
 use hyper::body::{Bytes, HttpBody};
-use hyper::{Body, header, Response, StatusCode};
 use hyper::header::HeaderValue;
+use hyper::{header, Body, Response, StatusCode};
 use log::error;
 use multer::bytes::{BufMut, BytesMut};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use crate::{BoxError, EndpointResult, RequestCtx, ResponseBuilder};
+
+use crate::extract::ExtractError::{
+    JsonDataError, JsonIoError, JsonSyntaxError, MissingJsonContentType,
+};
 use crate::extract::{body_to_bytes, ExtractError, FromRequest, IntoResponse};
-use crate::extract::ExtractError::{JsonDataError, JsonIoError, JsonSyntaxError, MissingJsonContentType};
+use crate::{BoxError, EndpointResult, RequestCtx, ResponseBuilder};
 
 #[derive(Debug, Clone, Copy, Default)]
 #[cfg_attr(docsrs, doc(cfg(feature = "json")))]
@@ -17,16 +21,16 @@ pub struct Json<T>(pub T);
 
 #[async_trait]
 impl<T> FromRequest for Json<T>
-    where
-        T: for<'a> Deserialize<'a>,
+where
+    T: for<'a> Deserialize<'a>,
 {
     type Rejection = ExtractError;
 
-    async fn from_request(ctx:RequestCtx) -> Result<Self, ExtractError> {
+    async fn from_request(ctx: RequestCtx) -> Result<Self, ExtractError> {
         if json_content_type(&ctx) {
             let bytes = body_to_bytes(ctx.request).await;
             if bytes.is_err() {
-                return Err(JsonIoError)
+                return Err(JsonIoError);
             }
             let bytes = bytes.unwrap();
             let value = match serde_json::from_slice(&bytes) {
@@ -58,7 +62,7 @@ impl<T> FromRequest for Json<T>
     }
 }
 
-fn json_content_type(ctx:&RequestCtx) -> bool {
+fn json_content_type(ctx: &RequestCtx) -> bool {
     let content_type = if let Some(content_type) = ctx.request.headers().get(header::CONTENT_TYPE) {
         content_type
     } else {
@@ -104,22 +108,25 @@ impl<T> From<T> for Json<T> {
 }
 
 impl<T> IntoResponse for Json<T>
-    where
-        T: Serialize,
+where
+    T: Serialize,
 {
     fn into_response(self) -> Response<Body> {
         let mut buf = BytesMut::new().writer();
         match serde_json::to_writer(&mut buf, &self.0) {
             Ok(()) => {
                 let mut builder = Response::builder()
-                    .header(header::CONTENT_TYPE,HeaderValue::from_static(mime::APPLICATION_JSON.as_ref()))
+                    .header(
+                        header::CONTENT_TYPE,
+                        HeaderValue::from_static(mime::APPLICATION_JSON.as_ref()),
+                    )
                     .status(StatusCode::OK);
                 builder.body(Body::from(buf.into_inner().freeze())).unwrap()
             }
-            ,
             Err(err) => {
-                error!("转换json数据为对象时异常：{}",err);
-                let result : EndpointResult<String> = EndpointResult::client_error_with_payload("无效的JSON数据",String::from(""));
+                error!("转换json数据为对象时异常：{}", err);
+                let result: EndpointResult<String> =
+                    EndpointResult::client_error_with_payload("无效的JSON数据", String::from(""));
                 ResponseBuilder::with_endpoint_result(result)
             }
         }

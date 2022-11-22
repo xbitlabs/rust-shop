@@ -59,9 +59,10 @@ fn impl_validate(ast: &syn::DeriveInput) -> proc_macro2::TokenStream {
 
     // Adding the validator lifetime 'v_a
     let mut expanded_generic = ast.generics.clone();
-    expanded_generic
-        .params
-        .insert(0, GenericParam::Lifetime(LifetimeDef::new(Lifetime::new("'v_a", ast.span()))));
+    expanded_generic.params.insert(
+        0,
+        GenericParam::Lifetime(LifetimeDef::new(Lifetime::new("'v_a", ast.span()))),
+    );
 
     let (impl_generics, _, _) = expanded_generic.split_for_impl();
 
@@ -116,7 +117,10 @@ fn collect_fields(ast: &syn::DeriveInput) -> Vec<syn::Field> {
             }
             fields.iter().cloned().collect::<Vec<_>>()
         }
-        _ => abort!(ast.span(), "#[derive(Validate)] can only be used with structs"),
+        _ => abort!(
+            ast.span(),
+            "#[derive(Validate)] can only be used with structs"
+        ),
     }
 }
 
@@ -147,12 +151,16 @@ fn construct_validator_argument_type(
     let mut customs: Vec<&mut CustomArgument> = fields_validations
         .iter_mut()
         .flat_map(|x| {
-            x.validations.iter_mut().filter_map(|x| x.validator.get_custom_argument_mut())
+            x.validations
+                .iter_mut()
+                .filter_map(|x| x.validator.get_custom_argument_mut())
         })
         .collect();
 
-    let mut schemas: Vec<&mut CustomArgument> =
-        struct_validations.iter_mut().filter_map(|x| x.args.as_mut()).collect();
+    let mut schemas: Vec<&mut CustomArgument> = struct_validations
+        .iter_mut()
+        .filter_map(|x| x.args.as_mut())
+        .collect();
 
     customs.append(&mut schemas);
 
@@ -200,7 +208,12 @@ fn quote_field_validations(
         let field_quoter = FieldQuoter::new(field_ident, x.name, x.field_type);
 
         for validation in &x.validations {
-            quote_validator(&field_quoter, validation, &mut validations, &mut nested_validations);
+            quote_validator(
+                &field_quoter,
+                validation,
+                &mut validations,
+                &mut nested_validations,
+            );
         }
     });
 
@@ -329,7 +342,11 @@ fn find_fields_type(fields: &[syn::Field]) -> HashMap<String, String> {
                 path.to_tokens(&mut tokens);
                 tokens.to_string().replace(' ', "")
             }
-            syn::Type::Reference(syn::TypeReference { ref lifetime, ref elem, .. }) => {
+            syn::Type::Reference(syn::TypeReference {
+                ref lifetime,
+                ref elem,
+                ..
+            }) => {
                 let mut tokens = proc_macro2::TokenStream::new();
                 elem.to_tokens(&mut tokens);
                 let mut name = tokens.to_string().replace(' ', "");
@@ -501,7 +518,11 @@ fn find_validators_for_field(
                                 };
                             }
                             // Validators with several args
-                            syn::Meta::List(syn::MetaList { ref path, ref nested, .. }) => {
+                            syn::Meta::List(syn::MetaList {
+                                ref path,
+                                ref nested,
+                                ..
+                            }) => {
                                 let meta_items = nested.iter().cloned().collect::<Vec<_>>();
                                 let ident = path.get_ident().unwrap();
                                 match ident.to_string().as_ref() {
@@ -621,7 +642,9 @@ fn find_original_field_name(meta_items: &[&syn::NestedMeta]) -> Option<String> {
         match **meta_item {
             syn::NestedMeta::Meta(ref item) => match *item {
                 syn::Meta::Path(_) => continue,
-                syn::Meta::NameValue(syn::MetaNameValue { ref path, ref lit, .. }) => {
+                syn::Meta::NameValue(syn::MetaNameValue {
+                    ref path, ref lit, ..
+                }) => {
                     let ident = path.get_ident().unwrap();
                     if ident == "rename" {
                         original_name = Some(lit_to_string(lit).unwrap());

@@ -1,5 +1,6 @@
 use std::ops::Deref;
 use std::sync::Arc;
+
 use serde::Serialize;
 
 pub struct State<T: ?Sized>(Arc<T>);
@@ -44,12 +45,12 @@ impl<T: ?Sized> From<Arc<T>> for State<T> {
 }
 
 impl<T> Serialize for State<T>
-    where
-        T: Serialize,
+where
+    T: Serialize,
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer,
+    where
+        S: serde::Serializer,
     {
         self.0.serialize(serializer)
     }

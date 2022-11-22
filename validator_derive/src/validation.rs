@@ -31,7 +31,12 @@ impl FieldInformation {
         name: String,
         validations: Vec<FieldValidation>,
     ) -> Self {
-        FieldInformation { field, field_type, name, validations }
+        FieldInformation {
+            field,
+            field_type,
+            name,
+            validations,
+        }
     }
 }
 
@@ -45,7 +50,11 @@ pub struct FieldValidation {
 
 impl FieldValidation {
     pub fn new(validator: Validator) -> FieldValidation {
-        FieldValidation { code: validator.code().to_string(), validator, message: None }
+        FieldValidation {
+            code: validator.code().to_string(),
+            validator,
+            message: None,
+        }
     }
 }
 
@@ -61,12 +70,20 @@ pub fn extract_length_validation(
     let (message, code) = extract_message_and_code("length", &field, meta_items);
 
     let error = |span: Span, msg: &str| -> ! {
-        abort!(span, "Invalid attribute #[validate] on field `{}`: {}", field, msg);
+        abort!(
+            span,
+            "Invalid attribute #[validate] on field `{}`: {}",
+            field,
+            msg
+        );
     };
 
     for meta_item in meta_items {
         if let syn::NestedMeta::Meta(ref item) = *meta_item {
-            if let syn::Meta::NameValue(syn::MetaNameValue { ref path, ref lit, .. }) = *item {
+            if let syn::Meta::NameValue(syn::MetaNameValue {
+                ref path, ref lit, ..
+            }) = *item
+            {
                 let ident = path.get_ident().unwrap();
                 match ident.to_string().as_ref() {
                     "message" | "code" => continue,
@@ -135,13 +152,20 @@ pub fn extract_range_validation(
     let (message, code) = extract_message_and_code("range", &field, meta_items);
 
     let error = |span: Span, msg: &str| -> ! {
-        abort!(span, "Invalid attribute #[validate] on field `{}`: {}", field, msg);
+        abort!(
+            span,
+            "Invalid attribute #[validate] on field `{}`: {}",
+            field,
+            msg
+        );
     };
 
     for meta_item in meta_items {
         match *meta_item {
             syn::NestedMeta::Meta(ref item) => match *item {
-                syn::Meta::NameValue(syn::MetaNameValue { ref path, ref lit, .. }) => {
+                syn::Meta::NameValue(syn::MetaNameValue {
+                    ref path, ref lit, ..
+                }) => {
                     let ident = path.get_ident().unwrap();
                     match ident.to_string().as_ref() {
                         "message" | "code" => continue,
@@ -174,7 +198,10 @@ pub fn extract_range_validation(
     }
 
     if min.is_none() && max.is_none() {
-        error(attr.span(), "Validator `range` requires at least 1 argument out of `min` and `max`");
+        error(
+            attr.span(),
+            "Validator `range` requires at least 1 argument out of `min` and `max`",
+        );
     }
 
     let validator = Validator::Range { min, max };
@@ -196,13 +223,20 @@ pub fn extract_custom_validation(
     let (message, code) = extract_message_and_code("custom", &field, meta_items);
 
     let error = |span: Span, msg: &str| -> ! {
-        abort!(span, "Invalid attribute #[validate] on field `{}`: {}", field, msg);
+        abort!(
+            span,
+            "Invalid attribute #[validate] on field `{}`: {}",
+            field,
+            msg
+        );
     };
 
     for meta_item in meta_items {
         match *meta_item {
             syn::NestedMeta::Meta(ref item) => match *item {
-                syn::Meta::NameValue(syn::MetaNameValue { ref path, ref lit, .. }) => {
+                syn::Meta::NameValue(syn::MetaNameValue {
+                    ref path, ref lit, ..
+                }) => {
                     let ident = path.get_ident().unwrap();
                     match ident.to_string().as_ref() {
                         "message" | "code" => continue,
@@ -248,10 +282,16 @@ pub fn extract_custom_validation(
     }
 
     if function.is_none() {
-        error(attr.span(), "The validator `custom` requires the `function` parameter.");
+        error(
+            attr.span(),
+            "The validator `custom` requires the `function` parameter.",
+        );
     }
 
-    let validator = Validator::Custom { function: function.unwrap(), argument: Box::new(argument) };
+    let validator = Validator::Custom {
+        function: function.unwrap(),
+        argument: Box::new(argument),
+    };
     FieldValidation {
         message,
         code: code.unwrap_or_else(|| validator.code().to_string()),
@@ -325,7 +365,9 @@ pub fn extract_one_arg_validation(
     for meta_item in meta_items {
         match *meta_item {
             syn::NestedMeta::Meta(ref item) => match *item {
-                syn::Meta::NameValue(syn::MetaNameValue { ref path, ref lit, .. }) => {
+                syn::Meta::NameValue(syn::MetaNameValue {
+                    ref path, ref lit, ..
+                }) => {
                     let ident = path.get_ident().unwrap();
                     match ident.to_string().as_ref() {
                         "message" | "code" => continue,
@@ -369,7 +411,10 @@ pub fn extract_one_arg_validation(
     }
 
     let validator = match validator_name.as_ref() {
-        "custom" => Validator::Custom { function: value.unwrap(), argument: Box::new(None) },
+        "custom" => Validator::Custom {
+            function: value.unwrap(),
+            argument: Box::new(None),
+        },
         "contains" => Validator::Contains(value.unwrap()),
         "does_not_contain" => Validator::DoesNotContain(value.unwrap()),
         "must_match" => Validator::MustMatch(value.unwrap()),

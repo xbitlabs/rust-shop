@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+
 use url::Url;
 
 /// Validates whether the string given is a url

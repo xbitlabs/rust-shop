@@ -1,11 +1,13 @@
-use crate::util::{open_with_metadata, RequestedPath};
-use http::{Method, Request};
-use mime_guess::{Mime, MimeGuess};
 use std::fs::Metadata;
 use std::io::{Error as IoError, ErrorKind as IoErrorKind};
 use std::path::PathBuf;
 use std::sync::Arc;
+
+use http::{Method, Request};
+use mime_guess::{Mime, MimeGuess};
 use tokio::fs::File;
+
+use crate::util::{open_with_metadata, RequestedPath};
 
 /// The result of `resolve`.
 ///
@@ -46,7 +48,7 @@ fn map_open_err(err: IoError) -> Result<ResolveResult, IoError> {
 pub async fn resolve<B>(
     root: impl Into<PathBuf>,
     req: &Request<B>,
-    custom_path_resolver: Option<Arc<dyn Fn(&str, &str) -> PathBuf + Send + Sync>>
+    custom_path_resolver: Option<Arc<dyn Fn(&str, &str) -> PathBuf + Send + Sync>>,
 ) -> Result<ResolveResult, IoError> {
     // Handle only `GET`/`HEAD` and absolute paths.
     match *req.method() {
@@ -56,7 +58,7 @@ pub async fn resolve<B>(
         }
     }
 
-    resolve_path(root, req.uri().path(),custom_path_resolver).await
+    resolve_path(root, req.uri().path(), custom_path_resolver).await
 }
 
 /// Resolve the request path by trying to find the file in the given root.
@@ -74,13 +76,12 @@ pub async fn resolve<B>(
 pub async fn resolve_path(
     root: impl Into<PathBuf>,
     request_path: &str,
-    custom_path_resolver: Option<Arc<dyn Fn(&str, &str) -> PathBuf + Send + Sync>>
+    custom_path_resolver: Option<Arc<dyn Fn(&str, &str) -> PathBuf + Send + Sync>>,
 ) -> Result<ResolveResult, IoError> {
-
-        let RequestedPath {
-            mut full_path,
-            is_dir_request,
-        } = RequestedPath::resolve(root, request_path,custom_path_resolver);
+    let RequestedPath {
+        mut full_path,
+        is_dir_request,
+    } = RequestedPath::resolve(root, request_path, custom_path_resolver);
 
     let (file, metadata) = match open_with_metadata(&full_path).await {
         Ok(pair) => pair,
@@ -119,5 +120,4 @@ pub async fn resolve_path(
     // Serve this file.
     let mime = MimeGuess::from_path(full_path).first_or_octet_stream();
     Ok(ResolveResult::Found(file, metadata, mime))
-
 }

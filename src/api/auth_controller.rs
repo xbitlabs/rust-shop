@@ -1,67 +1,163 @@
-
-
 pub mod AuthController {
     use std::any::Any;
     use std::borrow::BorrowMut;
-    use std::string::ToString;
-    use std::thread;
-    use rust_shop_core::{EndpointResult, RequestStateResolver, ResponseBuilder};
-    use rust_shop_core::extract::json::Json;
-    use rust_shop_macro::route;
-    use lazy_static::lazy_static;
-    use rust_shop_core::RequestCtx;
-    use hyper::Response;
-    use hyper::Body;
-    use rust_shop_core::router::register_route;
-    use rust_shop_core::extract::FromRequest;
-    use rust_shop_core::extract::IntoResponse;
-    use rust_shop_core::extract::path_variable::PathVariable;
-    use rust_shop_core::extract::request_param::RequestParam;
-    use crate::StatusCode;
-    use anyhow::anyhow;
     use std::convert::Infallible;
     use std::ops::Deref;
+    use std::string::ToString;
     use std::sync::Arc;
+    use std::thread;
+
+    use anyhow::anyhow;
+    use chrono::Local;
+    use hyper::Body;
+    use hyper::Response;
+    use lazy_static::lazy_static;
     use sqlx::{Arguments, MySql, Pool, Row};
     use uuid::Uuid;
+
     use rust_shop_core::extensions::Extensions;
     use rust_shop_core::extract::extension::Extension;
     use rust_shop_core::extract::form::Form;
     use rust_shop_core::extract::header::Header;
+    use rust_shop_core::extract::json::Json;
+    use rust_shop_core::extract::path_variable::PathVariable;
     use rust_shop_core::extract::query::Query;
+    use rust_shop_core::extract::request_param::RequestParam;
     use rust_shop_core::extract::request_state::RequestState;
+    use rust_shop_core::extract::FromRequest;
+    use rust_shop_core::extract::IntoResponse;
     use rust_shop_core::id_generator::ID_GENERATOR;
+    use rust_shop_core::router::register_route;
     use rust_shop_core::security::UserDetails;
     use rust_shop_core::state::State;
+    use rust_shop_core::RequestCtx;
+    use rust_shop_core::{EndpointResult, RequestStateResolver, ResponseBuilder};
+    use rust_shop_core::db::SqlCommandExecutor;
+    use rust_shop_macro::route;
+
     use crate::entity::entity::ProductCategory;
     use crate::service::product_category_service::ProductCategoryService;
-    use chrono::Local;
+    use crate::StatusCode;
+    use rust_shop_core::db::TransactionManager;
 
-    #[derive(serde::Serialize,serde::Deserialize,Debug)]
-    pub struct User{
-        pub id:u32,
-        pub name:String
+    #[derive(serde::Serialize, serde::Deserialize, Debug)]
+    pub struct User {
+        pub id: u32,
+        pub name: String,
+    }
+    pub async fn test_handler_proxy11(ctx: RequestCtx) -> anyhow::Result<Response<Body>> {
+        let pool_state: Option<&State<Pool<MySql>>> = ctx.extensions.get();
+        let pool = pool_state.unwrap().get_ref();
+        let mut sql_exe = SqlCommandExecutor::WithoutTransaction(pool);
+        let extensions: Arc<Extensions> = ctx.extensions.clone();
+        let request_states: Arc<Extensions> = ctx.request_states.clone();
+        let mut token: Header<Option<String>> = Header(None);
+        let token_tmp_var = ctx.headers.get("token");
+        if token_tmp_var.is_some() {
+            let token_tmp_var = token_tmp_var.unwrap();
+            if token_tmp_var.is_some() {
+                token = Header(Some(token_tmp_var.as_ref().unwrap().to_string()));
+            }
+        }
+        let mut cookie_tmp_var_1: Option<Header<String>> = None;
+        let cookie_tmp_var_2 = ctx.headers.get("cookie");
+        if cookie_tmp_var_2.is_none() {
+            return Err(anyhow!("header 'cookie' is None"));
+        } else {
+            let cookie_tmp_var_2 = cookie_tmp_var_2.unwrap();
+            if cookie_tmp_var_2.is_none() {
+                return Err(anyhow!("header 'cookie' is None"));
+            } else {
+                cookie_tmp_var_1 = Some(Header(cookie_tmp_var_2.as_ref().unwrap().to_string()));
+            }
+        }
+        let cookie: Header<String> = cookie_tmp_var_1.unwrap();
+        let mut id: PathVariable<Option<u32>> = PathVariable(None);
+        let id_tmp_var = ctx.router_params.find("id");
+        if id_tmp_var.is_some() {
+            let id_tmp_var = id_tmp_var.unwrap().to_string();
+            let id_tmp_var = id_tmp_var.parse::<u32>();
+            if id_tmp_var.is_err() {
+                return Err(anyhow!("PathVariable 'id' is invalid"));
+            } else {
+                id = PathVariable(Some(id_tmp_var.unwrap()));
+            }
+        }
+        let mut age: Option<PathVariable<u32>> = None;
+        let age_tmp_var = ctx.router_params.find("age");
+        if age_tmp_var.is_none() {
+            return Err(anyhow!("router param 'age' is None"));
+        } else {
+            let parse_result = age_tmp_var.unwrap().to_string().parse::<u32>();
+            if parse_result.is_err() {
+                return Err(anyhow!("router param 'age' is invalid"));
+            } else {
+                age = Some(PathVariable(parse_result.unwrap()));
+            }
+        }
+        let age = age.unwrap();
+        let mut name: RequestParam<Option<String>> = RequestParam(None);
+        let name_tmp_var = ctx.query_params.get("name");
+        if name_tmp_var.is_some() {
+            let name_tmp_var = name_tmp_var.unwrap().to_string();
+            let name_tmp_var = name_tmp_var.parse::<String>();
+            if name_tmp_var.is_err() {
+                return Err(anyhow!("RequestParam 'name' is invalid"));
+            } else {
+                name = RequestParam(Some(name_tmp_var.unwrap()));
+            }
+        }
+        let mut address: Option<RequestParam<String>> = None;
+        let address_tmp_var = ctx.query_params.get("address");
+        if address_tmp_var.is_none() {
+            return Err(anyhow!("router param 'address' is None"));
+        } else {
+            let parse_result = address_tmp_var.unwrap().to_string().parse::<String>();
+            if parse_result.is_err() {
+                return Err(anyhow!("router param 'address' is invalid"));
+            } else {
+                address = Some(RequestParam(parse_result.unwrap()));
+            }
+        }
+        let address = address.unwrap();
+        let user = Form::from_request(ctx).await?;
+        let handler_result = test(
+            extensions,
+            request_states,
+            token,
+            cookie,
+            id,
+            age,
+            name,
+            address,
+            user,
+            &mut sql_exe,
+        )
+            .await?;
+        Ok(handler_result.into_response())
     }
 
-    #[route("POST","/user/:id/:age")]
-    pub async fn test(extensions:Arc<Extensions>,
-                      request_states:Arc<Extensions>,
-                      Header(token):Header<Option<String>>,
-                      Header(cookie):Header<String>,
-                      PathVariable(id):PathVariable<Option<u32>>,
-                      PathVariable(age):PathVariable<u32>,
-                      RequestParam(name):RequestParam<Option<String>>,
-                      RequestParam(address):RequestParam<String>,
-                      Form(user):Form<User>) ->anyhow::Result<Json<User>>{
-
-        let u = User{
-            id:id.unwrap(),
-            name:name.unwrap()
+    #[route("POST", "/user/:id/:age")]
+    pub async fn test(
+        extensions: Arc<Extensions>,
+        request_states: Arc<Extensions>,
+        Header(token): Header<Option<String>>,
+        Header(cookie): Header<String>,
+        PathVariable(id): PathVariable<Option<u32>>,
+        PathVariable(age): PathVariable<u32>,
+        RequestParam(name): RequestParam<Option<String>>,
+        RequestParam(address): RequestParam<String>,
+        Form(user): Form<User>,
+        sql_exe_with_tran: &mut SqlCommandExecutor<'_, '_>
+    ) -> anyhow::Result<Json<User>> {
+        let u = User {
+            id: id.unwrap(),
+            name: name.unwrap(),
         };
-
+        //let result = sql_command_executor.execute("").await?;
         Ok(Json(u))
     }
-   /* pub async fn test_handler_proxy(
+    /* pub async fn test_handler_proxy(
         ctx: RequestCtx,
     ) -> anyhow::Result<Response<Body>> {
         let pool:&State<Pool<MySql>> = ctx.extensions.get().unwrap();
@@ -193,17 +289,14 @@ pub mod AuthController {
     }*/
 }
 
-
-
-    //#[route("POST","/user")]
- /*   pub async fn test_handler11(req:RequestCtx,extensions:&Arc<Extensions>,)->anyhow::Result<Json<User>>{
-        let mut db_pool:&DbPoolManager<MySql> = RequestStateResolver::get(&req);
-        if db_pool.use_tran() {
-            db_pool.begin();
-        }
-        Ok(Json(User{
-            id: 0,
-            name: "pgg".to_string()
-        }))
-    }*/
-
+//#[route("POST","/user")]
+/*   pub async fn test_handler11(req:RequestCtx,extensions:&Arc<Extensions>,)->anyhow::Result<Json<User>>{
+    let mut db_pool:&DbPoolManager<MySql> = RequestStateResolver::get(&req);
+    if db_pool.use_tran() {
+        db_pool.begin();
+    }
+    Ok(Json(User{
+        id: 0,
+        name: "pgg".to_string()
+    }))
+}*/

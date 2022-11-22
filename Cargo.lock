@@ -1895,6 +1895,7 @@ dependencies = [
  "chrono",
  "criterion",
  "form_urlencoded",
+ "http",
  "hyper",
  "hyper-tls",
  "jsonwebtoken",

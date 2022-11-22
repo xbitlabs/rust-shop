@@ -1,9 +1,9 @@
-pub trait PageQueryRequest{
-    fn get_page_index(&self)->Option<u32>;
-    fn set_page_index(&mut self, page_index:Option<u32>);
+pub trait PageQueryRequest {
+    fn get_page_index(&self) -> Option<u32>;
+    fn set_page_index(&mut self, page_index: Option<u32>);
 
-    fn get_page_size(&self)->Option<u32>;
-    fn set_page_size(&mut self,page_size:Option<u32>);
+    fn get_page_size(&self) -> Option<u32>;
+    fn set_page_size(&mut self, page_size: Option<u32>);
 }
 
 macro_rules! impl_page_query_request {
@@ -28,5 +28,3 @@ macro_rules! impl_page_query_request {
         })*
     };
 }
-
-

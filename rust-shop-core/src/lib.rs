@@ -1,60 +1,63 @@
-pub mod extensions;
-pub mod state;
-pub mod security;
-pub mod router;
-pub mod jwt;
-pub mod db;
-pub mod wechat_service;
-pub mod app_config;
-pub mod jwt_service;
-pub mod entity;
-pub mod id_generator;
-pub mod extract;
-
-
 use std::any::{Any, TypeId};
 use std::borrow::{Borrow, BorrowMut};
 use std::cell::RefCell;
-use hyper::{Body, HeaderMap, Request, Response, StatusCode};
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fmt::{Display, Formatter};
 use std::future::Future;
+use std::io::Cursor;
 use std::net::SocketAddr;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::Mutex;
 use std::sync::{Arc, LockResult};
 use std::time::Instant;
+
 use anyhow::anyhow;
-use chrono::NaiveDateTime;
-use criterion::Criterion;
-use bcrypt::{DEFAULT_COST, hash, verify};
+use bcrypt::{hash, verify, DEFAULT_COST};
 use chrono::Local;
+use chrono::NaiveDateTime;
 use chrono::Utc;
-use route_recognizer::{Params, Router as MethodRouter};
+use criterion::Criterion;
+use hyper::body::{Buf, Bytes};
+use hyper::header::{HeaderValue, ToStrError};
 use hyper::service::{make_service_fn, service_fn};
+use hyper::{Body, HeaderMap, Request, Response, StatusCode};
 use lazy_static::lazy_static;
 use log::{error, info};
-use serde::{Deserialize, Serialize};
-use sqlx::{Acquire, Error, MySql, MySqlPool, Pool, Transaction};
-use tokio::task_local;
-use crate::extensions::Extensions;
-use crate::state::State;
-use std::sync::Mutex;
-use crate::security::UserDetails;
-use hyper::body::Buf;
-use hyper::header::{HeaderValue, ToStrError};
+use route_recognizer::{Params, Router as MethodRouter};
 use schemars::_private::NoSerialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::encode::IsNull::No;
+use sqlx::{Acquire, Error, MySql, MySqlPool, Pool, Transaction};
 use time::OffsetDateTime;
-use crate::EndpointResultCode::{AccessDenied, ClientError, ServerError, SUCCESS, Unauthorized};
+use tokio::task_local;
+
+use crate::extensions::Extensions;
 use crate::extract::header::Header;
 use crate::extract::path_variable::PathVariable;
 use crate::extract::request_param::RequestParam;
 use crate::router::{get_routers, register_route, Router};
+use crate::security::UserDetails;
 use crate::security::{AuthenticationProcessingFilter, SecurityConfig};
+use crate::state::State;
+use crate::EndpointResultCode::{AccessDenied, ClientError, ServerError, Unauthorized, SUCCESS};
+
+pub mod app_config;
+pub mod db;
+pub mod entity;
+pub mod extensions;
+pub mod extract;
+pub mod id_generator;
+pub mod jwt;
+pub mod jwt_service;
+pub mod router;
+pub mod security;
+pub mod state;
+pub mod wechat_service;
+use http::request::Parts as HttpParts;
 
 pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
@@ -67,21 +70,26 @@ macro_rules! register_method {
 }
 
 pub struct RequestCtx {
-    pub request: Request<Body>,
+    //pub request: Request<Body>,
+    pub parts: HttpParts,
+    pub body: Body,
     pub router_params: Params,
     pub remote_addr: SocketAddr,
     pub query_params: HashMap<String, String>,
-    pub headers:HashMap<String,Option<String>>,
+    pub headers: HashMap<String, Option<String>>,
     pub request_states: Arc<Extensions>,
-    pub current_user:Option<Box<dyn UserDetails + Send + Sync>>,
-    pub extensions:Arc<Extensions>,
+    pub current_user: Option<Box<dyn UserDetails + Send + Sync>>,
+    pub extensions: Arc<Extensions>,
 }
 
 //处理http请求过程中状态保持
 //pub type RequestStateProvider = dyn Fn() -> State<T> + Send + Sync;
-pub trait RequestStateProvider{
-    fn get_state(&self, extensions: &Arc<Extensions>, req: &Request<Body>) ->Box<dyn Any + Send + Sync>;
-    fn matches(&self,ctx:&RequestCtx)->bool;
+pub trait RequestStateProvider {
+    fn get_state(
+        &self,
+        req: &mut RequestCtx,
+    ) -> Box<dyn Any + Send + Sync>;
+    fn matches(&self, ctx: &mut RequestCtx) -> bool;
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -90,103 +98,104 @@ pub enum EndpointResultCode {
     ServerError,
     ClientError,
     AccessDenied,
-    Unauthorized
-}
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct EndpointResult<T>
-    where T:
-    Serialize
-{
-    code: EndpointResultCode,
-    msg:&'static str,
-    payload:Option<T>
+    Unauthorized,
 }
 
-impl <T:Serialize> EndpointResult<T> {
-    pub fn new()-> EndpointResult<T>{
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct EndpointResult<T>
+where
+    T: Serialize,
+{
+    code: EndpointResultCode,
+    msg: &'static str,
+    payload: Option<T>,
+}
+
+impl<T: Serialize> EndpointResult<T> {
+    pub fn new() -> EndpointResult<T> {
         EndpointResult {
-            code:SUCCESS,
-            msg:"",
-            payload:None
+            code: SUCCESS,
+            msg: "",
+            payload: None,
         }
     }
-    pub fn set_code(&mut self,code: EndpointResultCode){
+    pub fn set_code(&mut self, code: EndpointResultCode) {
         self.code = code;
     }
-    pub fn set_msg(&mut self,msg:&'static str){
+    pub fn set_msg(&mut self, msg: &'static str) {
         self.msg = msg;
     }
-    pub fn set_payload(&mut self,payload:Option<T>){
+    pub fn set_payload(&mut self, payload: Option<T>) {
         self.payload = payload;
     }
-    pub fn ok(msg: &'static str) ->Self{
+    pub fn ok(msg: &'static str) -> Self {
         EndpointResult {
-            code:SUCCESS,
+            code: SUCCESS,
             msg,
-            payload:None
+            payload: None,
         }
     }
-    pub fn ok_with_payload(msg: &'static str, payload:T) ->Self{
+    pub fn ok_with_payload(msg: &'static str, payload: T) -> Self {
         EndpointResult {
-            code:SUCCESS,
+            code: SUCCESS,
             msg,
-            payload:Some(payload)
+            payload: Some(payload),
         }
     }
-    pub fn server_error(msg: &'static str)->Self{
+    pub fn server_error(msg: &'static str) -> Self {
         EndpointResult {
-            code:ServerError,
+            code: ServerError,
             msg,
-            payload:Default::default()
+            payload: Default::default(),
         }
     }
-    pub fn server_error_with_payload(msg: &'static str,payload:T)->Self{
+    pub fn server_error_with_payload(msg: &'static str, payload: T) -> Self {
         EndpointResult {
-            code:ServerError,
+            code: ServerError,
             msg,
-            payload:Some(payload)
+            payload: Some(payload),
         }
     }
-    pub fn client_error(msg: &'static str)->Self{
+    pub fn client_error(msg: &'static str) -> Self {
         EndpointResult {
-            code:ClientError,
+            code: ClientError,
             msg,
-            payload:None
+            payload: None,
         }
     }
-    pub fn client_error_with_payload(msg: &'static str,payload:T)->Self{
+    pub fn client_error_with_payload(msg: &'static str, payload: T) -> Self {
         EndpointResult {
-            code:ClientError,
+            code: ClientError,
             msg,
-            payload:Some(payload)
+            payload: Some(payload),
         }
     }
-    pub fn access_denied(msg: &'static str)->Self{
+    pub fn access_denied(msg: &'static str) -> Self {
         EndpointResult {
             code: AccessDenied,
             msg,
-            payload:None
+            payload: None,
         }
     }
-    pub fn access_denied_with_payload(msg: &'static str,payload:T)->Self{
+    pub fn access_denied_with_payload(msg: &'static str, payload: T) -> Self {
         EndpointResult {
             code: AccessDenied,
             msg,
-            payload:Some(payload)
+            payload: Some(payload),
         }
     }
-    pub fn unauthorized(msg: &'static str)->Self{
+    pub fn unauthorized(msg: &'static str) -> Self {
         EndpointResult {
             code: Unauthorized,
             msg,
-            payload:None
+            payload: None,
         }
     }
-    pub fn unauthorized_with_payload(msg: &'static str,payload:T)->Self{
+    pub fn unauthorized_with_payload(msg: &'static str, payload: T) -> Self {
         EndpointResult {
             code: Unauthorized,
             msg,
-            payload:Some(payload)
+            payload: Some(payload),
         }
     }
 }
@@ -202,9 +211,13 @@ impl ResponseBuilder {
 
         ResponseBuilder::with_endpoint_result(endpoint_result)
     }
-    pub fn with_msg_and_payload<T>(msg: &'static str, payload:T, code: EndpointResultCode) -> Response<Body>
-        where T:
-        serde::Serialize
+    pub fn with_msg_and_payload<T>(
+        msg: &'static str,
+        payload: T,
+        code: EndpointResultCode,
+    ) -> Response<Body>
+    where
+        T: serde::Serialize,
     {
         let mut endpoint_result = EndpointResult::new();
         endpoint_result.set_msg(msg);
@@ -214,27 +227,21 @@ impl ResponseBuilder {
     }
 
     pub fn with_endpoint_result<T>(endpoint_result: EndpointResult<T>) -> Response<Body>
-        where T:
-        serde::Serialize
+    where
+        T: serde::Serialize,
     {
         let json = serde_json::to_string(&endpoint_result);
         let mut status = StatusCode::OK;
         match endpoint_result.code {
-            ServerError=>{
+            ServerError => {
                 status = StatusCode::INTERNAL_SERVER_ERROR;
             }
-            SUCCESS =>{
+            SUCCESS => {
                 status = StatusCode::OK;
             }
-            ClientError=>{
-                status = StatusCode::BAD_REQUEST
-            }
-            AccessDenied=>{
-                status = StatusCode::FORBIDDEN
-            }
-            Unauthorized=>{
-                status = StatusCode::UNAUTHORIZED
-            }
+            ClientError => status = StatusCode::BAD_REQUEST,
+            AccessDenied => status = StatusCode::FORBIDDEN,
+            Unauthorized => status = StatusCode::UNAUTHORIZED,
         }
         hyper::Response::builder()
             .header(
@@ -264,21 +271,23 @@ type BoxHTTPHandler = Box<dyn HTTPHandler>;
 
 #[async_trait::async_trait]
 impl<F: Send + Sync + 'static, Fut> HTTPHandler for F
-    where
-        F: Fn(RequestCtx) -> Fut,
-        Fut: Future<Output = anyhow::Result<Response<Body>>> + Send + 'static,
+where
+    F: Fn(RequestCtx) -> Fut,
+    Fut: Future<Output = anyhow::Result<Response<Body>>> + Send + 'static,
 {
     async fn handle(&self, ctx: RequestCtx) -> anyhow::Result<Response<Body>> {
         self(ctx).await
     }
 }
 
-
-
 #[async_trait::async_trait]
 pub trait Filter: Send + Sync + 'static {
-    async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>>;
-    fn url_patterns(&self) ->String;
+    async fn handle<'a>(
+        &'a self,
+        ctx: RequestCtx,
+        next: Next<'a>,
+    ) -> anyhow::Result<Response<Body>>;
+    fn url_patterns(&self) -> String;
 }
 
 #[allow(missing_debug_implementations)]
@@ -301,9 +310,8 @@ impl<'a> Next<'a> {
 
 pub struct RequestStateResolver;
 
-impl  RequestStateResolver {
-    pub fn get<'a, T: 'a + 'static>(ctx: &'a RequestCtx) -> &'a T
-    {
+impl RequestStateResolver {
+    pub fn get<'a, T: 'a + 'static>(ctx: &'a RequestCtx) -> &'a T {
         let state: Option<&Box<dyn Any + Send + Sync>> = ctx.request_states.get();
         let state: Option<&T> = state.unwrap().downcast_ref();
         state.unwrap()
@@ -314,7 +322,11 @@ pub struct AccessLogFilter;
 
 #[async_trait::async_trait]
 impl Filter for AccessLogFilter {
-    async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>> {
+    async fn handle<'a>(
+        &'a self,
+        ctx: RequestCtx,
+        next: Next<'a>,
+    ) -> anyhow::Result<Response<Body>> {
         let start = Instant::now();
         let method = ctx.request.method().to_string();
         let path = ctx.request.uri().path().to_string();
@@ -337,28 +349,26 @@ impl Filter for AccessLogFilter {
     }
 }
 
-
-
 pub struct Server {
     router: &'static mut Router,
     filters: Vec<Arc<dyn Filter>>,
     extensions: Extensions,
-    request_state_providers:Extensions,
-    enable_security:bool,
+    request_state_providers: Extensions,
+    enable_security: bool,
 }
 
 impl Server {
     pub fn new() -> Self {
-        let routers:&'static mut Router = get_routers();
+        let routers: &'static mut Router = get_routers();
         Server {
-            router:routers,
+            router: routers,
             filters: Vec::new(),
-            extensions : Extensions::new(),
-            request_state_providers : Extensions::new(),
-            enable_security:false,
+            extensions: Extensions::new(),
+            request_state_providers: Extensions::new(),
+            enable_security: false,
         }
     }
-    pub fn get_extension<T:'static + Sync + Send>(&self) ->Option<&State<T>>{
+    pub fn get_extension<T: 'static + Sync + Send>(&self) -> Option<&State<T>> {
         self.extensions.get()
     }
     pub fn register(
@@ -369,10 +379,10 @@ impl Server {
     ) {
         let method = method.to_string().to_uppercase();
         /*self.router
-            .entry(method)
-            .or_insert_with(MethodRouter::new)
-            .add(path.as_ref(), Box::new(handler));*/
-        register_route(method.as_str(),path.as_ref(),handler);
+        .entry(method)
+        .or_insert_with(MethodRouter::new)
+        .add(path.as_ref(), Box::new(handler));*/
+        register_route(method.as_str(), path.as_ref(), handler);
     }
 
     register_method!(get, "GET");
@@ -388,17 +398,18 @@ impl Server {
     pub fn filter(&mut self, filter: impl Filter) {
         self.filters.push(Arc::new(filter));
     }
-    pub fn extension<U: 'static + Send + Sync>(&mut self, ext: U)  {
+    pub fn extension<U: 'static + Send + Sync>(&mut self, ext: U) {
         self.extensions.insert(ext);
     }
-    pub fn request_state<U: 'static + Send + Sync>(&mut self, ext: U)  {
+    pub fn request_state<U: 'static + Send + Sync>(&mut self, ext: U) {
         self.request_state_providers.insert(ext);
     }
-    pub fn security_config(&mut self,security_config:SecurityConfig){
+    pub fn security_config(&mut self, security_config: SecurityConfig) {
         self.enable_security = security_config.is_enable_security();
         self.extensions.insert(State::new(security_config));
         if self.enable_security {
-            self.filters.push(Arc::new(AuthenticationProcessingFilter{}))
+            self.filters
+                .push(Arc::new(AuthenticationProcessingFilter {}))
         }
     }
     pub async fn run(self, addr: SocketAddr) -> anyhow::Result<()> {
@@ -407,7 +418,7 @@ impl Server {
             filters,
             extensions,
             request_state_providers,
-            enable_security
+            enable_security,
         } = self;
         let router = Arc::new(router);
         let filters = Arc::new(filters);
@@ -459,49 +470,56 @@ impl Server {
 
                         let url = req.uri().to_string();
 
-                        let mut request_states = Extensions::new();
-
+                /*        let mut request_states = Extensions::new();
                         for state_provider in request_state_providers.iter() {
-                            let provider : Option<&Box<dyn RequestStateProvider + Sync + Send>> = request_state_providers.get();
-                            let state = provider.unwrap().get_state(&extensions, &req);
+                            let provider: Option<&Box<dyn RequestStateProvider + Sync + Send>> =
+                                request_state_providers.get();
+                            let state = provider.unwrap().get_state( &mut ctx);
                             request_states.insert(state);
                         }
+                        let arc_request_states = Arc::new(request_states);*/
+
+                        let mut request_states = Extensions::new();
                         let request_states = Arc::new(request_states);
+
                         let mut headers = HashMap::new();
                         for header in req.headers() {
-                            let value = match  header.1.to_str(){
-                                Ok(val) => {
-                                    Some(val.to_string())
-                                }
-                                Err(_) => {
-                                    None
-                                }
+                            let value = match header.1.to_str() {
+                                Ok(val) => Some(val.to_string()),
+                                Err(_) => None,
                             };
-                            headers.insert(header.0.to_string(),value);
+                            headers.insert(header.0.to_string(), value);
                         }
-                        let ctx = RequestCtx {
-                            request: req,
+                        let (mut parts, body) = req.into_parts();
+
+
+                        let mut ctx = RequestCtx {
+                            parts,
+                            //request: req,
                             router_params,
                             remote_addr,
                             query_params,
                             headers,
                             request_states,
-                            current_user:None,
-                            extensions
+                            current_user: None,
+                            extensions,
+                            body
                         };
+
+
 
                         let resp_result = next.run(ctx).await;
                         match resp_result {
-                            Ok(resp)=>{
-                                Ok::<_, anyhow::Error>(resp)
-                            }
-                            Err(error)=>{
-                                error!("处理请求异常{}：{}",url, error);
-                                let endpoint_result:EndpointResult<String> = EndpointResult::server_error("内部服务器错误");
-                                Ok::<_, anyhow::Error>(ResponseBuilder::with_endpoint_result(endpoint_result))
+                            Ok(resp) => Ok::<_, anyhow::Error>(resp),
+                            Err(error) => {
+                                error!("处理请求异常{}：{}", url, error);
+                                let endpoint_result: EndpointResult<String> =
+                                    EndpointResult::server_error("内部服务器错误");
+                                Ok::<_, anyhow::Error>(ResponseBuilder::with_endpoint_result(
+                                    endpoint_result,
+                                ))
                             }
                         }
-
                     }
                 }))
             }
@@ -523,34 +541,29 @@ impl Server {
 
 impl Default for Server {
     fn default() -> Self {
-        unsafe {
-            Self::new()
-        }
+        unsafe { Self::new() }
     }
 }
 
-
-pub async fn parse_request_json<T>(req:Request<Body>)->anyhow::Result<T>
-    where for<'a> T:
-    serde::Deserialize<'a>
+pub async fn parse_request_json<T>(req: Request<Body>) -> anyhow::Result<T>
+where
+    for<'a> T: serde::Deserialize<'a>,
 {
     let whole_body = hyper::body::aggregate(req).await?;
     // Decode as JSON...
-    let mut read_result: Result<T, serde_json::Error> = serde_json::from_reader(whole_body.reader());
+    let mut read_result: Result<T, serde_json::Error> =
+        serde_json::from_reader(whole_body.reader());
     match read_result {
-        Ok(result) => {
-            Ok(result)
-        }
-        Err(error) => {
-            Err(anyhow!(error))
-        }
+        Ok(result) => Ok(result),
+        Err(error) => Err(anyhow!(error)),
     }
 }
-pub async fn parse_form_params(req:Request<Body>)->HashMap<String,String>{
+
+pub async fn parse_form_params(req: Request<Body>) -> HashMap<String, String> {
     let url = req.uri().to_string();
     let b = hyper::body::to_bytes(req).await;
     if b.is_err() {
-        error!("解析form参数异常{}：{}",url,b.err().unwrap());
+        error!("解析form参数异常{}：{}", url, b.err().unwrap());
         return HashMap::new();
     }
     let params = form_urlencoded::parse(b.unwrap().as_ref())
@@ -564,6 +577,5 @@ fn test() {
     let now = Local::now();
     let str = now.format("%Y-%m-%d %H:%M:%S").to_string();
 
-    print!("{}",str);
+    print!("{}", str);
 }
-

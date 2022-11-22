@@ -1,7 +1,8 @@
+use std::borrow::Cow;
+
 use idna::domain_to_ascii;
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::borrow::Cow;
 
 use crate::{validation::ip::validate_ip, HasLen};
 
@@ -83,7 +84,8 @@ mod tests {
     fn test_validate_email() {
         // Test cases taken from Django
         // https://github.com/django/django/blob/master/tests/validators/tests.py#L48
-        let tests = vec![
+        let tests =
+            vec![
             ("email@here.com", true),
             ("weirder-email@here.and.there.com", true),
             (r#"!def!xyz%abc@example.com"#, true),

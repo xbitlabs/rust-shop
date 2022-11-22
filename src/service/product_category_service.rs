@@ -1,33 +1,39 @@
 use std::borrow::BorrowMut;
 use std::fmt::Error;
+
+use chrono::Local;
 use sqlx::{MySql, MySqlPool};
 use uuid::Uuid;
+
 use rust_shop_core::db::{mysql_connection_pool, SqlCommandExecutor, TransactionManager};
 use rust_shop_core::id_generator::ID_GENERATOR;
-use crate::entity::entity::ProductCategory;
-use chrono::Local;
 use rust_shop_core::jwt_service::DefaultJwtService;
 
+use crate::entity::entity::ProductCategory;
 
-pub struct ProductCategoryService<'a,'b>{
-    sql_command_executor: &'b mut SqlCommandExecutor<'a,'b>
+pub struct ProductCategoryService<'a, 'b> {
+    sql_command_executor: &'b mut SqlCommandExecutor<'a, 'b>,
 }
-impl <'a,'b> ProductCategoryService<'a,'b> {
-    pub fn new(sql_command_executor:&'b mut SqlCommandExecutor<'a,'b>) ->Self{
-        ProductCategoryService{
-            sql_command_executor
+
+impl<'a, 'b> ProductCategoryService<'a, 'b> {
+    pub fn new(sql_command_executor: &'b mut SqlCommandExecutor<'a, 'b>) -> Self {
+        ProductCategoryService {
+            sql_command_executor,
         }
     }
-    pub async fn list_all_categories(&mut self)->anyhow::Result<Vec<ProductCategory>>  {
-        let categories = self.sql_command_executor.find_all("SELECT * FROM product_category").await?;
-        println!("查询到的数据有{}条",categories.len());
+    pub async fn list_all_categories(&mut self) -> anyhow::Result<Vec<ProductCategory>> {
+        let categories = self
+            .sql_command_executor
+            .find_all("SELECT * FROM product_category")
+            .await?;
+        println!("查询到的数据有{}条", categories.len());
 
         let jwt_service = DefaultJwtService::new(self.sql_command_executor);
 
         Ok(categories)
     }
-    pub async fn test_tran(&mut self) ->anyhow::Result<()>  {
-      /*  let user_id = ID_GENERATOR.lock().unwrap().real_time_generate();
+    pub async fn test_tran(&mut self) -> anyhow::Result<()> {
+        /*  let user_id = ID_GENERATOR.lock().unwrap().real_time_generate();
         let wx_open_id = Uuid::new_v4().to_string();
         let mut aag = self.mysql_pool_manager.tran();
         let mut aa: &mut &TransactionManager<MySql> = aag.borrow_mut();

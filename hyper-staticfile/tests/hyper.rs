@@ -1,7 +1,9 @@
+use std::path::Path;
+
 use futures_util::future;
 use hyper::service::make_service_fn;
+
 use hyper_staticfile::Static;
-use std::path::Path;
 
 // This test currently only demonstrates that a `Static` instance can be used
 // as a hyper service directly.

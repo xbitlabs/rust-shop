@@ -1,12 +1,13 @@
-use futures_util::stream::Stream;
-use http_range::HttpRange;
-use hyper::body::{Body, Bytes};
 use std::cmp::min;
 use std::io::{Cursor, Error as IoError, SeekFrom, Write};
 use std::mem::MaybeUninit;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::vec;
+
+use futures_util::stream::Stream;
+use http_range::HttpRange;
+use hyper::body::{Body, Bytes};
 use tokio::fs::File;
 use tokio::io::{AsyncRead, AsyncSeek, ReadBuf};
 

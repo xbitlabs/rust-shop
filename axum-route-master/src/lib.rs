@@ -1,26 +1,27 @@
 #![feature(exact_size_is_empty)]
 
-use proc_macro::{TokenStream, Span};
+use proc_macro::{Span, TokenStream};
 use std::alloc::System;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
-use syn::{parse_macro_input, ItemFn, FnArg, Type, TypePath, Path};
-use syn::punctuated::Punctuated;
-use syn::parse::{Parse, ParseStream};
+
 use quote::{quote, ToTokens};
+use syn::parse::{Parse, ParseStream};
+use syn::parse_quote;
+use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::Comma;
-use syn::parse_quote;
+use syn::{parse_macro_input, FnArg, ItemFn, Path, Type, TypePath};
 
 struct Args {
-    vars: Vec<syn::Expr>
+    vars: Vec<syn::Expr>,
 }
 
 impl Parse for Args {
     fn parse(input: ParseStream) -> syn::parse::Result<Self> {
         let vars = Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated(input)?;
-        
+
         Ok(Args {
             vars: vars.into_iter().collect(),
         })
@@ -31,20 +32,24 @@ impl Args {
     pub fn get_method(&self) -> syn::Result<syn::Expr> {
         match self.vars.get(0) {
             Some(var) => Ok(var.clone()),
-            None => return Err(syn::Error::new(
-                Span::call_site().into(),
-                "No HTTP Method was provided"
-            ))
+            None => {
+                return Err(syn::Error::new(
+                    Span::call_site().into(),
+                    "No HTTP Method was provided",
+                ))
+            }
         }
     }
-    
+
     pub fn get_route(&self) -> syn::Result<syn::Expr> {
         match self.vars.get(1) {
             Some(var) => Ok(var.clone()),
-            None => return Err(syn::Error::new(
-                Span::call_site().into(),
-                "No Route was provided"
-            ))
+            None => {
+                return Err(syn::Error::new(
+                    Span::call_site().into(),
+                    "No Route was provided",
+                ))
+            }
         }
     }
 }
@@ -72,7 +77,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
             Err(why) => panic!("couldn't write to {}", "d:\\test\\test.txt"),
             Ok(_) => println!("successfully wrote to {}", "d:\\test\\test.txt"),
         }
-    }else {
+    } else {
         let path = "没有找到";
         let mut file = match File::create("d:\\test\\test.txt") {
             Err(why) => panic!("couldn't create {}", "file"),
@@ -85,16 +90,16 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
         }
     }
 
-    let mut test = quote!{
+    let mut test = quote! {
         pub fn test111(){
 
         }
     };
 
-    let idents = func.sig.inputs.iter().filter_map(|param|{
+    let idents = func.sig.inputs.iter().filter_map(|param| {
         if let syn::FnArg::Typed(pat_type) = param {
             if let syn::Pat::Ident(pat_ident) = *pat_type.pat.clone() {
-                return Some(pat_ident.ident)
+                return Some(pat_ident.ident);
             }
         }
 
@@ -103,13 +108,12 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut punctuated: Punctuated<syn::Ident, Comma> = Punctuated::new();
     idents.for_each(|ident| punctuated.push(ident));
 
-
     for arg in func.sig.inputs.iter() {
         if let FnArg::Typed(ty) = arg {
             let ty = ty.ty.clone();
             match *ty {
-                Type::Array(TypeArray)=>{
-                    test = quote!{
+                Type::Array(TypeArray) => {
+                    test = quote! {
                         pub fn testTypeArray(){
 
                         }
@@ -117,8 +121,8 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                 }
 
                 /// A bare function type: `fn(usize) -> bool`.
-                Type::BareFn(TypeBareFn)=>{
-                    test = quote!{
+                Type::BareFn(TypeBareFn) => {
+                    test = quote! {
                         pub fn testTypeBareFn(){
 
                         }
@@ -126,8 +130,8 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                 }
 
                 /// A type contained within invisible delimiters.
-                Type::Group(TypeGroup)=>{
-                    test = quote!{
+                Type::Group(TypeGroup) => {
+                    test = quote! {
                         pub fn testTypeGroup(){
 
                         }
@@ -136,8 +140,8 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
 
                 /// An `impl Bound1 + Bound2 + Bound3` type where `Bound` is a trait or
                 /// a lifetime.
-                Type::ImplTrait(TypeImplTrait)=>{
-                    test = quote!{
+                Type::ImplTrait(TypeImplTrait) => {
+                    test = quote! {
                         pub fn testTypeImplTrait(){
 
                         }
@@ -145,8 +149,8 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                 }
 
                 /// Indication that a type should be inferred by the compiler: `_`.
-                Type::Infer(TypeInfer)=>{
-                    test = quote!{
+                Type::Infer(TypeInfer) => {
+                    test = quote! {
                         pub fn testTypeInfer(){
 
                         }
@@ -154,8 +158,8 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                 }
 
                 /// A macro in the type position.
-                Type::Macro(TypeMacro)=>{
-                    test = quote!{
+                Type::Macro(TypeMacro) => {
+                    test = quote! {
                         pub fn testTypeMacro(){
 
                         }
@@ -163,8 +167,8 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                 }
 
                 /// The never type: `!`.
-                Type::Never(TypeNever)=>{
-                    test = quote!{
+                Type::Never(TypeNever) => {
+                    test = quote! {
                         pub fn testTypeNever(){
 
                         }
@@ -172,8 +176,8 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                 }
 
                 /// A parenthesized type equivalent to the inner type.
-                Type::Paren(TypeParen)=>{
-                    test = quote!{
+                Type::Paren(TypeParen) => {
+                    test = quote! {
                         pub fn testTypeParen(){
 
                         }
@@ -182,13 +186,13 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
 
                 /// A path like `std::slice::Iter`, optionally qualified with a
                 /// self-type as in `<Vec<T> as SomeTrait>::Associated`.
-                Type::Path(type_path)=>{
-                    let mut  str:String = String::from("") ;
+                Type::Path(type_path) => {
+                    let mut str: String = String::from("");
 
-                    for s in  type_path.path.segments.iter() {
+                    for s in type_path.path.segments.iter() {
                         str = str + &s.ident.to_string();
                     }
-                    test = quote!{
+                    test = quote! {
                         pub fn testTypePath(){
                             let str:String = #str;
                         }
@@ -196,8 +200,8 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                 }
 
                 /// A raw pointer type: `*const T` or `*mut T`.
-                Type::Ptr(TypePtr)=>{
-                    test = quote!{
+                Type::Ptr(TypePtr) => {
+                    test = quote! {
                         pub fn testTypePtr(){
 
                         }
@@ -205,8 +209,8 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                 }
 
                 /// A reference type: `&'a T` or `&'a mut T`.
-                Type::Reference(TypeReference)=>{
-                    test = quote!{
+                Type::Reference(TypeReference) => {
+                    test = quote! {
                         pub fn testTypeReference(){
 
                         }
@@ -214,8 +218,8 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                 }
 
                 /// A dynamically sized slice type: `[T]`.
-                Type::Slice(TypeSlice)=>{
-                    test = quote!{
+                Type::Slice(TypeSlice) => {
+                    test = quote! {
                         pub fn testTypeSlice(){
 
                         }
@@ -224,8 +228,8 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
 
                 /// A trait object type `dyn Bound1 + Bound2 + Bound3` where `Bound` is a
                 /// trait or a lifetime.
-                Type::TraitObject(TypeTraitObject)=>{
-                    test = quote!{
+                Type::TraitObject(TypeTraitObject) => {
+                    test = quote! {
                         pub fn testTypeTraitObject(){
 
                         }
@@ -233,31 +237,30 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                 }
 
                 /// A tuple type: `(A, B, C, String)`.
-                Type::Tuple(TypeTuple)=>{
-                    test = quote!{
-                pub fn testTypeTuple(){
+                Type::Tuple(TypeTuple) => {
+                    test = quote! {
+                    pub fn testTypeTuple(){
 
-                }
-                    };
+                    }
+                        };
                 }
 
                 /// Tokens in type position not interpreted by Syn.
-                Type::Verbatim(TokenStream)=>{
-                    test = quote!{
-                pub fn testTokenStream(){
+                Type::Verbatim(TokenStream) => {
+                    test = quote! {
+                    pub fn testTokenStream(){
 
+                    }
+                        };
                 }
+                _ => {
+                    test = quote! {
+                        pub fn test2222__()-{
+
+                        }
                     };
                 }
-                _ =>{
-                    test = quote!{
-                pub fn test2222__()-{
-
-                }
-            };
-                }
             }
-
         }
     }
 
@@ -269,15 +272,15 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
     let method = args.get_method().unwrap();
     //请求路径
     let route = args.get_route().unwrap();
-    
+
     let expanded = quote! {
         #[allow(non_camel_case_types)]
         #vis struct #ident;
-        
+
         impl #ident {
             #vis fn route() -> axum::Router {
                 #func
-                
+
                 axum::Router::new().route(#route, #method (#ident))
             }
             #test
@@ -286,6 +289,6 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
             }
         }
     };
-    
+
     expanded.into()
 }

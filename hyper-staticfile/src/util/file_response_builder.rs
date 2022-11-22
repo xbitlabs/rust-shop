@@ -1,13 +1,15 @@
-use super::{FileBytesStream, FileBytesStreamMultiRange, FileBytesStreamRange};
+use std::fs::Metadata;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
 use http::response::Builder as ResponseBuilder;
 use http::{header, HeaderMap, Method, Request, Response, Result, StatusCode};
 use http_range::HttpRange;
 use http_range::HttpRangeParseError;
 use hyper::Body;
 use rand::prelude::{thread_rng, SliceRandom};
-use std::fs::Metadata;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::fs::File;
+
+use super::{FileBytesStream, FileBytesStreamMultiRange, FileBytesStreamRange};
 
 /// Minimum duration since Unix epoch we accept for file modification time.
 ///

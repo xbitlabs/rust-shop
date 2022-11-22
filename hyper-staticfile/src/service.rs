@@ -1,12 +1,14 @@
-use crate::{resolve, ResponseBuilder};
-use http::{Request, Response};
-use hyper::{service::Service, Body};
 use std::future::Future;
 use std::io::Error as IoError;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+
+use http::{Request, Response};
+use hyper::{service::Service, Body};
+
+use crate::{resolve, ResponseBuilder};
 
 /// High-level interface for serving static files.
 ///
@@ -44,7 +46,7 @@ impl Static {
             /*custom_path_resolver : Arc::new(|full_path,url|->PathBuf{
                 PathBuf::new()
             }),*/
-            custom_path_resolver : None,
+            custom_path_resolver: None,
         }
     }
 
@@ -61,13 +63,15 @@ impl Static {
             cache_headers,
             custom_path_resolver,
         } = self;
-        resolve(root, &request,custom_path_resolver).await.map(|result| {
-            ResponseBuilder::new()
-                .request(&request)
-                .cache_headers(cache_headers)
-                .build(result)
-                .expect("unable to build response")
-        })
+        resolve(root, &request, custom_path_resolver)
+            .await
+            .map(|result| {
+                ResponseBuilder::new()
+                    .request(&request)
+                    .cache_headers(cache_headers)
+                    .build(result)
+                    .expect("unable to build response")
+            })
     }
 }
 

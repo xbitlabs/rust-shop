@@ -14,7 +14,11 @@ pub struct ValidationError {
 
 impl ValidationError {
     pub fn new(code: &'static str) -> ValidationError {
-        ValidationError { code: Cow::from(code), message: None, params: HashMap::new() }
+        ValidationError {
+            code: Cow::from(code),
+            message: None,
+            params: HashMap::new(),
+        }
     }
 
     pub fn add_param<T: Serialize>(&mut self, name: Cow<'static, str>, val: &T) {
@@ -68,10 +72,13 @@ impl ValidationErrors {
         match child {
             Ok(()) => parent,
             Err(errors) => {
-                parent.and_then(|_| Err(ValidationErrors::new())).map_err(|mut parent_errors| {
-                    parent_errors.add_nested(field, ValidationErrorsKind::Struct(Box::new(errors)));
-                    parent_errors
-                })
+                parent
+                    .and_then(|_| Err(ValidationErrors::new()))
+                    .map_err(|mut parent_errors| {
+                        parent_errors
+                            .add_nested(field, ValidationErrorsKind::Struct(Box::new(errors)));
+                        parent_errors
+                    })
             }
         }
     }
@@ -96,10 +103,12 @@ impl ValidationErrors {
         if errors.is_empty() {
             parent
         } else {
-            parent.and_then(|_| Err(ValidationErrors::new())).map_err(|mut parent_errors| {
-                parent_errors.add_nested(field, ValidationErrorsKind::List(errors));
-                parent_errors
-            })
+            parent
+                .and_then(|_| Err(ValidationErrors::new()))
+                .map_err(|mut parent_errors| {
+                    parent_errors.add_nested(field, ValidationErrorsKind::List(errors));
+                    parent_errors
+                })
         }
     }
 
@@ -135,8 +144,10 @@ impl ValidationErrors {
     }
 
     pub fn add(&mut self, field: &'static str, error: ValidationError) {
-        if let ValidationErrorsKind::Field(ref mut vec) =
-            self.0.entry(field).or_insert_with(|| ValidationErrorsKind::Field(vec![]))
+        if let ValidationErrorsKind::Field(ref mut vec) = self
+            .0
+            .entry(field)
+            .or_insert_with(|| ValidationErrorsKind::Field(vec![]))
         {
             vec.push(error);
         } else {

@@ -1,8 +1,7 @@
-use proc_macro2::Span;
-use regex::Regex;
-
 use lazy_static::lazy_static;
+use proc_macro2::Span;
 use proc_macro_error::abort;
+use regex::Regex;
 use syn::spanned::Spanned;
 
 lazy_static! {
@@ -147,7 +146,10 @@ pub fn assert_custom_arg_type(field_span: &Span, field_type: &syn::Type) {
             assert_custom_arg_type(field_span, &paren.elem);
         }
         syn::Type::Tuple(tuple) => {
-            tuple.elems.iter().for_each(|x| assert_custom_arg_type(field_span, x));
+            tuple
+                .elems
+                .iter()
+                .for_each(|x| assert_custom_arg_type(field_span, x));
         }
         // assert idents
         syn::Type::Path(path) => {

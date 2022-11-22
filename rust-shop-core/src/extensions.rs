@@ -1,8 +1,8 @@
+use std::collections::binary_heap::Iter;
 use std::{
     any::{Any, TypeId},
     fmt,
 };
-use std::collections::binary_heap::Iter;
 
 use ahash::AHashMap;
 

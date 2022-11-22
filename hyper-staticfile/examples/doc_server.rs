@@ -3,14 +3,16 @@
 // Run `cargo doc && cargo run --example doc_server`, then
 // point your browser to http://localhost:3000/
 
+use std::io::Error as IoError;
+use std::path::Path;
+
 use futures_util::future;
 use http::response::Builder as ResponseBuilder;
 use http::{header, StatusCode};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Request, Response};
+
 use hyper_staticfile::Static;
-use std::io::Error as IoError;
-use std::path::Path;
 
 async fn handle_request<B>(req: Request<B>, static_: Static) -> Result<Response<Body>, IoError> {
     if req.uri().path() == "/" {

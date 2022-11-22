@@ -1,12 +1,14 @@
-use futures_util::stream::StreamExt;
-use http::{header, Request, StatusCode};
-use httpdate::fmt_http_date;
-use hyper_staticfile::Static;
 use std::future::Future;
 use std::io::{Cursor, Error as IoError, Write};
 use std::time::{Duration, SystemTime};
 use std::{fs, str};
+
+use futures_util::stream::StreamExt;
+use http::{header, Request, StatusCode};
+use httpdate::fmt_http_date;
 use tempdir::TempDir;
+
+use hyper_staticfile::Static;
 
 type Response = hyper::Response<hyper::Body>;
 type ResponseResult = Result<Response, IoError>;
@@ -15,6 +17,7 @@ struct Harness {
     dir: TempDir,
     static_: Static,
 }
+
 impl Harness {
     fn new(files: Vec<(&str, &str)>) -> Harness {
         let dir = TempDir::new("hyper-staticfile-tests").unwrap();

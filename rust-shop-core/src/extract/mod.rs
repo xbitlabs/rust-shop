@@ -1,21 +1,23 @@
-pub mod form;
-pub mod json;
-pub mod query;
-pub mod path_variable;
-pub mod request_param;
-pub mod multipart;
-pub mod header;
-pub mod request_state;
-pub mod extension;
-
 use std::io;
+
 use anyhow::anyhow;
 use async_trait::async_trait;
-use hyper::{Body, Error, Request, Response, StatusCode};
 use hyper::body::Bytes;
+use hyper::{Body, Error, Request, Response, StatusCode};
 use log::{error, log};
 use thiserror::Error;
+
 use crate::RequestCtx;
+
+pub mod extension;
+pub mod form;
+pub mod header;
+pub mod json;
+pub mod multipart;
+pub mod path_variable;
+pub mod query;
+pub mod request_param;
+pub mod request_state;
 
 pub trait IntoResponse {
     /// Create a response.
@@ -28,7 +30,7 @@ pub trait FromRequest: Sized {
     /// a kind of error that can be converted into a response.
     type Rejection: IntoResponse;
     /// Perform the extraction.
-    async fn from_request(req:RequestCtx) -> anyhow::Result<Self, Self::Rejection>;
+    async fn from_request(req: RequestCtx) -> anyhow::Result<Self, Self::Rejection>;
 }
 
 #[derive(Error, Debug)]
@@ -53,12 +55,12 @@ pub enum ExtractError {
 
 impl IntoResponse for ExtractError {
     fn into_response(self) -> Response<Body> {
-        let mut builder = Response::builder()
-            .status(StatusCode::BAD_REQUEST);
+        let mut builder = Response::builder().status(StatusCode::BAD_REQUEST);
         error!("转换url参数/form表单为对象时异常");
         builder.body(Body::from("无效请求")).unwrap()
     }
 }
-async fn body_to_bytes(req:Request<Body>)->Result<Bytes,Error>{
+
+async fn body_to_bytes(req: Request<Body>) -> Result<Bytes, Error> {
     hyper::body::to_bytes(req).await
 }

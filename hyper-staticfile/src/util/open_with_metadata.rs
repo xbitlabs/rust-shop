@@ -1,10 +1,10 @@
 use std::fs::{Metadata, OpenOptions as StdOpenOptions};
 use std::io::Error as IoError;
-use std::path::Path;
-use tokio::fs::{File, OpenOptions};
-
 #[cfg(windows)]
 use std::os::windows::fs::OpenOptionsExt;
+use std::path::Path;
+
+use tokio::fs::{File, OpenOptions};
 #[cfg(windows)]
 use winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS;
 

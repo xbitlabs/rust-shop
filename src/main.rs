@@ -1,18 +1,5 @@
 #![feature(try_trait_v2)]
 
-pub mod api;
-pub mod service;
-pub mod entity;
-pub mod utils;
-mod vo;
-mod filter;
-mod request;
-mod config;
-mod core;
-mod state;
-mod extensions;
-
-
 use std::any::Any;
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -21,46 +8,62 @@ use std::fs::File;
 use std::io::Read;
 use std::net::SocketAddr;
 use std::string::ToString;
+use std::sync::{Arc, Mutex};
+
 use hyper::{Body, Request, Response, StatusCode};
 use lazy_static::lazy_static;
 use log::info;
-use crate::api::index_controller::IndexController;
-use snowflake::SnowflakeIdGenerator;
-use std::sync::{Arc, Mutex};
 use once_cell::sync::Lazy;
+use snowflake::SnowflakeIdGenerator;
 use sqlx::{MySql, Pool};
 use syn::__private::ToTokens;
 use syn::{Item, ItemMod};
-use rust_shop_core::{
-    AccessLogFilter,
-    EndpointResult,
-    Filter,
-    Next,
-    RequestCtx,
-    RequestStateProvider,
-    ResponseBuilder,
-    Server
-};
+
 use rust_shop_core::db::{mysql_connection_pool, SqlCommandExecutor};
 use rust_shop_core::extensions::Extensions;
-use rust_shop_core::extract::{FromRequest, IntoResponse};
 use rust_shop_core::extract::json::Json;
-use rust_shop_core::security::{AuthenticationTokenResolver, AuthenticationTokenResolverFn, DefaultLoadUserService, LoadUserService, LoadUserServiceFn, SecurityConfig, WeChatMiniAppAuthenticationTokenResolver, WeChatUserService};
-use rust_shop_core::state::State;
+use rust_shop_core::extract::{FromRequest, IntoResponse};
 use rust_shop_core::router::register_route;
 use rust_shop_core::security::NopPasswordEncoder;
+use rust_shop_core::security::{
+    AuthenticationTokenResolver, AuthenticationTokenResolverFn, DefaultLoadUserService,
+    LoadUserService, LoadUserServiceFn, SecurityConfig, WeChatMiniAppAuthenticationTokenResolver,
+    WeChatUserService,
+};
+use rust_shop_core::state::State;
+use rust_shop_core::{
+    AccessLogFilter, EndpointResult, Filter, Next, RequestCtx, RequestStateProvider,
+    ResponseBuilder, Server,
+};
+
 use crate::api::auth_controller;
+use crate::api::index_controller::IndexController;
 use crate::api::static_file_controller::StaticFileController;
 use crate::api::upload_controller::UploadController;
 use crate::config::load_config::APP_CONFIG;
 
+pub mod api;
+mod config;
+mod core;
+pub mod entity;
+mod extensions;
+mod filter;
+mod request;
+pub mod service;
+mod state;
+pub mod utils;
+mod vo;
 
-pub struct  AuthFilter;
+pub struct AuthFilter;
 
 #[async_trait::async_trait]
 impl Filter for AuthFilter {
-    async fn handle<'a>(&'a self, ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<hyper::Response<hyper::Body>> {
-        let endpoint_result:EndpointResult<String> = EndpointResult::server_error("无权限");
+    async fn handle<'a>(
+        &'a self,
+        ctx: RequestCtx,
+        next: Next<'a>,
+    ) -> anyhow::Result<hyper::Response<hyper::Body>> {
+        let endpoint_result: EndpointResult<String> = EndpointResult::server_error("无权限");
         Ok(ResponseBuilder::with_endpoint_result(endpoint_result))
     }
 
@@ -69,26 +72,29 @@ impl Filter for AuthFilter {
     }
 }
 
-fn load_user_service_fn<'a,'b>(sql_command_executor:&'b mut SqlCommandExecutor<'a,'b>) ->Box<dyn LoadUserService + Send + Sync + 'b>{
+fn load_user_service_fn<'r,'a, 'b>(
+    sql_command_executor: &'r mut SqlCommandExecutor<'a, 'b>,
+) -> Box<dyn LoadUserService + Send + Sync + 'r> {
     WeChatUserService::new(sql_command_executor)
 }
 
 #[tokio::main]
 #[rust_shop_macro::scan_route("/src")]
-async fn main() ->anyhow::Result<()>{
-
-/*    let mut file = File::open("D:\\项目\\rust-shop\\src\\api\\auth_controller.rs").expect("Unable to open file");
+async fn main() -> anyhow::Result<()> {
+        let mut file = File::open("D:\\项目\\rust-shop\\src\\api\\auth_controller.rs").expect("Unable to open file");
 
     let mut src = String::new();
     file.read_to_string(&mut src).expect("Unable to read file");
 
     let syntax = syn::parse_file(&src).expect("Unable to parse file");
-    println!("{:#?}", syntax);*/
+    println!("{:#?}", syntax);
 
     log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
     info!("booting up");
 
-    let addr: SocketAddr = format!("127.0.0.1:{}",&APP_CONFIG.server.port).parse().unwrap();
+    let addr: SocketAddr = format!("127.0.0.1:{}", &APP_CONFIG.server.port)
+        .parse()
+        .unwrap();
 
     let mut srv = Server::new();
 
@@ -99,18 +105,25 @@ async fn main() ->anyhow::Result<()>{
 
     let mut security_config = SecurityConfig::new();
     security_config.enable_security(false);
-    security_config.authentication_token_resolver(
-        AuthenticationTokenResolverFn::from(
-        Box::new(|request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn AuthenticationTokenResolver + Send + Sync>{
-            Box::new(WeChatMiniAppAuthenticationTokenResolver{})
-        })));
-    security_config.password_encoder(Box::new(NopPasswordEncoder{}));
-    security_config.load_user_service(
-        LoadUserServiceFn::from(
-            Box::new( |request_states: &Arc<Extensions>, app_extensions: &Arc<Extensions>| -> Box<dyn for<'c,'d> Fn(&'d mut SqlCommandExecutor<'c,'d>)->Box<(dyn LoadUserService + Send + Sync + 'd)> + Send + Sync>{
-                Box::new(load_user_service_fn)
-            }))
-    );
+    security_config.authentication_token_resolver(AuthenticationTokenResolverFn::from(Box::new(
+        |request_states: &Arc<Extensions>,
+         app_extensions: &Arc<Extensions>|
+         -> Box<dyn AuthenticationTokenResolver + Send + Sync> {
+            Box::new(WeChatMiniAppAuthenticationTokenResolver {})
+        },
+    )));
+    security_config.password_encoder(Box::new(NopPasswordEncoder {}));
+    security_config.load_user_service(LoadUserServiceFn::from(Box::new(
+        |request_states: &Arc<Extensions>,
+         app_extensions: &Arc<Extensions>|
+         -> Box<
+            dyn for<'r,'c, 'd> Fn(
+                    &'r mut SqlCommandExecutor<'c, 'd>,
+                ) -> Box<(dyn LoadUserService + Send + Sync + 'r)>
+                + Send
+                + Sync,
+        > { Box::new(load_user_service_fn) },
+    )));
     srv.security_config(security_config);
 
     //let mysql_pool_state_provider : Box<dyn RequestStateProvider + Sync + Send> = Box::new(MysqlPoolStateProvider);
@@ -122,9 +135,9 @@ async fn main() ->anyhow::Result<()>{
     //srv.post("/logout", AuthController::logout);
     //srv.post("/refresh_token",AuthController::refresh_token);
     //上传
-    srv.post("/upload",UploadController::upload);
+    srv.post("/upload", UploadController::upload);
     //静态文件
-    srv.get("/static/:day/:file",StaticFileController::handle);
+    srv.get("/static/:day/:file", StaticFileController::handle);
     srv.run(addr).await.unwrap();
 
     info!("server shutdown!");

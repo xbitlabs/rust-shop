@@ -191,13 +191,23 @@ pub fn quote_length_validation(
         };
 
         let min_tokens = option_to_tokens(
-            &min.clone().as_ref().map(value_or_path_to_tokens).map(|x| quote!(#x as u64)),
+            &min.clone()
+                .as_ref()
+                .map(value_or_path_to_tokens)
+                .map(|x| quote!(#x as u64)),
         );
         let max_tokens = option_to_tokens(
-            &max.clone().as_ref().map(value_or_path_to_tokens).map(|x| quote!(#x as u64)),
+            &max.clone()
+                .as_ref()
+                .map(value_or_path_to_tokens)
+                .map(|x| quote!(#x as u64)),
         );
         let equal_tokens = option_to_tokens(
-            &equal.clone().as_ref().map(value_or_path_to_tokens).map(|x| quote!(#x as u64)),
+            &equal
+                .clone()
+                .as_ref()
+                .map(value_or_path_to_tokens)
+                .map(|x| quote!(#x as u64)),
         );
 
         let quoted_error = quote_error(validation);
@@ -245,12 +255,16 @@ pub fn quote_range_validation(
         };
 
         // Can't interpolate None
-        let min_tokens =
-            min.clone().map(|x| value_or_path_to_tokens(&x)).map(|x| quote!(#x as f64));
+        let min_tokens = min
+            .clone()
+            .map(|x| value_or_path_to_tokens(&x))
+            .map(|x| quote!(#x as f64));
         let min_tokens = option_to_tokens(&min_tokens);
 
-        let max_tokens =
-            max.clone().map(|x| value_or_path_to_tokens(&x)).map(|x| quote!(#x as f64));
+        let max_tokens = max
+            .clone()
+            .map(|x| value_or_path_to_tokens(&x))
+            .map(|x| quote!(#x as f64));
         let max_tokens = option_to_tokens(&max_tokens);
 
         let quoted_error = quote_error(validation);
@@ -404,7 +418,10 @@ pub fn quote_custom_validation(
     let field_name = &field_quoter.name;
     let validator_param = field_quoter.quote_validator_param();
 
-    if let Validator::Custom { function, argument, .. } = &validation.validator {
+    if let Validator::Custom {
+        function, argument, ..
+    } = &validation.validator
+    {
         let fn_ident: syn::Path = syn::parse_str(function).unwrap();
 
         let access = if_chain! {
@@ -528,9 +545,10 @@ pub fn quote_validator(
         Validator::Phone => validations.push(quote_phone_validation(field_quoter, validation)),
         Validator::Nested => nested_validations.push(quote_nested_validation(field_quoter)),
         #[cfg(feature = "unic")]
-        Validator::NonControlCharacter => {
-            validations.push(quote_non_control_character_validation(field_quoter, validation))
-        }
+        Validator::NonControlCharacter => validations.push(quote_non_control_character_validation(
+            field_quoter,
+            validation,
+        )),
         Validator::Required | Validator::RequiredNested => {
             validations.push(quote_required_validation(field_quoter, validation))
         }
@@ -556,7 +574,11 @@ pub fn quote_schema_validation(v: &SchemaValidation) -> proc_macro2::TokenStream
         quote!()
     };
 
-    let mut_err_token = if v.message.is_some() { quote!(mut) } else { quote!() };
+    let mut_err_token = if v.message.is_some() {
+        quote!(mut)
+    } else {
+        quote!()
+    };
 
     let quoted = quote!(
         match #fn_ident(#arg_quoted) {

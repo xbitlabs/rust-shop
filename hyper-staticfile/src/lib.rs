@@ -78,12 +78,12 @@
 //! This is a struct wrapping a `tokio::fs::File` and implementing a `futures::Stream` that
 //! produces `Bytes`s. It can be used for streaming a file in custom response.
 
-mod resolve;
-mod response_builder;
-mod service;
-mod util;
-
 pub use crate::resolve::*;
 pub use crate::response_builder::*;
 pub use crate::service::*;
 pub use crate::util::{FileBytesStream, FileResponseBuilder};
+
+mod resolve;
+mod response_builder;
+mod service;
+mod util;

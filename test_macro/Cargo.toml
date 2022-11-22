@@ -6,12 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rust-shop-macro = {version = "0.1.0" ,path="../rust-shop-macro"}
-rust-shop-core = {version = "0.1.0" ,path="../rust-shop-core"}
+rust-shop-macro = { version = "0.1.0", path = "../rust-shop-macro" }
+rust-shop-core = { version = "0.1.0", path = "../rust-shop-core" }
 lazy_static = "1.4.0"
 #json
 serde = "1.0"
 serde_json = "1.0"
 anyhow = "1.0.65"
 thiserror = "1.0.37"
-hyper = { version ="0.14.20", features = ["full"] }
+hyper = { version = "0.14.20", features = ["full"] }

@@ -1,25 +1,28 @@
 use std::collections::HashMap;
+
 use rust_shop_core::extract::json::Json;
-use rust_shop_core::{HTTPHandler, RequestCtx};
 use rust_shop_core::router::register_route;
+use rust_shop_core::{HTTPHandler, RequestCtx};
+
 use crate::test1::User;
 
 pub mod test1 {
-    #[derive(serde::Serialize,serde::Deserialize)]
-    pub struct User{
-        pub name:String,
-        pub age:u32,
-    }
+    use hyper::Body;
+    use hyper::Response;
+    use lazy_static::lazy_static;
 
     use rust_shop_core::extract::json::Json;
-    use rust_shop_macro::route;
-    use rust_shop_core::router::register_route;
-    use lazy_static::lazy_static;
-    use rust_shop_core::RequestCtx;
-    use hyper::Response;
-    use hyper::Body;
     use rust_shop_core::extract::FromRequest;
     use rust_shop_core::extract::IntoResponse;
+    use rust_shop_core::router::register_route;
+    use rust_shop_core::RequestCtx;
+    use rust_shop_macro::route;
+
+    #[derive(serde::Serialize, serde::Deserialize)]
+    pub struct User {
+        pub name: String,
+        pub age: u32,
+    }
 
     #[route("post", "/")]
     pub async fn add(Json(payload): Json<User>) -> anyhow::Result<Json<User>> {
@@ -32,8 +35,6 @@ pub mod test1 {
     }
 }
 
-
 fn main() {
-    println!("Hello, world!{}",std::any::type_name::<Json<User>>());
+    println!("Hello, world!{}", std::any::type_name::<Json<User>>());
 }
-

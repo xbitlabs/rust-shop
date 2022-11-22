@@ -66,7 +66,11 @@ pub struct CustomArgument {
 
 impl CustomArgument {
     pub fn new(def_span: Span, arg_type: Type) -> Self {
-        CustomArgument { def_span, arg_type, arg_access: None }
+        CustomArgument {
+            def_span,
+            arg_type,
+            arg_access: None,
+        }
     }
 }
 
