@@ -58,7 +58,7 @@ pub struct AuthFilter;
 impl Filter for AuthFilter {
     async fn handle<'a>(
         &'a self,
-        ctx:& mut RequestCtx,
+        mut ctx:RequestCtx,
         next: Next<'a>,
     ) -> anyhow::Result<hyper::Response<hyper::Body>> {
         let endpoint_result: EndpointResult<String> = EndpointResult::server_error("无权限");

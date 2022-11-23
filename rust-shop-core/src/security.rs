@@ -644,7 +644,7 @@ pub struct AuthenticationProcessingFilter {}
 impl Filter for AuthenticationProcessingFilter {
     async fn handle<'a>(
         &'a self,
-        ctx:&mut RequestCtx,
+        mut ctx:RequestCtx,
         next: Next<'a>,
     ) -> anyhow::Result<Response<Body>> {
         unsafe {
@@ -659,15 +659,15 @@ impl Filter for AuthenticationProcessingFilter {
             //let request_states = Arc::clone(&request_states);
 
             let authentication_token_resolver = security_config.get_authentication_token_resolver()();
-            let authentication_token = authentication_token_resolver.resolve(ctx).await?;
+            let authentication_token = authentication_token_resolver.resolve(&mut ctx).await?;
             drop(authentication_token_resolver);
 
             let mut auth_provider = security_config.get_authentication_provider()(
-                ctx
+                &mut ctx
             )(&mut sql_command_executor);
             let authentication = auth_provider
                 .authenticate(
-                    ctx,
+                    &mut ctx,
                     authentication_token,
                 )
                 .await;
@@ -679,7 +679,7 @@ impl Filter for AuthenticationProcessingFilter {
                 let success_handler = security_config.get_authentication_success_handler();
                 if success_handler.is_some() {
                     let result = success_handler.as_ref().unwrap()(
-                        ctx
+                        &mut ctx
                     )
                         .handle(authentication)
                         .await?;
@@ -688,7 +688,7 @@ impl Filter for AuthenticationProcessingFilter {
                     let user_details: Option<&Box<dyn UserDetails + Send + Sync>> =
                         authentication.get_details().downcast_ref();
                     let mut jwt_service = security_config.get_jwt_service()(
-                        ctx
+                        &mut ctx
                     )(&mut sql_command_executor);
                     let access_token = jwt_service
                         .grant_access_token(*user_details.unwrap().get_id())
@@ -701,7 +701,7 @@ impl Filter for AuthenticationProcessingFilter {
                 let fail_handler = security_config.get_authentication_failure_handler();
                 if fail_handler.is_some() {
                     let result = fail_handler.as_ref().unwrap()(
-                        ctx
+                        &mut ctx
                     )
                         .handle(authentication.err().unwrap())
                         .await?;

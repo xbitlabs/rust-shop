@@ -714,7 +714,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
             inject_sql_command_executor = true;
             sql_command_executor_param_name = param.param_name.clone();
         }
-        if param.param_type == "RequestCtx" {
+        if param.param_type == "&mut RequestCtx" {
             original_fn_inputs.push(String::from("ctx"));
         } else {
             if param.param_type == "Json" {
@@ -795,8 +795,8 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                             param.param_name, header_tmp_var, param.param_option_type, msg
                         );
                 } else {
-                    let msg_none = format!("router param '{}' is None", param.param_name);
-                    let msg_invalid = format!("router param '{}' is invalid", param.param_name);
+                    let msg_none = format!("PathVariable '{}' is None", param.param_name);
+                    let msg_invalid = format!("PathVariable '{}' is invalid", param.param_name);
                     let header_tmp_var = param.param_name.clone() + "_tmp_var";
                     handler_proxy_fn_body = handler_proxy_fn_body
                         + &*format!(
@@ -841,8 +841,8 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                             param.param_name, header_tmp_var, param.param_option_type, msg
                         );
                 } else {
-                    let msg_none = format!("router param '{}' is None", param.param_name);
-                    let msg_invalid = format!("router param '{}' is invalid", param.param_name);
+                    let msg_none = format!("RequestParam '{}' is None", param.param_name);
+                    let msg_invalid = format!("RequestParam '{}' is invalid", param.param_name);
 
                     let header_tmp_var = param.param_name.clone() + "_tmp_var";
                     handler_proxy_fn_body = handler_proxy_fn_body
@@ -871,7 +871,10 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
 
             if param.param_type == "&mut SqlCommandExecutor" {
                 original_fn_inputs.push(String::from("&mut ") + &*param.param_name.clone());
-            } else {
+            }else if  param.param_type == "&mut RequestCtx"{
+                original_fn_inputs.push(String::from("&mut ") + &*param.param_name.clone());
+            }
+            else {
                 original_fn_inputs.push(String::from(param.param_name.clone()));
             }
         }
@@ -910,11 +913,11 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
 
             tran_commit_rollback_code =
                 "return if handler_result.is_err() {{
-                    println!(\"{}\",\"提交事务\");
+                    println!(\"{}\",\"回滚事务\");
                     tran_manager.rollback().await?;
                     Err(handler_result.err().unwrap())
                 }} else {{
-                    println!(\"{}\",\"回滚事务\");
+                    println!(\"{}\",\"提交事务\");
                     tran_manager.commit().await?;
                     Ok(handler_result.unwrap().into_response())
                 }}".to_string();
@@ -925,7 +928,8 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
 
     }
 
-    let handler_proxy_fn = String::from("pub async fn ") + &*handler_proxy_name + "(ctx:&mut RequestCtx)->anyhow::Result<Response<Body>>{\r\n" +
+    let handler_proxy_fn = String::from("pub async fn ") + &*handler_proxy_name + "(mut req_ctx:RequestCtx)->anyhow::Result<Response<Body>>{\r\n" +
+        "let ctx = &mut req_ctx;"+
         &*sql_command_executor_inject_code +
         &*handler_proxy_fn_body +
         &*handle_result +

@@ -1,3 +1,5 @@
+extern crate core;
+
 use std::any::{Any, TypeId};
 use std::borrow::{Borrow, BorrowMut};
 use std::cell::RefCell;
@@ -20,6 +22,7 @@ use chrono::Local;
 use chrono::NaiveDateTime;
 use chrono::Utc;
 use criterion::Criterion;
+use http::{Method, Uri, Version};
 use hyper::body::{Buf, Bytes};
 use hyper::header::{HeaderValue, ToStrError};
 use hyper::service::{make_service_fn, service_fn};
@@ -57,9 +60,9 @@ pub mod router;
 pub mod security;
 pub mod state;
 pub mod wechat_service;
+use crate::extract::json::body_to_bytes;
 use http::request::Parts as HttpParts;
 use once_cell::sync::Lazy;
-use crate::extract::json::body_to_bytes;
 
 pub static mut APP_EXTENSIONS: Lazy<Extensions> = Lazy::new(|| {
     let mut m: Extensions = Extensions::new();
@@ -77,23 +80,24 @@ macro_rules! register_method {
 }
 
 pub struct RequestCtx {
-    pub parts: HttpParts,
+    //pub parts: HttpParts,
     pub body: Body,
     pub router_params: Params,
     pub remote_addr: SocketAddr,
     pub query_params: HashMap<String, String>,
     pub headers: HashMap<String, Option<String>>,
-    pub request_states: Extensions,
-    pub current_user: Option<Box<dyn UserDetails + Send + Sync>>,
+    //pub request_states: Extensions,
+    //pub current_user: Option<Box<dyn UserDetails + Send + Sync>>,
+    method: Method,
+    uri: Uri,
+    version: Version,
+    extensions: Extensions,
 }
 
 //处理http请求过程中状态保持
 //pub type RequestStateProvider = dyn Fn() -> State<T> + Send + Sync;
 pub trait RequestStateProvider {
-    fn get_state(
-        &self,
-        req: &mut RequestCtx,
-    ) -> Box<dyn Any + Send + Sync>;
+    fn get_state(&self, req: &mut RequestCtx) -> Box<dyn Any + Send + Sync>;
     fn matches(&self, ctx: &mut RequestCtx) -> bool;
 }
 
@@ -269,7 +273,7 @@ impl ResponseBuilder {
 
 #[async_trait::async_trait]
 pub trait HTTPHandler: Send + Sync + 'static {
-    async fn handle(&self, ctx: &mut RequestCtx) -> anyhow::Result<Response<Body>>;
+    async fn handle(&self, mut ctx: RequestCtx) -> anyhow::Result<Response<Body>>;
 }
 
 type BoxHTTPHandler = Box<dyn HTTPHandler>;
@@ -277,10 +281,10 @@ type BoxHTTPHandler = Box<dyn HTTPHandler>;
 #[async_trait::async_trait]
 impl<F: Send + Sync + 'static, Fut> HTTPHandler for F
 where
-    F: Fn(&mut RequestCtx) -> Fut,
+    F: Fn(RequestCtx) -> Fut,
     Fut: Future<Output = anyhow::Result<Response<Body>>> + Send + 'static,
 {
-    async fn handle(&self, ctx:&mut RequestCtx) -> anyhow::Result<Response<Body>> {
+    async fn handle(&self, mut ctx: RequestCtx) -> anyhow::Result<Response<Body>> {
         self(ctx).await
     }
 }
@@ -289,7 +293,7 @@ where
 pub trait Filter: Send + Sync + 'static {
     async fn handle<'a>(
         &'a self,
-        ctx:&mut RequestCtx,
+        mut ctx: RequestCtx,
         next: Next<'a>,
     ) -> anyhow::Result<Response<Body>>;
     fn url_patterns(&self) -> String;
@@ -303,7 +307,7 @@ pub struct Next<'a> {
 
 impl<'a> Next<'a> {
     /// Asynchronously execute the remaining filter chain.
-    pub async fn run(mut self, ctx:&mut RequestCtx) -> anyhow::Result<Response<Body>> {
+    pub async fn run(mut self, mut ctx: RequestCtx) -> anyhow::Result<Response<Body>> {
         if let Some((current, next)) = self.next_filter.split_first() {
             self.next_filter = next;
             current.handle(ctx, self).await
@@ -317,7 +321,7 @@ pub struct RequestStateResolver;
 
 impl RequestStateResolver {
     pub fn get<'a, T: 'a + 'static>(ctx: &'a mut RequestCtx) -> &'a T {
-        let state: Option<&Box<dyn Any + Send + Sync>> = ctx.request_states.get();
+        let state: Option<&Box<dyn Any + Send + Sync>> = ctx.extensions.get();
         let state: Option<&T> = state.unwrap().downcast_ref();
         state.unwrap()
     }
@@ -329,12 +333,12 @@ pub struct AccessLogFilter;
 impl Filter for AccessLogFilter {
     async fn handle<'a>(
         &'a self,
-        ctx:&mut RequestCtx,
+        mut ctx: RequestCtx,
         next: Next<'a>,
     ) -> anyhow::Result<Response<Body>> {
         let start = Instant::now();
-        let method = ctx.parts.method.to_string();
-        let path = ctx.parts.uri.path().to_string();
+        let method = ctx.method.to_string();
+        let path = ctx.uri.path().to_string();
         let remote_addr = ctx.remote_addr;
 
         let res = next.run(ctx).await;
@@ -424,7 +428,8 @@ impl Server {
             router,
             filters,
             request_state_providers,
-            enable_security, ..
+            enable_security,
+            ..
         } = self;
         let router = Arc::new(router);
         let filters = Arc::new(filters);
@@ -449,7 +454,6 @@ impl Server {
                     async move {
                         let method = &req.method().as_str().to_uppercase();
 
-                        static NOT_FOUND_HANDLER:&NotFoundHandler = &NotFoundHandler;
                         let mut router_params = Params::new();
                         let endpoint = match router.get(method) {
                             Some(router) => match router.recognize(req.uri().path()) {
@@ -457,9 +461,9 @@ impl Server {
                                     router_params = m.params().clone();
                                     &***m.handler()
                                 }
-                                Err(_) =>{ NOT_FOUND_HANDLER },
+                                Err(_) => &handle_not_found,
                             },
-                            None => { NOT_FOUND_HANDLER },
+                            None => &handle_not_found,
                         };
 
                         let next = Next {
@@ -477,7 +481,7 @@ impl Server {
 
                         let url = req.uri().to_string();
 
-                /*        let mut request_states = Extensions::new();
+                        /*        let mut request_states = Extensions::new();
                         for state_provider in request_state_providers.iter() {
                             let provider: Option<&Box<dyn RequestStateProvider + Sync + Send>> =
                                 request_state_providers.get();
@@ -496,22 +500,31 @@ impl Server {
                             };
                             headers.insert(header.0.to_string(), value);
                         }
-                        let (mut parts, body) = req.into_parts();
-
+                        let (
+                            http::request::Parts {
+                                method,
+                                uri,
+                                version,
+                                extensions,
+                                ..
+                            },
+                            body,
+                        ) = req.into_parts();
 
                         let mut ctx = RequestCtx {
-                            parts,
                             //request: req,
                             router_params,
                             remote_addr,
                             query_params,
                             headers,
-                            request_states,
-                            current_user: None,
-                            body
+                            method,
+                            uri,
+                            version,
+                            body,
+                            extensions: Extensions::new(),
                         };
 
-                        let resp_result = next.run(&mut ctx).await;
+                        let resp_result = next.run(ctx).await;
                         match resp_result {
                             Ok(resp) => Ok::<_, anyhow::Error>(resp),
                             Err(error) => {
@@ -536,7 +549,6 @@ impl Server {
 
         Ok(())
     }
-
 }
 
 impl Default for Server {
@@ -559,9 +571,9 @@ where
     }
 }
 
-pub async fn parse_form_params(req:&mut RequestCtx) -> HashMap<String, String> {
-    let url = req.parts.uri.to_string();
-    let b =body_to_bytes(req.body.borrow_mut()).await;
+pub async fn parse_form_params(req: &mut RequestCtx) -> HashMap<String, String> {
+    let url = req.uri.to_string();
+    let b = body_to_bytes(req.body.borrow_mut()).await;
     if b.is_err() {
         error!("解析form参数异常{}：{}", url, b.err().unwrap());
         return HashMap::new();
@@ -571,12 +583,8 @@ pub async fn parse_form_params(req:&mut RequestCtx) -> HashMap<String, String> {
         .collect::<HashMap<String, String>>();
     params
 }
-pub struct NotFoundHandler;
-#[async_trait::async_trait]
-impl HTTPHandler for NotFoundHandler {
-    async fn handle(&self, ctx: &mut RequestCtx) -> anyhow::Result<Response<Body>> {
-        Ok(ResponseBuilder::with_status(StatusCode::NOT_FOUND))
-    }
+async fn handle_not_found(mut ctx: RequestCtx) -> anyhow::Result<Response<Body>> {
+    Ok(ResponseBuilder::with_status(StatusCode::NOT_FOUND))
 }
 #[test]
 fn test() {

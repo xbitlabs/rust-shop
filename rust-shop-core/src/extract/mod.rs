@@ -37,16 +37,16 @@ pub trait FromRequest: Sized {
 pub enum ExtractError {
     #[error("无效的form content-type")]
     InvalidFormContentType,
-    #[error("反系列化Url请求参数为对象失败")]
-    FailedToDeserializeQueryString,
-    #[error("反系列化Form参数为对象失败")]
-    FailedToDeserializeFormData,
+    #[error("反系列化Url请求参数为对象失败：{0}")]
+    FailedToDeserializeQueryString(String),
+    #[error("反系列化Form参数为对象失败：{0}")]
+    FailedToDeserializeFormData(String),
     #[error("未发现Json数据")]
     MissingJsonContentType,
-    #[error("Json IO错误")]
-    JsonIoError,
-    #[error("Json对象类型映射错误")]
-    JsonDataError,
+    #[error("Json IO错误：{0}")]
+    JsonIoError(String),
+    #[error("Json对象类型映射错误：{0}")]
+    JsonDataError(String),
     #[error("Json格式无效")]
     JsonSyntaxError,
     #[error("未知错误")]

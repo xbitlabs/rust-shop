@@ -32,14 +32,14 @@ where
         if json_content_type(&ctx) {
             let bytes = body_to_bytes(ctx.body.borrow_mut()).await;
             if bytes.is_err() {
-                return Err(JsonIoError);
+                return Err(JsonIoError(bytes.err().unwrap().to_string()));
             }
             let bytes = bytes.unwrap();
             let value = match serde_json::from_slice(&bytes) {
                 Ok(value) => value,
                 Err(err) => {
                     let rejection = match err.classify() {
-                        serde_json::error::Category::Data => JsonDataError,
+                        serde_json::error::Category::Data => JsonDataError(err.to_string()),
                         serde_json::error::Category::Syntax | serde_json::error::Category::Eof => {
                             JsonSyntaxError
                         }
@@ -65,24 +65,20 @@ where
 }
 
 fn json_content_type(ctx: &RequestCtx) -> bool {
-    let content_type = if let Some(content_type) = ctx.parts.headers.get(header::CONTENT_TYPE) {
-        content_type
-    } else {
+    let content_type  = ctx.headers.get(header::CONTENT_TYPE.as_str());
+    if content_type.is_none() {
         return false;
-    };
-
-    let content_type = if let Ok(content_type) = content_type.to_str() {
-        content_type
-    } else {
+    }
+    let content_type = content_type.as_ref().unwrap();
+    if content_type.is_none() {
         return false;
-    };
-
-    let mime = if let Ok(mime) = content_type.parse::<mime::Mime>() {
-        mime
-    } else {
+    }
+    let content_type = content_type.as_ref().unwrap();
+    let mime = content_type.parse::<mime::Mime>();
+    if mime.is_err() {
         return false;
-    };
-
+    }
+    let mime = mime.unwrap();
     let is_json_content_type = mime.type_() == "application"
         && (mime.subtype() == "json" || mime.suffix().map_or(false, |name| name == "json"));
 
