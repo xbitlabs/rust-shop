@@ -18,9 +18,9 @@ use crate::entity::User;
 use crate::extensions::Extensions;
 use crate::id_generator::ID_GENERATOR;
 use crate::jwt::{AccessToken, JwtService};
-use crate::jwt_service::DefaultJwtService;
+use crate::jwt::DefaultJwtService;
 use crate::state::State;
-use crate::wechat_service::WeChatMiniAppService;
+use crate::wechat::WeChatMiniAppService;
 use crate::{parse_form_params, EndpointResult, Filter, Next, RequestCtx, ResponseBuilder, APP_EXTENSIONS};
 
 #[async_trait::async_trait]
@@ -636,7 +636,13 @@ pub trait AccessDecisionManager {
 
 pub struct SecurityMetadataSource {}
 
-pub struct AccessDecisionVoter {}
+pub enum Vote{
+    AccessGranted,
+    AccessDenied,
+    AccessAbstain
+}
+
+pub trait AccessDecisionVoter {}
 
 pub struct AuthenticationProcessingFilter {}
 

@@ -38,6 +38,8 @@ use rust_shop_core::{
 
 use crate::api::auth_controller;
 use crate::api::index_controller::IndexController;
+use crate::api::static_file_controller::StaticFileController;
+use crate::api::upload_controller::UploadController;
 use crate::config::load_config::APP_CONFIG;
 
 pub mod api;
@@ -79,13 +81,13 @@ fn load_user_service_fn<'r,'a, 'b>(
 #[tokio::main]
 #[rust_shop_macro::scan_route("/src")]
 async fn main() -> anyhow::Result<()> {
-        let mut file = File::open("D:\\项目\\rust-shop\\src\\api\\auth_controller.rs").expect("Unable to open file");
+    /*let mut file = File::open("D:\\项目\\rust-shop\\src\\api\\auth_controller.rs").expect("Unable to open file");
 
     let mut src = String::new();
     file.read_to_string(&mut src).expect("Unable to read file");
 
     let syntax = syn::parse_file(&src).expect("Unable to parse file");
-    println!("{:#?}", syntax);
+    println!("{:#?}", syntax);*/
 
     log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
     info!("booting up");
@@ -124,11 +126,7 @@ async fn main() -> anyhow::Result<()> {
     //let mysql_pool_state_provider : Box<dyn RequestStateProvider + Sync + Send> = Box::new(MysqlPoolStateProvider);
     //srv.request_state(mysql_pool_state_provider);
 
-    srv.post("/", &IndexController::index);
-    //登录
-    //srv.post("/login", AuthController::login);
-    //srv.post("/logout", AuthController::logout);
-    //srv.post("/refresh_token",AuthController::refresh_token);
+    srv.post("/", IndexController::index);
     //上传
     //srv.post("/upload", UploadController::upload);
     //静态文件

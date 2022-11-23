@@ -55,11 +55,12 @@ pub mod extensions;
 pub mod extract;
 pub mod id_generator;
 pub mod jwt;
-pub mod jwt_service;
 pub mod router;
 pub mod security;
 pub mod state;
-pub mod wechat_service;
+pub mod wechat;
+pub mod ant_path_matcher;
+
 use crate::extract::json::body_to_bytes;
 use http::request::Parts as HttpParts;
 use once_cell::sync::Lazy;
@@ -92,6 +93,12 @@ pub struct RequestCtx {
     uri: Uri,
     version: Version,
     extensions: Extensions,
+}
+
+impl RequestCtx {
+    pub fn extensions_mut(&mut self)->&mut Extensions{
+        self.extensions.borrow_mut()
+    }
 }
 
 //处理http请求过程中状态保持
@@ -490,7 +497,7 @@ impl Server {
                         }
                         let arc_request_states = Arc::new(request_states);*/
 
-                        let mut request_states = Extensions::new();
+                        //let mut request_states = Extensions::new();
 
                         let mut headers = HashMap::new();
                         for header in req.headers() {

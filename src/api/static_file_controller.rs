@@ -1,7 +1,7 @@
-/*use std::path::PathBuf;
+use std::path::PathBuf;
 use std::sync::Arc;
 
-use hyper::{Body, Response, StatusCode, Uri};
+use hyper::{Body, Request, Response, StatusCode, Uri};
 
 use hyper_staticfile::Static;
 
@@ -11,11 +11,11 @@ use crate::{RequestCtx, ResponseBuilder};
 pub struct StaticFileController;
 
 impl StaticFileController {
-    pub async fn handle(ctx: RequestCtx) -> anyhow::Result<Response<Body>> {
+    pub async fn handle(req:Request<Body>) -> anyhow::Result<Response<Body>> {
         let upload_config = &APP_CONFIG.upload;
         let mut static_ = Static::new(upload_config.save_path.as_str());
         static_.custom_path_resolver = Some(Arc::new(custom_path_resolver));
-        let response_future = static_.serve(ctx.request);
+        let response_future = static_.serve(req);
         let response_result = response_future.await;
         match response_result {
             Ok(response) => Ok(response),
@@ -37,4 +37,3 @@ pub fn custom_path_resolver(root_path: &str, request_uri: &str) -> PathBuf {
     file_path = file_path + paths.1;
     PathBuf::from(file_path)
 }
-*/

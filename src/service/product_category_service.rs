@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use rust_shop_core::db::{mysql_connection_pool, SqlCommandExecutor, TransactionManager};
 use rust_shop_core::id_generator::ID_GENERATOR;
-use rust_shop_core::jwt_service::DefaultJwtService;
+use rust_shop_core::jwt::DefaultJwtService;
 
 use crate::entity::entity::ProductCategory;
 
