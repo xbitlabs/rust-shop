@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::extract::ExtractError::{
     JsonDataError, JsonIoError, JsonSyntaxError, MissingJsonContentType,
 };
-use crate::extract::{ ExtractError, FromRequest, IntoResponse};
+use crate::extract::{ExtractError, FromRequest, IntoResponse};
 use crate::{BoxError, EndpointResult, RequestCtx, ResponseBuilder};
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -28,7 +28,7 @@ where
 {
     type Rejection = ExtractError;
 
-    async fn from_request(ctx:&mut RequestCtx) -> Result<Self, ExtractError> {
+    async fn from_request(ctx: &mut RequestCtx) -> Result<Self, ExtractError> {
         if json_content_type(&ctx) {
             let bytes = body_to_bytes(ctx.body.borrow_mut()).await;
             if bytes.is_err() {
@@ -65,7 +65,7 @@ where
 }
 
 fn json_content_type(ctx: &RequestCtx) -> bool {
-    let content_type  = ctx.headers.get(header::CONTENT_TYPE.as_str());
+    let content_type = ctx.headers.get(header::CONTENT_TYPE.as_str());
     if content_type.is_none() {
         return false;
     }
@@ -84,9 +84,9 @@ fn json_content_type(ctx: &RequestCtx) -> bool {
 
     is_json_content_type
 }
-pub(crate) async fn body_to_bytes<T>(body:&mut T) -> Result<Bytes,T::Error>
-    where
-        T: http_body::Body + std::marker::Unpin,
+pub(crate) async fn body_to_bytes<T>(body: &mut T) -> Result<Bytes, T::Error>
+where
+    T: http_body::Body + std::marker::Unpin,
 {
     futures_util::pin_mut!(body);
 

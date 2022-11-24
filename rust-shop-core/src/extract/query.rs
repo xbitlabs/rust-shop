@@ -15,9 +15,10 @@ where
 {
     type Rejection = ExtractError;
 
-    async fn from_request(ctx:&mut RequestCtx) -> Result<Self, ExtractError> {
+    async fn from_request(ctx: &mut RequestCtx) -> Result<Self, ExtractError> {
         let query = ctx.uri.query().unwrap_or_default();
-        let value = serde_html_form::from_str(query).map_err(|err| FailedToDeserializeQueryString(err.to_string()))?;
+        let value = serde_html_form::from_str(query)
+            .map_err(|err| FailedToDeserializeQueryString(err.to_string()))?;
         Ok(Query(value))
     }
 }

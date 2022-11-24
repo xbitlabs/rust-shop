@@ -30,7 +30,7 @@ pub trait FromRequest: Sized {
     /// a kind of error that can be converted into a response.
     type Rejection: IntoResponse;
     /// Perform the extraction.
-    async fn from_request(req:&mut RequestCtx) -> anyhow::Result<Self, Self::Rejection>;
+    async fn from_request(req: &mut RequestCtx) -> anyhow::Result<Self, Self::Rejection>;
 }
 
 #[derive(Error, Debug)]

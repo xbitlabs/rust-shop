@@ -1,4 +1,4 @@
-use chrono::NaiveDateTime;
+use chrono::{DateTime, NaiveDateTime, Utc};
 
 #[derive(sqlx::FromRow, serde::Serialize, serde::Deserialize, Debug)]
 pub struct ProductCategory {
@@ -18,10 +18,10 @@ pub struct Product {
     pub pics_and_video: String,
     pub description: String,
     pub status: String,
-    #[serde(with = "rust_shop_core::entity::db_numeric_date")]
-    pub created_time: NaiveDateTime,
-    #[serde(with = "rust_shop_core::entity::db_numeric_date")]
-    pub last_modified_time: NaiveDateTime,
+    #[serde(with = "rust_shop_core::serde_utils::date_format")]
+    pub created_time: DateTime<Utc>,
+    #[serde(with = "rust_shop_core::serde_utils::date_format")]
+    pub last_modified_time: DateTime<Utc>,
 }
 
 #[derive(sqlx::FromRow, serde::Serialize)]
@@ -35,8 +35,8 @@ pub struct Order {
     pub address: String,
     pub post_code: String,
     pub remark: Option<String>,
-    #[serde(with = "rust_shop_core::entity::db_numeric_date")]
-    pub created_time: NaiveDateTime,
+    #[serde(with = "rust_shop_core::serde_utils::date_format")]
+    pub created_time: DateTime<Utc>,
 }
 
 #[derive(sqlx::FromRow, serde::Serialize)]
@@ -56,8 +56,8 @@ pub struct PayLog {
     pub pay_request_info: Option<String>,
     pub pay_response: Option<String>,
     pub callback_infos: Option<String>,
-    #[serde(with = "rust_shop_core::entity::db_numeric_date")]
-    pub pay_time: NaiveDateTime,
+    #[serde(with = "rust_shop_core::serde_utils::date_format")]
+    pub pay_time: DateTime<Utc>,
 }
 
 #[derive(sqlx::FromRow, serde::Serialize)]
@@ -67,8 +67,8 @@ pub struct ShoppingCart {
     pub sku_id: i64,
     pub quantity: i32,
     pub user_id: i64,
-    #[serde(with = "rust_shop_core::entity::db_numeric_date")]
-    pub add_time: NaiveDateTime,
+    #[serde(with = "rust_shop_core::serde_utils::date_format")]
+    pub add_time: DateTime<Utc>,
 }
 
 #[derive(sqlx::FromRow, serde::Serialize)]
@@ -89,8 +89,8 @@ pub struct UserShippingAddress {
     pub address: String,
     pub post_code: String,
     pub is_default: bool,
-    #[serde(with = "rust_shop_core::entity::db_numeric_date")]
-    pub created_time: NaiveDateTime,
+    #[serde(with = "rust_shop_core::serde_utils::date_format")]
+    pub created_time: DateTime<Utc>,
 }
 
 #[derive(sqlx::FromRow, serde::Serialize)]

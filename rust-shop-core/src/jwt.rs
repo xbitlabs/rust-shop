@@ -1,19 +1,21 @@
-use std::thread;
+use crate::app_config::load_mod_config;
+use crate::db::SqlCommandExecutor;
+use crate::entity::UserJwt;
+use crate::id_generator::ID_GENERATOR;
 use anyhow::anyhow;
-use chrono::{NaiveDateTime};
-use jsonwebtoken::{Algorithm, decode, DecodingKey, encode, EncodingKey, Header, TokenData, Validation};
+use chrono::NaiveDateTime;
+use jsonwebtoken::{
+    decode, encode, Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation,
+};
 use lazy_static::lazy_static;
 use log::info;
 use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlArguments;
 use sqlx::{Arguments, Database, Executor, MySql};
+use std::thread;
+use time::Duration;
 use time::OffsetDateTime;
 use uuid::Uuid;
-use crate::db::SqlCommandExecutor;
-use crate::entity::UserJwt;
-use crate::id_generator::ID_GENERATOR;
-use crate::app_config::load_mod_config;
-use time::{Duration};
 
 pub mod jwt_numeric_date {
     //! Custom serialization of OffsetDateTime to conform with the JWT spec (RFC 7519 section 2, "Numeric Date")
@@ -101,11 +103,11 @@ lazy_static! {
     pub static ref JWT_CONFIG: JwtConfig = load_mod_config(String::from("jwt")).unwrap();
 }
 
-pub struct DefaultJwtService<'r,'a, 'b> {
+pub struct DefaultJwtService<'r, 'a, 'b> {
     sql_command_executor: &'r mut SqlCommandExecutor<'a, 'b>,
 }
 
-impl<'r,'a, 'b> DefaultJwtService<'r,'a, 'b> {
+impl<'r, 'a, 'b> DefaultJwtService<'r, 'a, 'b> {
     pub fn new(
         sql_command_executor: &'r mut SqlCommandExecutor<'a, 'b>,
     ) -> Box<dyn JwtService + Send + Sync + 'r> {
@@ -116,7 +118,7 @@ impl<'r,'a, 'b> DefaultJwtService<'r,'a, 'b> {
 }
 
 #[async_trait::async_trait]
-impl<'r,'a, 'b> JwtService for DefaultJwtService<'r,'a, 'b> {
+impl<'r, 'a, 'b> JwtService for DefaultJwtService<'r, 'a, 'b> {
     async fn grant_access_token(&mut self, user_id: i64) -> anyhow::Result<AccessToken> {
         let jwt_config = &JWT_CONFIG;
         let iat = OffsetDateTime::now_utc();

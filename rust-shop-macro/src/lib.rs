@@ -576,11 +576,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                 Type::Reference(reference) => {
                     let ref_ele = reference.elem;
                     let is_mut_ref = reference.mutability.is_some();
-                    let mut_str = if is_mut_ref {
-                        "mut "
-                    }else {
-                        ""
-                    };
+                    let mut_str = if is_mut_ref { "mut " } else { "" };
                     match *ref_ele {
                         Type::Path(ref_type_path) => {
                             handler_param_type = String::from("&")
@@ -871,10 +867,9 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
 
             if param.param_type == "&mut SqlCommandExecutor" {
                 original_fn_inputs.push(String::from("&mut ") + &*param.param_name.clone());
-            }else if  param.param_type == "&mut RequestCtx"{
+            } else if param.param_type == "&mut RequestCtx" {
                 original_fn_inputs.push(String::from("&mut ") + &*param.param_name.clone());
-            }
-            else {
+            } else {
                 original_fn_inputs.push(String::from(param.param_name.clone()));
             }
         }
@@ -894,25 +889,35 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut sql_command_executor_inject_code = String::from("");
     let mut tran_commit_rollback_code = String::from("");
     let with_tran = sql_command_executor_param_name == "sql_exe_with_tran";
-    let mut handle_result =
-        "let handler_result = ".to_string() + &*original_fn_name + "(" + &*inputs + ").await?;\r\n" +
-        "Ok(handler_result.into_response())\r\n";
+    let mut handle_result = "let handler_result = ".to_string()
+        + &*original_fn_name
+        + "("
+        + &*inputs
+        + ").await?;\r\n"
+        + "Ok(handler_result.into_response())\r\n";
     if inject_sql_command_executor {
-        sql_command_executor_inject_code =
-            "let mut pool_state: Option<&State<Pool<MySql>>> = None;
+        sql_command_executor_inject_code = "let mut pool_state: Option<&State<Pool<MySql>>> = None;
             unsafe{ pool_state = APP_EXTENSIONS.get(); }
             let pool = pool_state.unwrap().get_ref();
-        ".to_string();
+        "
+        .to_string();
         if with_tran {
-            sql_command_executor_inject_code = sql_command_executor_inject_code + &*format!("
+            sql_command_executor_inject_code = sql_command_executor_inject_code
+                + &*format!(
+                    "
             let tran = pool.begin().await?;
             let mut tran_manager = TransactionManager::new(tran);
-            let mut {0} = SqlCommandExecutor::WithTransaction(&mut tran_manager);", sql_command_executor_param_name);
+            let mut {0} = SqlCommandExecutor::WithTransaction(&mut tran_manager);",
+                    sql_command_executor_param_name
+                );
 
-            handle_result = "let handler_result = ".to_string() + &*original_fn_name + "(" + &*inputs + ").await;\r\n";
+            handle_result = "let handler_result = ".to_string()
+                + &*original_fn_name
+                + "("
+                + &*inputs
+                + ").await;\r\n";
 
-            tran_commit_rollback_code =
-                "return if handler_result.is_err() {{
+            tran_commit_rollback_code = "return if handler_result.is_err() {{
                     println!(\"{}\",\"回滚事务\");
                     tran_manager.rollback().await?;
                     Err(handler_result.err().unwrap())
@@ -920,21 +925,27 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                     println!(\"{}\",\"提交事务\");
                     tran_manager.commit().await?;
                     Ok(handler_result.unwrap().into_response())
-                }}".to_string();
-        }else {
-            sql_command_executor_inject_code = sql_command_executor_inject_code + &*format!("
-            let mut {0} = SqlCommandExecutor::WithoutTransaction(pool);", sql_command_executor_param_name);
+                }}"
+            .to_string();
+        } else {
+            sql_command_executor_inject_code = sql_command_executor_inject_code
+                + &*format!(
+                    "
+            let mut {0} = SqlCommandExecutor::WithoutTransaction(pool);",
+                    sql_command_executor_param_name
+                );
         }
-
     }
 
-    let handler_proxy_fn = String::from("pub async fn ") + &*handler_proxy_name + "(mut req_ctx:RequestCtx)->anyhow::Result<Response<Body>>{\r\n" +
-        "let ctx = &mut req_ctx;"+
-        &*sql_command_executor_inject_code +
-        &*handler_proxy_fn_body +
-        &*handle_result +
-        &*tran_commit_rollback_code +
-        "}\r\n";
+    let handler_proxy_fn = String::from("pub async fn ")
+        + &*handler_proxy_name
+        + "(mut req_ctx:RequestCtx)->anyhow::Result<Response<Body>>{\r\n"
+        + "let ctx = &mut req_ctx;"
+        + &*sql_command_executor_inject_code
+        + &*handler_proxy_fn_body
+        + &*handle_result
+        + &*tran_commit_rollback_code
+        + "}\r\n";
     //panic!("{:#?}",handler_proxy_fn);
     let handler_token_stream = TokenStream::from_str(handler_proxy_fn.as_str()).unwrap();
 

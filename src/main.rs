@@ -27,8 +27,8 @@ use rust_shop_core::router::register_route;
 use rust_shop_core::security::{AuthenticationProcessingFilter, NopPasswordEncoder};
 use rust_shop_core::security::{
     AuthenticationTokenResolver, AuthenticationTokenResolverFn, DefaultLoadUserService,
-    LoadUserService, LoadUserServiceFn, WebSecurityConfigurer, WeChatMiniAppAuthenticationTokenResolver,
-    WeChatUserService,
+    LoadUserService, LoadUserServiceFn, WeChatMiniAppAuthenticationTokenResolver,
+    WeChatUserService, WebSecurityConfigurer,
 };
 use rust_shop_core::state::State;
 use rust_shop_core::{
@@ -54,8 +54,7 @@ mod state;
 pub mod utils;
 mod vo;
 
-
-fn load_user_service_fn<'r,'a, 'b>(
+fn load_user_service_fn<'r, 'a, 'b>(
     sql_command_executor: &'r mut SqlCommandExecutor<'a, 'b>,
 ) -> Box<dyn LoadUserService + Send + Sync + 'r> {
     WeChatUserService::new(sql_command_executor)
@@ -96,9 +95,8 @@ async fn main() -> anyhow::Result<()> {
     )));
     security_config.password_encoder(Box::new(NopPasswordEncoder {}));
     security_config.load_user_service(LoadUserServiceFn::from(Box::new(
-        |req:& mut RequestCtx|
-         -> Box<
-            dyn for<'r,'c, 'd> Fn(
+        |req: &mut RequestCtx| -> Box<
+            dyn for<'r, 'c, 'd> Fn(
                     &'r mut SqlCommandExecutor<'c, 'd>,
                 ) -> Box<(dyn LoadUserService + Send + Sync + 'r)>
                 + Send

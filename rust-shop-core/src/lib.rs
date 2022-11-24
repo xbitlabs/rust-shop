@@ -49,6 +49,7 @@ use crate::state::State;
 use crate::EndpointResultCode::{AccessDenied, ClientError, ServerError, Unauthorized, SUCCESS};
 
 pub mod app_config;
+pub mod cache;
 pub mod db;
 pub mod entity;
 pub mod extensions;
@@ -57,18 +58,20 @@ pub mod id_generator;
 pub mod jwt;
 pub mod router;
 pub mod security;
+pub mod serde_utils;
 pub mod state;
 pub mod wechat;
 
 use crate::extract::json::body_to_bytes;
 use http::request::Parts as HttpParts;
+use moka::sync::Cache;
 use once_cell::sync::Lazy;
 use url::Url;
 use urlpattern::{UrlPattern, UrlPatternInit, UrlPatternMatchInput};
 
 pub static mut APP_EXTENSIONS: Lazy<Extensions> = Lazy::new(|| {
-    let mut m: Extensions = Extensions::new();
-    m
+    let mut extensions: Extensions = Extensions::new();
+    extensions
 });
 
 pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
@@ -97,7 +100,7 @@ pub struct RequestCtx {
 }
 
 impl RequestCtx {
-    pub fn extensions_mut(&mut self)->&mut Extensions{
+    pub fn extensions_mut(&mut self) -> &mut Extensions {
         self.extensions.borrow_mut()
     }
 }
@@ -305,7 +308,7 @@ pub trait Filter: Send + Sync + 'static {
         next: Next<'a>,
     ) -> anyhow::Result<Response<Body>>;
     fn url_patterns(&self) -> String;
-    fn order(&self)->u64;
+    fn order(&self) -> u64;
 }
 
 #[allow(missing_debug_implementations)]
@@ -333,39 +336,62 @@ impl<'a> Next<'a> {
                     if result.is_ok() {
                         let result = result.unwrap();
                         if result.is_some() {
-                            info!("filter表达式`{}`跟当前请求`{}`匹配，将执行filter",current.url_patterns(),ctx.uri);
+                            info!(
+                                "filter表达式`{}`跟当前请求`{}`匹配，将执行filter",
+                                current.url_patterns(),
+                                ctx.uri
+                            );
                             self.next_filter = next;
                             current.handle(ctx, self).await
                         } else {
-                            info!("filter表达式`{}`跟当前请求`{}`不匹配，filter将被跳过",current.url_patterns(),ctx.uri);
+                            info!(
+                                "filter表达式`{}`跟当前请求`{}`不匹配，filter将被跳过",
+                                current.url_patterns(),
+                                ctx.uri
+                            );
                             self.skip_current_and_exec_next(next, ctx).await
                         }
                     } else {
-                        error!("执行filter表达式`{}`异常：{:?}",current.url_patterns(), result.err().unwrap());
+                        error!(
+                            "执行filter表达式`{}`异常：{:?}",
+                            current.url_patterns(),
+                            result.err().unwrap()
+                        );
                         self.skip_current_and_exec_next(next, ctx).await
                     }
-                }else {
-                    error!("转换filter url `{}`异常：{:?}",current.url_patterns(),url.err().unwrap());
+                } else {
+                    error!(
+                        "转换filter url `{}`异常：{:?}",
+                        current.url_patterns(),
+                        url.err().unwrap()
+                    );
                     self.skip_current_and_exec_next(next, ctx).await
                 }
-            }else {
-                error!("初始化filter表达式`{}`异常：{:?}",current.url_patterns(),pattern.err().unwrap());
+            } else {
+                error!(
+                    "初始化filter表达式`{}`异常：{:?}",
+                    current.url_patterns(),
+                    pattern.err().unwrap()
+                );
                 self.skip_current_and_exec_next(next, ctx).await
             }
         } else {
             (self.endpoint).handle(ctx).await
         }
     }
-    async fn skip_current_and_exec_next(mut self,chain:&[Arc<dyn Filter>],mut ctx:RequestCtx)-> anyhow::Result<Response<Body>>{
-        if let Some((current, next)) = chain.split_first(){
+    async fn skip_current_and_exec_next(
+        mut self,
+        chain: &[Arc<dyn Filter>],
+        mut ctx: RequestCtx,
+    ) -> anyhow::Result<Response<Body>> {
+        if let Some((current, next)) = chain.split_first() {
             self.next_filter = next;
             current.handle(ctx, self).await
-        }else {
+        } else {
             (self.endpoint).handle(ctx).await
         }
     }
 }
-
 
 pub struct RequestStateResolver;
 

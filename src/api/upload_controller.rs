@@ -22,7 +22,7 @@ use crate::{EndpointResult, RequestCtx, ResponseBuilder};
 pub struct UploadController;
 
 impl UploadController {
-    pub async fn upload(req:Request<Body>) -> anyhow::Result<Response<Body>> {
+    pub async fn upload(req: Request<Body>) -> anyhow::Result<Response<Body>> {
         let upload_result = UploadController::handle(req).await;
         match upload_result {
             Ok(result) => Ok(result),

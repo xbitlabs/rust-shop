@@ -11,7 +11,7 @@ use crate::{RequestCtx, ResponseBuilder};
 pub struct StaticFileController;
 
 impl StaticFileController {
-    pub async fn handle(req:Request<Body>) -> anyhow::Result<Response<Body>> {
+    pub async fn handle(req: Request<Body>) -> anyhow::Result<Response<Body>> {
         let upload_config = &APP_CONFIG.upload;
         let mut static_ = Static::new(upload_config.save_path.as_str());
         static_.custom_path_resolver = Some(Arc::new(custom_path_resolver));
