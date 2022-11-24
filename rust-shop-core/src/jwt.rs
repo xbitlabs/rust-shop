@@ -17,7 +17,7 @@ use time::Duration;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-pub mod jwt_numeric_date {
+pub mod jwt_date_format {
     //! Custom serialization of OffsetDateTime to conform with the JWT spec (RFC 7519 section 2, "Numeric Date")
     use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
     use time::OffsetDateTime;
@@ -48,10 +48,10 @@ pub struct Claims {
     pub user_id: i64,
     pub sub: String,
     ///token颁发时间
-    #[serde(with = "jwt_numeric_date")]
+    #[serde(with = "jwt_date_format")]
     pub iat: OffsetDateTime,
     ///失效时间
-    #[serde(with = "jwt_numeric_date")]
+    #[serde(with = "jwt_date_format")]
     pub exp: OffsetDateTime,
 }
 
