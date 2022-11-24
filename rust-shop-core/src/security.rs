@@ -8,8 +8,11 @@ use anyhow::anyhow;
 use bcrypt::{hash, verify, DEFAULT_COST};
 use chrono::Local;
 use hyper::{Body, Request, Response};
+use lazy_static::lazy_static;
 use sqlx::mysql::MySqlArguments;
 use sqlx::{Acquire, Arguments, MySql, Pool};
+use thiserror::Error;
+use urlpattern::{UrlPattern, UrlPatternInit, UrlPatternMatchInput};
 
 use rust_shop_macro::FormParser;
 
@@ -22,6 +25,20 @@ use crate::jwt::DefaultJwtService;
 use crate::state::State;
 use crate::wechat::WeChatMiniAppService;
 use crate::{parse_form_params, EndpointResult, Filter, Next, RequestCtx, ResponseBuilder, APP_EXTENSIONS};
+use crate::app_config::load_mod_config;
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct SecurityConfig{
+    allow_if_all_abstain_decisions:Option<bool>,
+    intercept_url_patterns:Option<String>
+}
+
+lazy_static! {
+    ///
+    /// 全局配置
+    ///
+    pub static ref SECURITY_CONFIG: SecurityConfig = load_mod_config(String::from("security")).unwrap();
+}
 
 #[async_trait::async_trait]
 pub trait LoadUserService {
@@ -210,7 +227,7 @@ pub trait UserDetails {
 pub trait Authentication {
     fn get_authentication_token(&self) -> &(dyn AuthenticationToken);
 
-    fn get_authorities(&self) -> &Option<Vec<String>>;
+    fn get_authorities(&self) -> &Vec<String>;
     fn set_authorities(&mut self, authorities: Vec<String>);
 
     fn is_authenticated(&self) -> &bool;
@@ -246,7 +263,7 @@ impl AuthenticationToken for DefaultAuthenticationToken {
 
 pub struct DefaultAuthentication {
     authentication_token: DefaultAuthenticationToken,
-    authorities: Option<Vec<String>>,
+    authorities: Vec<String>,
     authenticated: bool,
     details: Box<dyn Any + Send + Sync>,
 }
@@ -254,7 +271,7 @@ pub struct DefaultAuthentication {
 impl DefaultAuthentication {
     pub fn new(
         authentication_token: DefaultAuthenticationToken,
-        authorities: Option<Vec<String>>,
+        authorities: Vec<String>,
         authenticated: bool,
         details: Box<dyn Any + Send + Sync>,
     ) -> Self {
@@ -272,12 +289,12 @@ impl Authentication for DefaultAuthentication {
         &self.authentication_token
     }
 
-    fn get_authorities(&self) -> &Option<Vec<String>> {
+    fn get_authorities(&self) -> &Vec<String> {
         &self.authorities
     }
 
     fn set_authorities(&mut self, authorities: Vec<String>) {
-        self.authorities = Some(authorities)
+        self.authorities = authorities
     }
 
     fn is_authenticated(&self) -> &bool {
@@ -433,7 +450,7 @@ impl<'r,'a, 'b> DefaultAuthenticationProvider<'r,'a, 'b> {
 
 pub struct UsernamePasswordAuthentication {
     authentication_token: UsernamePasswordAuthenticationToken,
-    authorities: Option<Vec<String>>,
+    authorities: Vec<String>,
     authenticated: bool,
     details: Box<dyn Any + Send + Sync>,
 }
@@ -443,12 +460,12 @@ impl Authentication for UsernamePasswordAuthentication {
         &self.authentication_token
     }
 
-    fn get_authorities(&self) -> &Option<Vec<String>> {
+    fn get_authorities(&self) -> &Vec<String> {
         &self.authorities
     }
 
     fn set_authorities(&mut self, authorities: Vec<String>) {
-        self.authorities = Some(authorities)
+        self.authorities = authorities
     }
 
     fn is_authenticated(&self) -> &bool {
@@ -478,7 +495,7 @@ impl<'r,'a, 'b> AuthenticationProvider for DefaultAuthenticationProvider<'r,'a, 
 
         let identify: Option<&String> = authentication_token.get_principal().downcast_ref();
         unsafe {
-            let mut security_config: &mut SecurityConfig = APP_EXTENSIONS.get_mut::<SecurityConfig>().unwrap().borrow_mut();
+            let mut security_config: &mut WebSecurityConfigurer = APP_EXTENSIONS.get_mut::<WebSecurityConfigurer>().unwrap().borrow_mut();
 
             let identify = identify.unwrap();
 
@@ -511,7 +528,7 @@ impl<'r,'a, 'b> AuthenticationProvider for DefaultAuthenticationProvider<'r,'a, 
                     username: identify.to_string(),
                     password: password.to_string(),
                 },
-                authorities: Some(authorities),
+                authorities,
                 authenticated: true,
                 details: Box::new(details),
             };
@@ -527,7 +544,7 @@ impl<'r,'a, 'b> AuthenticationProvider for DefaultAuthenticationProvider<'r,'a, 
     ) -> anyhow::Result<()> {
         //let details : Box<DefaultUserDetails> = user_details.downcast().unwrap();
         unsafe {
-            let security_config: & mut SecurityConfig = APP_EXTENSIONS.get_mut::<SecurityConfig>().unwrap();
+            let security_config: & mut WebSecurityConfigurer = APP_EXTENSIONS.get_mut::<WebSecurityConfigurer>().unwrap();
             let password: Option<&String> = authentication_token.get_credentials().downcast_ref();
             let password = password.unwrap();
             let matches = security_config
@@ -630,21 +647,159 @@ pub trait AuthenticationProvider {
     ) -> anyhow::Result<()>;
 }
 
+#[derive(Error, Debug)]
+pub enum SecurityError{
+    #[error("访问被拒绝")]
+    AccessDeniedException
+}
+#[async_trait::async_trait]
 pub trait AccessDecisionManager {
-    //async fn decide(Authentication authentication, Object object, Collection<ConfigAttribute> configAttributes)
+    async fn decide(&self, authentication: &(dyn Authentication + Send + Sync), object: &(dyn Any + Send + Sync), config_attributes: &Vec<Box<dyn ConfigAttribute + Send + Sync>>) -> anyhow::Result<(),SecurityError>;
+    async fn check_allow_if_all_abstain_decisions(&self) ->anyhow::Result<(),SecurityError> {
+        if SECURITY_CONFIG.allow_if_all_abstain_decisions.is_some() && !SECURITY_CONFIG.allow_if_all_abstain_decisions.unwrap() {
+            Err(SecurityError::AccessDeniedException)
+        }else {
+            Ok(())
+        }
+    }
+}
+pub struct AffirmativeBased{
+    decision_voters:Vec<Box<dyn AccessDecisionVoter + Send + Sync>>
+}
+#[async_trait::async_trait]
+impl AccessDecisionManager for AffirmativeBased {
+    async fn decide(&self, authentication: &(dyn Authentication + Send + Sync), object: &(dyn Any + Send + Sync), config_attributes: &Vec<Box<dyn ConfigAttribute + Send + Sync>>) -> anyhow::Result<(),SecurityError> {
+        let mut deny = 0;
+        for decision_voter in &self.decision_voters {
+            let result = decision_voter.vote(authentication,object,config_attributes);
+            match result {
+                Vote::AccessDenied=>{
+                    deny = deny + 1;
+                }
+                Vote::AccessAbstain=>{}
+                Vote::AccessGranted=>{
+                    return Ok(());
+                }
+            }
+        }
+        if deny > 0 {
+            Err(SecurityError::AccessDeniedException)
+        }else {
+            self.check_allow_if_all_abstain_decisions().await
+        }
+    }
+}
+//角色
+pub trait ConfigAttribute{
+    fn get_attribute(&self) ->&String;
+}
+pub struct DefaultConfigAttribute{
+    pub attribute:String
 }
 
-pub struct SecurityMetadataSource {}
+impl ConfigAttribute for DefaultConfigAttribute {
+    fn get_attribute(&self) -> &String {
+        &self.attribute
+    }
+}
 
+pub struct SecurityMetadataSource {
+    //请求的接口url到角色的映射关系
+    request_map:HashMap<String,Vec<Box<dyn ConfigAttribute>>>
+}
+
+impl SecurityMetadataSource {
+    pub fn request_map(&self)->&HashMap<String,Vec<Box<dyn ConfigAttribute>>>{
+        &self.request_map
+    }
+}
+#[async_trait::async_trait]
+pub trait SecurityMetadataSourceProvider{
+    async fn security_metadata_source(&self) ->&SecurityMetadataSource;
+}
+
+pub struct DefaultSecurityMetadataSourceProvider<'r,'a,'b>{
+    sql_command_executor: &'r mut SqlCommandExecutor<'a, 'b>,
+}
+
+impl <'r,'a,'b> DefaultSecurityMetadataSourceProvider<'r,'a,'b> {
+    pub fn new(sql_command_executor: &'r mut SqlCommandExecutor<'a, 'b>)->Self{
+        DefaultSecurityMetadataSourceProvider{
+            sql_command_executor
+        }
+    }
+}
+#[async_trait::async_trait]
+impl <'r,'a,'b> SecurityMetadataSourceProvider for DefaultSecurityMetadataSourceProvider<'r,'a,'b> {
+    async fn security_metadata_source(&self) -> &SecurityMetadataSource {
+        todo!()
+    }
+}
+
+#[derive(PartialEq)]
 pub enum Vote{
     AccessGranted,
     AccessDenied,
     AccessAbstain
 }
 
-pub trait AccessDecisionVoter {}
+pub trait AccessDecisionVoter {
+    fn supports(&self,attribute:&Box<dyn ConfigAttribute + Send + Sync>)->bool;
+    fn vote(&self, authentication:&(dyn Authentication + Send + Sync), object:&(dyn Any  + Send + Sync), attributes:&Vec<Box<dyn ConfigAttribute + Send + Sync>>) ->Vote;
+}
+pub struct RoleVoter;
 
-pub struct AuthenticationProcessingFilter {}
+impl AccessDecisionVoter for RoleVoter {
+    fn supports(&self,attribute: &Box<dyn ConfigAttribute + Send + Sync>) -> bool {
+        true
+    }
+    fn vote(&self, authentication: &(dyn Authentication + Send + Sync), object: &(dyn Any + Send + Sync), attributes: &Vec<Box<dyn ConfigAttribute + Send + Sync>>) -> Vote {
+        if !authentication.is_authenticated() {
+            return Vote::AccessDenied;
+        }
+        let mut vote = Vote::AccessAbstain;
+        //当前用户拥有的角色
+        let authorities = authentication.get_authorities();
+        //访问当前资源所需要的角色
+        for attribute in attributes {
+            if self.supports(attribute) {
+                vote = Vote::AccessDenied;
+                for authority in authorities {
+                    if attribute.get_attribute() == authority {
+                        vote = Vote::AccessGranted;
+                        break;
+                    }
+                }
+                if vote == Vote::AccessDenied {
+                    return Vote::AccessDenied;
+                }
+            }
+        }
+        return vote;
+    }
+}
+
+pub struct SecurityInterceptor;
+#[async_trait::async_trait]
+impl Filter for SecurityInterceptor{
+    async fn handle<'a>(&'a self, mut ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>> {
+        todo!()
+    }
+
+    fn url_patterns(&self) -> String {
+        if SECURITY_CONFIG.intercept_url_patterns.is_none() {
+            panic!("intercept_url_patterns尚未配置");
+        }else {
+            SECURITY_CONFIG.intercept_url_patterns.as_ref().unwrap().clone()
+        }
+    }
+
+    fn order(&self) -> u64 {
+        todo!()
+    }
+}
+
+pub struct AuthenticationProcessingFilter;
 
 #[async_trait::async_trait]
 impl Filter for AuthenticationProcessingFilter {
@@ -660,9 +815,7 @@ impl Filter for AuthenticationProcessingFilter {
             let mut tran_manager = TransactionManager::new(tran);
             let mut sql_command_executor = SqlCommandExecutor::WithTransaction(&mut tran_manager);
 
-            let security_config: &mut SecurityConfig = APP_EXTENSIONS.get_mut::<SecurityConfig>().unwrap();
-            //let request_states = Arc::new(ctx.request_states);
-            //let request_states = Arc::clone(&request_states);
+            let security_config: &mut WebSecurityConfigurer = APP_EXTENSIONS.get_mut::<WebSecurityConfigurer>().unwrap();
 
             let authentication_token_resolver = security_config.get_authentication_token_resolver()();
             let authentication_token = authentication_token_resolver.resolve(&mut ctx).await?;
@@ -701,6 +854,9 @@ impl Filter for AuthenticationProcessingFilter {
                         .await?;
                     let endpoint_result: EndpointResult<AccessToken> =
                         EndpointResult::ok_with_payload("", access_token);
+                    drop(jwt_service);
+                    drop(sql_command_executor);
+                    tran_manager.commit().await?;
                     Ok(ResponseBuilder::with_endpoint_result(endpoint_result))
                 }
             } else {
@@ -722,6 +878,10 @@ impl Filter for AuthenticationProcessingFilter {
     }
 
     fn url_patterns(&self) -> String {
+        "/login".to_string()
+    }
+
+    fn order(&self) -> u64 {
         todo!()
     }
 }
@@ -812,7 +972,7 @@ pub type UserDetailsCheckerFn = Box<
 >;
 
 
-pub struct SecurityConfig {
+pub struct WebSecurityConfigurer {
     enable_security: bool,
     authentication_token_resolver: AuthenticationTokenResolverFn,
     jwt_service: JwtServiceFn,
@@ -822,6 +982,9 @@ pub struct SecurityConfig {
     authentication_provider: AuthenticationProviderFn,
     user_details_checker: UserDetailsCheckerFn,
     password_encoder: Box<dyn PasswordEncoder + Send + Sync>,
+    security_metadata_source_provider:Option<Box<dyn SecurityMetadataSourceProvider + Sync + Sync>>,
+    access_decision_voter:Option<Box<dyn AccessDecisionVoter + Send + Sync>>,
+    access_decision_manager:Option<Box<dyn AccessDecisionManager + Send + Sync>>
 }
 
 fn load_user_service_fn<'r,'a, 'b>(
@@ -842,9 +1005,9 @@ fn authentication_provider_fn<'r,'a, 'b>(
     DefaultAuthenticationProvider::new(sql_command_executor)
 }
 
-impl SecurityConfig {
+impl WebSecurityConfigurer {
     pub fn new() -> Self {
-        SecurityConfig {
+        WebSecurityConfigurer {
             enable_security: false,
             authentication_token_resolver: AuthenticationTokenResolverFn::from(Box::new(
                 || -> Box<dyn AuthenticationTokenResolver + Send + Sync> {
@@ -893,6 +1056,9 @@ impl SecurityConfig {
                 },
             )),
             password_encoder: Box::new(BcryptPasswordEncoder::new()),
+            security_metadata_source_provider: None,
+            access_decision_voter: None,
+            access_decision_manager: None
         }
     }
     pub fn enable_security(&mut self, enable_security: bool) -> &Self {
@@ -974,4 +1140,37 @@ impl SecurityConfig {
     pub fn get_password_encoder(&self) -> &Box<dyn PasswordEncoder + Send + Sync> {
         &self.password_encoder
     }
+    //security_metadata_source_provider   access_decision_voter   access_decision_manager
+    pub fn security_metadata_source_provider(&mut self,security_metadata_source_provider:Box<dyn SecurityMetadataSourceProvider + Send + Sync>){
+        self.security_metadata_source_provider = Some(security_metadata_source_provider);
+    }
+    pub fn access_decision_voter(&mut self,access_decision_voter:Box<dyn AccessDecisionVoter + Send + Sync>){
+        self.access_decision_voter = Some(access_decision_voter);
+    }
+    pub fn access_decision_manager(&mut self,access_decision_manager:Box<dyn AccessDecisionManager + Send + Sync>){
+        self.access_decision_manager = Some(access_decision_manager);
+    }
+    pub fn get_security_metadata_source_provider(&self)->&Box<dyn SecurityMetadataSourceProvider + Send + Sync>{
+        &self.security_metadata_source_provider
+    }
+    pub fn get_access_decision_voter(&self)->&Box<dyn AccessDecisionVoter + Send + Sync>{
+        &self.access_decision_voter
+    }
+    pub fn get_access_decision_manager(&self)->&Box<dyn AccessDecisionManager + Send + Sync>{
+        &self.access_decision_manager
+    }
+}
+
+#[test]
+fn test(){
+    let init = UrlPatternInit {
+        pathname: Some("/login".to_owned()),
+        ..Default::default()
+    };
+    let pattern = <UrlPattern>::parse(init).unwrap();
+
+    // Match the pattern against a URL.
+    let url = "https://example.com/login".parse().unwrap();
+    let result = pattern.exec(UrlPatternMatchInput::Url(url)).unwrap().unwrap();
+    println!("{:?}",result.pathname);
 }

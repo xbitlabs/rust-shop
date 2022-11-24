@@ -24,10 +24,10 @@ use rust_shop_core::extensions::Extensions;
 use rust_shop_core::extract::json::Json;
 use rust_shop_core::extract::{FromRequest, IntoResponse};
 use rust_shop_core::router::register_route;
-use rust_shop_core::security::NopPasswordEncoder;
+use rust_shop_core::security::{AuthenticationProcessingFilter, NopPasswordEncoder};
 use rust_shop_core::security::{
     AuthenticationTokenResolver, AuthenticationTokenResolverFn, DefaultLoadUserService,
-    LoadUserService, LoadUserServiceFn, SecurityConfig, WeChatMiniAppAuthenticationTokenResolver,
+    LoadUserService, LoadUserServiceFn, WebSecurityConfigurer, WeChatMiniAppAuthenticationTokenResolver,
     WeChatUserService,
 };
 use rust_shop_core::state::State;
@@ -54,23 +54,6 @@ mod state;
 pub mod utils;
 mod vo;
 
-pub struct AuthFilter;
-
-#[async_trait::async_trait]
-impl Filter for AuthFilter {
-    async fn handle<'a>(
-        &'a self,
-        mut ctx:RequestCtx,
-        next: Next<'a>,
-    ) -> anyhow::Result<hyper::Response<hyper::Body>> {
-        let endpoint_result: EndpointResult<String> = EndpointResult::server_error("无权限");
-        Ok(ResponseBuilder::with_endpoint_result(endpoint_result))
-    }
-
-    fn url_patterns(&self) -> String {
-        todo!()
-    }
-}
 
 fn load_user_service_fn<'r,'a, 'b>(
     sql_command_executor: &'r mut SqlCommandExecutor<'a, 'b>,
@@ -99,11 +82,12 @@ async fn main() -> anyhow::Result<()> {
     let mut srv = Server::new();
 
     srv.filter(AccessLogFilter);
+    srv.filter(AuthenticationProcessingFilter);
 
     let conn_pool = mysql_connection_pool().await?;
     srv.extension(State::new(conn_pool.clone()));
 
-    let mut security_config = SecurityConfig::new();
+    let mut security_config = WebSecurityConfigurer::new();
     security_config.enable_security(false);
     security_config.authentication_token_resolver(AuthenticationTokenResolverFn::from(Box::new(
         || -> Box<dyn AuthenticationTokenResolver + Send + Sync> {

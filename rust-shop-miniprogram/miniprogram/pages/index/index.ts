@@ -34,7 +34,7 @@ Page({
                 if (res.code) {
                     //发起网络请求
                     wx.request({
-                        url: 'http://127.0.0.1:5000',
+                        url: 'http://127.0.0.1:5000/login',
                         header: {
                             "Content-Type": "application/x-www-form-urlencoded" //使用form方式传递参数
                         },

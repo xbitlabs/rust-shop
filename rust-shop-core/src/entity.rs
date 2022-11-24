@@ -21,7 +21,7 @@ pub mod db_numeric_date {
     }
 }
 
-#[derive(sqlx::FromRow, serde::Serialize)]
+#[derive(sqlx::FromRow, serde::Serialize,serde::Deserialize, Debug)]
 pub struct User {
     pub id: i64,
     pub username: Option<String>,
@@ -34,7 +34,7 @@ pub struct User {
     pub created_time: NaiveDateTime,
 }
 
-#[derive(sqlx::FromRow, serde::Serialize, Debug)]
+#[derive(sqlx::FromRow, serde::Serialize,serde::Deserialize, Debug)]
 pub struct UserJwt {
     pub id: i64,
     pub user_id: i64,
@@ -43,4 +43,42 @@ pub struct UserJwt {
     pub refresh_token: String,
     #[serde(with = "db_numeric_date")]
     pub issue_time: NaiveDateTime,
+}
+#[derive(sqlx::FromRow, serde::Serialize,serde::Deserialize, Debug)]
+pub struct AdminPermission{
+    pub id:i64,
+    pub admin_permission_group_id:i64,
+    pub title:String,
+    pub code:String,
+    pub url:String
+}
+#[derive(sqlx::FromRow, serde::Serialize,serde::Deserialize, Debug)]
+pub struct AdminPermissionGroup{
+    pub id:i64,
+    pub name:String,
+    pub parent_id:Option<i64>
+}
+#[derive(sqlx::FromRow, serde::Serialize,serde::Deserialize, Debug)]
+pub struct AdminRole{
+    pub id:i64,
+    pub name:String,
+    pub description:Option<String>
+}
+#[derive(sqlx::FromRow, serde::Serialize,serde::Deserialize, Debug)]
+pub struct AdminRolePermission{
+    pub admin_role_id:i64,
+    pub admin_permission_id:i64,
+}
+#[derive(sqlx::FromRow, serde::Serialize,serde::Deserialize, Debug)]
+pub struct AdminUser{
+    pub id:i64,
+    pub username:String,
+    pub password:String,
+    #[serde(with = "db_numeric_date")]
+    pub created_time:NaiveDateTime
+}
+#[derive(sqlx::FromRow, serde::Serialize,serde::Deserialize, Debug)]
+pub struct AdminUserRole{
+    pub admin_user_id:i64,
+    pub admin_role_id:i64,
 }
