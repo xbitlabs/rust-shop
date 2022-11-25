@@ -46,6 +46,7 @@ pub struct Claims {
     pub token_id: String,
     //用户标识
     pub user_id: i64,
+    //主题
     pub sub: String,
     ///token颁发时间
     #[serde(with = "jwt_date_format")]

@@ -53,10 +53,11 @@ pub trait LoadUserService {
 //获取登陆凭证
 #[async_trait::async_trait]
 pub trait AuthenticationTokenResolver {
+    type AuthenticationTokenType:AuthenticationToken;
     async fn resolve(
         &self,
         ctx: &mut RequestCtx,
-    ) -> anyhow::Result<Box<dyn AuthenticationToken + Send + Sync>>;
+    ) -> anyhow::Result<dyn AuthenticationTokenType + Send + Sync>;
 }
 
 pub struct UsernamePasswordAuthenticationTokenResolver {}
@@ -69,10 +70,9 @@ impl UsernamePasswordAuthenticationTokenResolver {
 
 #[async_trait::async_trait]
 impl AuthenticationTokenResolver for UsernamePasswordAuthenticationTokenResolver {
-    async fn resolve(
-        &self,
-        req: &mut RequestCtx,
-    ) -> anyhow::Result<Box<dyn AuthenticationToken + Send + Sync>> {
+    type AuthenticationTokenType = UsernamePasswordAuthenticationToken;
+
+    async fn resolve(&self, ctx: &mut RequestCtx) -> anyhow::Result<dyn AuthenticationTokenType + Send + Sync> {
         let params: HashMap<String, String> = parse_form_params(req).await;
         let username = params.get("username");
         if username.is_none() {
@@ -82,10 +82,10 @@ impl AuthenticationTokenResolver for UsernamePasswordAuthenticationTokenResolver
         if password.is_none() {
             return Err(anyhow!("必须传入password字段"));
         }
-        Ok(Box::new(UsernamePasswordAuthenticationToken::new(
+        Ok(UsernamePasswordAuthenticationToken::new(
             username.unwrap().to_string(),
             password.unwrap().to_string(),
-        )))
+        ))
     }
 }
 
@@ -210,10 +210,14 @@ impl<'r, 'a, 'b> LoadUserService for WeChatUserService<'r, 'a, 'b> {
     }
 }
 
+
+
 //登录凭证，如用户名、密码
 pub trait AuthenticationToken {
-    fn get_principal(&self) -> &(dyn Any + Send + Sync);
-    fn get_credentials(&self) -> &(dyn Any + Send + Sync);
+    type Principal:Send + Sync;
+    type Credentials:Send + Sync;
+    fn get_principal(&self) -> &Self::Principal;
+    fn get_credentials(&self) -> &Self::Credentials;
 }
 
 //登录的用户信息
@@ -223,10 +227,15 @@ pub trait UserDetails {
     fn get_password(&self) -> &String;
     fn get_authorities(&self) -> &Vec<String>;
     fn is_enable(&self) -> &bool;
+    fn as_any(&self) -> &dyn Any where Self: Sized {
+        &self
+    }
 }
-
+lazy_static! {
+    pub static ref DEFAULT_AUTHENTICATION: Arc<DefaultAuthentication> = Arc::new(DefaultAuthentication::default());
+}
 //登录认证结果
-pub trait Authentication {
+pub trait Authentication<U> where U:UserDetails + Send + Sync {
     fn get_authentication_token(&self) -> &(dyn AuthenticationToken);
 
     fn get_authorities(&self) -> &Vec<String>;
@@ -235,8 +244,8 @@ pub trait Authentication {
     fn is_authenticated(&self) -> &bool;
     fn set_authenticated(&mut self, authenticated: bool);
 
-    fn set_details(&mut self, details: Box<dyn Any + Send + Sync>);
-    fn get_details(&self) -> &Box<dyn Any + Send + Sync>;
+    fn set_details(&mut self, details: U);
+    fn get_details(&self) -> &U;
 }
 
 pub struct DefaultAuthenticationToken {
@@ -267,7 +276,7 @@ pub struct DefaultAuthentication {
     authentication_token: DefaultAuthenticationToken,
     authorities: Vec<String>,
     authenticated: bool,
-    details: Box<dyn Any + Send + Sync>,
+    details: DefaultUserDetails,
 }
 
 impl DefaultAuthentication {
@@ -275,7 +284,7 @@ impl DefaultAuthentication {
         authentication_token: DefaultAuthenticationToken,
         authorities: Vec<String>,
         authenticated: bool,
-        details: Box<dyn Any + Send + Sync>,
+        details: DefaultUserDetails,
     ) -> Self {
         DefaultAuthentication {
             authentication_token,
@@ -286,7 +295,7 @@ impl DefaultAuthentication {
     }
 }
 
-impl Authentication for DefaultAuthentication {
+impl Authentication<DefaultUserDetails> for DefaultAuthentication {
     fn get_authentication_token(&self) -> &(dyn AuthenticationToken) {
         &self.authentication_token
     }
@@ -307,14 +316,32 @@ impl Authentication for DefaultAuthentication {
         self.authenticated = is_authenticated
     }
 
-    fn set_details(&mut self, details: Box<dyn Any + Send + Sync>) {
-        let details: Result<Box<DefaultUserDetails>, Box<dyn Any + Send + Sync>> =
-            details.downcast();
-        self.details = details.unwrap()
+    fn set_details(&mut self, details: DefaultUserDetails) {
+        self.details = details
     }
 
-    fn get_details(&self) -> &Box<dyn Any + Send + Sync> {
+    fn get_details(&self) -> &DefaultUserDetails {
         &self.details
+    }
+}
+
+impl Default for DefaultAuthentication {
+    fn default() -> Self {
+        DefaultAuthentication{
+            authentication_token: DefaultAuthenticationToken {
+                principal: "".to_string(),
+                credentials: "".to_string()
+            },
+            authorities: vec![],
+            authenticated: false,
+            details: DefaultUserDetails{
+                id: 0,
+                username: "".to_string(),
+                password: "".to_string(),
+                authorities: vec![],
+                enable: false
+            }
+        }
     }
 }
 
@@ -385,6 +412,9 @@ impl UsernamePasswordAuthenticationToken {
 }
 
 impl AuthenticationToken for UsernamePasswordAuthenticationToken {
+    type Principal = String;
+    type Credentials = String;
+
     fn get_principal(&self) -> &(dyn Any + Send + Sync) {
         &self.username
     }
@@ -454,10 +484,10 @@ pub struct UsernamePasswordAuthentication {
     authentication_token: UsernamePasswordAuthenticationToken,
     authorities: Vec<String>,
     authenticated: bool,
-    details: Box<dyn Any + Send + Sync>,
+    details: DefaultUserDetails,
 }
 
-impl Authentication for UsernamePasswordAuthentication {
+impl Authentication<DefaultUserDetails> for UsernamePasswordAuthentication {
     fn get_authentication_token(&self) -> &(dyn AuthenticationToken) {
         &self.authentication_token
     }
@@ -478,11 +508,11 @@ impl Authentication for UsernamePasswordAuthentication {
         self.authenticated = authenticated;
     }
 
-    fn set_details(&mut self, details: Box<dyn Any + Send + Sync>) {
+    fn set_details(&mut self, details: DefaultUserDetails) {
         self.details = details;
     }
 
-    fn get_details(&self) -> &Box<dyn Any + Send + Sync> {
+    fn get_details(&self) -> &DefaultUserDetails {
         &self.details
     }
 }
@@ -493,7 +523,7 @@ impl<'r, 'a, 'b> AuthenticationProvider for DefaultAuthenticationProvider<'r, 'a
         &mut self,
         req: &mut RequestCtx,
         authentication_token: Box<dyn AuthenticationToken + Send + Sync>,
-    ) -> anyhow::Result<Box<dyn Authentication + Send + Sync>> {
+    ) -> anyhow::Result<Box<dyn Authentication<dyn UserDetails + Send + Sync> + Send + Sync>> {
         let identify: Option<&String> = authentication_token.get_principal().downcast_ref();
         unsafe {
             let mut security_config: &mut WebSecurityConfigurer = APP_EXTENSIONS
@@ -636,7 +666,7 @@ pub trait AuthenticationProvider {
         &mut self,
         req: &mut RequestCtx,
         authentication_token: Box<dyn AuthenticationToken + Send + Sync>,
-    ) -> anyhow::Result<Box<dyn Authentication + Send + Sync>>;
+    ) -> anyhow::Result<Box<dyn Authentication<dyn UserDetails + Send + Sync> + Send + Sync>>;
     async fn additional_authentication_checks(
         &mut self,
         req: &mut RequestCtx,
@@ -654,7 +684,7 @@ pub enum SecurityError {
 pub trait AccessDecisionManager {
     async fn decide(
         &self,
-        authentication: &(dyn Authentication + Send + Sync),
+        authentication: &(dyn Authentication<dyn UserDetails + Send + Sync> + Send + Sync),
         object: &(dyn Any + Send + Sync),
         config_attributes: &Vec<Box<dyn ConfigAttribute + Send + Sync>>,
     ) -> anyhow::Result<(), SecurityError>;
@@ -675,7 +705,7 @@ pub struct AffirmativeBased {
 impl AccessDecisionManager for AffirmativeBased {
     async fn decide(
         &self,
-        authentication: &(dyn Authentication + Send + Sync),
+        authentication: &(dyn Authentication<dyn UserDetails + Send + Sync> + Send + Sync),
         object: &(dyn Any + Send + Sync),
         config_attributes: &Vec<Box<dyn ConfigAttribute + Send + Sync>>,
     ) -> anyhow::Result<(), SecurityError> {
@@ -759,7 +789,7 @@ pub trait AccessDecisionVoter {
     fn supports(&self, attribute: &Box<dyn ConfigAttribute + Send + Sync>) -> bool;
     fn vote(
         &self,
-        authentication: &(dyn Authentication + Send + Sync),
+        authentication: &(dyn Authentication<dyn UserDetails + Send + Sync> + Send + Sync),
         object: &(dyn Any + Send + Sync),
         attributes: &Vec<Box<dyn ConfigAttribute + Send + Sync>>,
     ) -> Vote;
@@ -772,7 +802,7 @@ impl AccessDecisionVoter for RoleVoter {
     }
     fn vote(
         &self,
-        authentication: &(dyn Authentication + Send + Sync),
+        authentication: &(dyn Authentication<dyn UserDetails + Send + Sync> + Send + Sync),
         object: &(dyn Any + Send + Sync),
         attributes: &Vec<Box<dyn ConfigAttribute + Send + Sync>>,
     ) -> Vote {
@@ -936,7 +966,7 @@ pub struct UsernamePassword {
 pub trait AuthenticationSuccessHandler {
     async fn handle(
         &self,
-        authentication: Box<dyn Authentication + Send + Sync>,
+        authentication: Box<dyn Authentication<dyn UserDetails + Send + Sync> + Send + Sync>,
     ) -> anyhow::Result<Response<Body>>;
 }
 
@@ -1198,7 +1228,7 @@ impl WebSecurityConfigurer {
         &self.access_decision_manager
     }
 }
-pub trait SecurityContext<T> where T:Authentication + Send + Sync{
+pub trait SecurityContext<T,U> where T:Authentication<U> + Send + Sync,U:UserDetails + Send + Sync{
     fn get_authentication(&self) ->&T;
 }
 pub struct DefaultSecurityContext{
@@ -1211,16 +1241,39 @@ impl DefaultSecurityContext{
         }
     }
 }
-impl SecurityContext<DefaultAuthentication> for DefaultSecurityContext {
+impl SecurityContext<DefaultAuthentication, DefaultUserDetails> for DefaultSecurityContext {
     fn get_authentication(&self) -> &DefaultAuthentication {
         &self.authentication
     }
 }
-pub trait SecurityContextHolderStrategy<T,A> where T :SecurityContext<A> + Send + Sync,A:Authentication + Send + Sync{
-    fn clear_context(&self);
-    fn get_context(&self)-> &T;
-    fn set_context(&self,security_context:T);
+pub trait SecurityContextHolderStrategy<T,A,U> where T :SecurityContext<A, U> + Send + Sync, A:Authentication<U> + Send + Sync,U:UserDetails + Send + Sync{
+    fn get_context(&self,user_identity:String)-> &T;
+    fn set_context(&mut self,security_context:T);
     fn create_empty_context(&self)-> T;
+}
+pub struct LocalCacheSecurityContextHolderStrategy{
+    security_context:DefaultSecurityContext
+}
+
+impl SecurityContextHolderStrategy<DefaultSecurityContext, DefaultAuthentication, DefaultUserDetails> for LocalCacheSecurityContextHolderStrategy {
+    fn get_context(&self,user_identity:String) -> &DefaultSecurityContext {
+        &self.security_context
+    }
+
+    fn set_context(&mut self, security_context: DefaultSecurityContext) {
+        self.security_context = security_context;
+    }
+
+    fn create_empty_context(&self) -> DefaultSecurityContext {
+        DefaultSecurityContext{
+            authentication: DefaultAuthentication {
+                authentication_token: DefaultAuthenticationToken { principal: "".to_string(), credentials: "".to_string() },
+                authorities: vec![],
+                authenticated: false,
+                details: DefaultUserDetails::default()
+            }
+        }
+    }
 }
 pub const DEFAULT_STRATEGY_NAME:&'static str = "LOCAL_CACHE";
 

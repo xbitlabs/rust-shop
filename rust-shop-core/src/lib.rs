@@ -43,7 +43,7 @@ use crate::extract::header::Header;
 use crate::extract::path_variable::PathVariable;
 use crate::extract::request_param::RequestParam;
 use crate::router::{get_routers, register_route, Router};
-use crate::security::UserDetails;
+use crate::security::{Authentication, DEFAULT_AUTHENTICATION, UserDetails};
 use crate::security::{AuthenticationProcessingFilter, WebSecurityConfigurer};
 use crate::state::State;
 use crate::EndpointResultCode::{AccessDenied, ClientError, ServerError, Unauthorized, SUCCESS};
@@ -97,11 +97,15 @@ pub struct RequestCtx {
     uri: Uri,
     version: Version,
     extensions: Extensions,
+    authentication:Arc<dyn Authentication<dyn UserDetails + Send + Sync> + Send + Sync>
 }
 
 impl RequestCtx {
     pub fn extensions_mut(&mut self) -> &mut Extensions {
         self.extensions.borrow_mut()
+    }
+    pub fn set_authentication(&mut self, authentication: Arc<dyn Authentication<dyn UserDetails + Send + Sync> + Sync + Send>){
+        self.authentication = authentication;
     }
 }
 
@@ -604,6 +608,7 @@ impl Server {
                             version,
                             body,
                             extensions: Extensions::new(),
+                            authentication: DEFAULT_AUTHENTICATION.clone()
                         };
 
                         let resp_result = next.run(ctx).await;
