@@ -1,2 +1,3 @@
 allow_if_all_abstain_decisions: false
 intercept_url_patterns:
+strategy:

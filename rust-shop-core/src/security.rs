@@ -1198,7 +1198,35 @@ impl WebSecurityConfigurer {
         &self.access_decision_manager
     }
 }
+pub trait SecurityContext<T> where T:Authentication + Send + Sync{
+    fn get_authentication(&self) ->&T;
+}
+pub struct DefaultSecurityContext{
+    authentication: DefaultAuthentication
+}
+impl DefaultSecurityContext{
+    pub fn new(authentication: DefaultAuthentication)->Self{
+        DefaultSecurityContext{
+            authentication
+        }
+    }
+}
+impl SecurityContext<DefaultAuthentication> for DefaultSecurityContext {
+    fn get_authentication(&self) -> &DefaultAuthentication {
+        &self.authentication
+    }
+}
+pub trait SecurityContextHolderStrategy<T,A> where T :SecurityContext<A> + Send + Sync,A:Authentication + Send + Sync{
+    fn clear_context(&self);
+    fn get_context(&self)-> &T;
+    fn set_context(&self,security_context:T);
+    fn create_empty_context(&self)-> T;
+}
+pub const DEFAULT_STRATEGY_NAME:&'static str = "LOCAL_CACHE";
 
+pub struct SecurityContextHolder{
+    strategy_name:String
+}
 #[test]
 fn test() {
     let init = UrlPatternInit {

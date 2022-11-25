@@ -16,14 +16,14 @@ impl CacheEntity {
         }
     }
 }
-impl Clone for CacheEntity {
+/*impl Clone for CacheEntity {
     fn clone(&self) -> Self {
         CacheEntity {
             value: self.value.clone(),
         }
     }
-}
-pub static mut CACHE: Lazy<Cache<String, CacheEntity>> = Lazy::new(|| {
+}*/
+pub static mut CACHE: Lazy<Cache<String, Arc<CacheEntity>>> = Lazy::new(|| {
     let mut cache = Cache::builder()
         // Up to 10,000 entries.
         .max_capacity(10_000)
