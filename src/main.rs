@@ -24,7 +24,9 @@ use rust_shop_core::extensions::Extensions;
 use rust_shop_core::extract::json::Json;
 use rust_shop_core::extract::{FromRequest, IntoResponse};
 use rust_shop_core::router::register_route;
-use rust_shop_core::security::{AuthenticationFilter, AuthenticationProcessingFilter, NopPasswordEncoder};
+use rust_shop_core::security::{
+    AuthenticationFilter, AuthenticationProcessingFilter, NopPasswordEncoder,
+};
 use rust_shop_core::security::{
     AuthenticationTokenResolver, AuthenticationTokenResolverFn, DefaultLoadUserService,
     LoadUserService, LoadUserServiceFn, WeChatMiniAppAuthenticationTokenResolver,

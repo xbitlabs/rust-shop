@@ -9,7 +9,7 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use bcrypt::{hash, verify, DEFAULT_COST};
 use chrono::Local;
-use erased_serde::{Error, serialize_trait_object, Serializer};
+use erased_serde::{serialize_trait_object, Error, Serializer};
 use hyper::{Body, Request, Response};
 use lazy_static::lazy_static;
 use log::{error, info};
@@ -30,18 +30,18 @@ use crate::extensions::Extensions;
 use crate::id_generator::ID_GENERATOR;
 use crate::jwt::{decode_access_token, DefaultJwtService};
 use crate::jwt::{AccessToken, JwtService};
+use crate::memory_cache::{CacheEntity, CACHE};
 use crate::state::State;
 use crate::wechat::WeChatMiniAppService;
 use crate::{
     parse_form_params, EndpointResult, Filter, Next, RequestCtx, ResponseBuilder, APP_EXTENSIONS,
 };
-use crate::memory_cache::{CACHE, CacheEntity};
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct SecurityConfig {
     allow_if_all_abstain_decisions: Option<bool>,
     intercept_url_patterns: Option<String>,
-    security_context_storage_strategy:Option<String>
+    security_context_storage_strategy: Option<String>,
 }
 
 lazy_static! {
@@ -78,7 +78,10 @@ impl UsernamePasswordAuthenticationTokenResolver {
 
 #[async_trait::async_trait]
 impl AuthenticationTokenResolver for UsernamePasswordAuthenticationTokenResolver {
-    async fn resolve(&self, ctx: &mut RequestCtx) -> anyhow::Result<Box<dyn AuthenticationToken + Send + Sync>> {
+    async fn resolve(
+        &self,
+        ctx: &mut RequestCtx,
+    ) -> anyhow::Result<Box<dyn AuthenticationToken + Send + Sync>> {
         let params: HashMap<String, String> = parse_form_params(ctx).await;
         let username = params.get("username");
         if username.is_none() {
@@ -215,8 +218,6 @@ impl<'r, 'a, 'b> LoadUserService for WeChatUserService<'r, 'a, 'b> {
     }
 }
 
-
-
 //登录凭证，如用户名、密码
 pub trait AuthenticationToken {
     fn get_principal(&self) -> &(dyn Any + Send + Sync);
@@ -224,7 +225,7 @@ pub trait AuthenticationToken {
 }
 
 //登录的用户信息
-pub trait UserDetails : erased_serde::Serialize{
+pub trait UserDetails: erased_serde::Serialize {
     fn get_id(&self) -> &i64;
     fn get_username(&self) -> &String;
     fn get_password(&self) -> &String;
@@ -283,7 +284,6 @@ pub struct DefaultAuthentication {
     details: Box<dyn UserDetails + Send + Sync>,
 }
 
-
 impl DefaultAuthentication {
     pub fn new(
         authentication_token: DefaultAuthenticationToken,
@@ -321,7 +321,7 @@ impl Authentication for DefaultAuthentication {
         self.authenticated = is_authenticated
     }
 
-    fn set_details(&mut self, details:Box<(dyn UserDetails + Send + Sync)>) {
+    fn set_details(&mut self, details: Box<(dyn UserDetails + Send + Sync)>) {
         self.details = details;
     }
 
@@ -332,20 +332,20 @@ impl Authentication for DefaultAuthentication {
 
 impl Default for DefaultAuthentication {
     fn default() -> Self {
-        DefaultAuthentication{
+        DefaultAuthentication {
             authentication_token: DefaultAuthenticationToken {
                 principal: ANONYMOUS.to_string(),
-                credentials: "".to_string()
+                credentials: "".to_string(),
             },
             authorities: vec![],
             authenticated: false,
-            details: Box::new(DefaultUserDetails{
+            details: Box::new(DefaultUserDetails {
                 id: 0,
                 username: ANONYMOUS.to_string(),
                 password: "".to_string(),
                 authorities: vec![],
-                enable: false
-            })
+                enable: false,
+            }),
         }
     }
 }
@@ -384,8 +384,6 @@ impl DefaultUserDetails {
         }
     }
 }
-
-
 
 impl UserDetails for DefaultUserDetails {
     fn get_id(&self) -> &i64 {
@@ -846,16 +844,29 @@ impl Filter for SecurityInterceptor {
         unsafe {
             let security_config: &mut WebSecurityConfigurer =
                 APP_EXTENSIONS.get_mut::<WebSecurityConfigurer>().unwrap();
-            let access_decision_manager = security_config.get_access_decision_manager().as_ref().unwrap();
-            let security_metadata_source_provider = security_config.get_security_metadata_source_provider().as_ref().unwrap();
-            let req_map = security_metadata_source_provider.security_metadata_source().await.request_map();
+            let access_decision_manager = security_config
+                .get_access_decision_manager()
+                .as_ref()
+                .unwrap();
+            let security_metadata_source_provider = security_config
+                .get_security_metadata_source_provider()
+                .as_ref()
+                .unwrap();
+            let req_map = security_metadata_source_provider
+                .security_metadata_source()
+                .await
+                .request_map();
             let uri_req_map = req_map.get(ctx.uri.to_string().as_str());
             if uri_req_map.is_some() {
                 let uri_req_map = uri_req_map.unwrap();
-                access_decision_manager.decide(ctx.authentication.as_ref(), &ctx, uri_req_map).await?;
+                access_decision_manager
+                    .decide(ctx.authentication.as_ref(), &ctx, uri_req_map)
+                    .await?;
             } else {
-                let current_uri_req_map: Vec<Box<dyn ConfigAttribute +Send + Sync>> = vec![];
-                access_decision_manager.decide(ctx.authentication.as_ref(), &ctx, &current_uri_req_map).await?;
+                let current_uri_req_map: Vec<Box<dyn ConfigAttribute + Send + Sync>> = vec![];
+                access_decision_manager
+                    .decide(ctx.authentication.as_ref(), &ctx, &current_uri_req_map)
+                    .await?;
             }
             next.run(ctx).await
         }
@@ -1232,50 +1243,68 @@ impl WebSecurityConfigurer {
         &self.access_decision_manager
     }
 }
-pub trait SecurityContext<T> where T:Authentication + Send + Sync{
-    fn get_authentication(&self) ->&T;
+pub trait SecurityContext<T>
+where
+    T: Authentication + Send + Sync,
+{
+    fn get_authentication(&self) -> &T;
 }
 #[derive(serde::Serialize)]
-pub struct DefaultSecurityContext{
-    authentication: DefaultAuthentication
+pub struct DefaultSecurityContext {
+    authentication: DefaultAuthentication,
 }
-impl DefaultSecurityContext{
-    pub fn new(authentication: DefaultAuthentication)->Self{
-        DefaultSecurityContext{
-            authentication
-        }
+impl DefaultSecurityContext {
+    pub fn new(authentication: DefaultAuthentication) -> Self {
+        DefaultSecurityContext { authentication }
     }
 }
 
 impl Default for DefaultSecurityContext {
     fn default() -> Self {
-        DefaultSecurityContext{
-            authentication: Default::default()
+        DefaultSecurityContext {
+            authentication: Default::default(),
         }
     }
 }
 
-impl <'de> serde::Deserialize<'de> for DefaultSecurityContext {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+impl<'de> serde::Deserialize<'de> for DefaultSecurityContext {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
         let map = serde_json::Map::deserialize(deserializer)?;
 
         let authentication_field = map.get("authentication").unwrap();
         let details_field = authentication_field.get("details").unwrap();
         let authentication_token_field = authentication_field.get("authentication_token").unwrap();
-        let authorities_field = authentication_field.get("authorities").unwrap().as_array().unwrap();
+        let authorities_field = authentication_field
+            .get("authorities")
+            .unwrap()
+            .as_array()
+            .unwrap();
 
-        let mut token = DefaultAuthenticationToken{
+        let mut token = DefaultAuthenticationToken {
             principal: "".to_string(),
-            credentials: "".to_string()
+            credentials: "".to_string(),
         };
-        token.principal = authentication_token_field.get("principal").unwrap().to_string();
-        token.credentials = authentication_token_field.get("credentials").unwrap().to_string();
-
+        token.principal = authentication_token_field
+            .get("principal")
+            .unwrap()
+            .to_string();
+        token.credentials = authentication_token_field
+            .get("credentials")
+            .unwrap()
+            .to_string();
 
         let mut user = DefaultUserDetails::default();
         user.id = details_field.get("id").unwrap().as_i64().unwrap();
-        let mut authorities:Vec<String> = vec![];
-        for item in details_field.get("authorities").unwrap().as_array().unwrap() {
+        let mut authorities: Vec<String> = vec![];
+        for item in details_field
+            .get("authorities")
+            .unwrap()
+            .as_array()
+            .unwrap()
+        {
             authorities.push(item.to_string());
         }
         user.authorities = authorities;
@@ -1283,20 +1312,22 @@ impl <'de> serde::Deserialize<'de> for DefaultSecurityContext {
         user.password = details_field.get("password").unwrap().to_string();
         user.username = details_field.get("username").unwrap().to_string();
 
-        let mut authorities:Vec<String> = vec![];
+        let mut authorities: Vec<String> = vec![];
         for item in authorities_field {
             authorities.push(item.to_string());
         }
 
-        let mut authentication = DefaultAuthentication{
+        let mut authentication = DefaultAuthentication {
             authentication_token: token,
             authorities,
-            authenticated: authentication_field.get("authenticated").unwrap().as_bool().unwrap(),
-            details: Box::new(user)
+            authenticated: authentication_field
+                .get("authenticated")
+                .unwrap()
+                .as_bool()
+                .unwrap(),
+            details: Box::new(user),
         };
-        let context = DefaultSecurityContext{
-            authentication
-        };
+        let context = DefaultSecurityContext { authentication };
         Ok(context)
     }
 }
@@ -1307,75 +1338,115 @@ impl SecurityContext<DefaultAuthentication> for DefaultSecurityContext {
     }
 }
 #[async_trait::async_trait]
-pub trait SecurityContextHolderStrategy<T,A> where T :SecurityContext<A> + Send + Sync, A:Authentication + Send + Sync{
-    async fn get_context(&self,user_request_identity:String)-> T;
-    async fn set_context(&mut self,user_request_identity:String,security_context:T);
-    fn create_empty_context(&self)-> T;
+pub trait SecurityContextHolderStrategy<T, A>
+where
+    T: SecurityContext<A> + Send + Sync,
+    A: Authentication + Send + Sync,
+{
+    async fn get_context(&self, user_request_identity: String) -> T;
+    async fn set_context(&mut self, user_request_identity: String, security_context: T);
+    fn create_empty_context(&self) -> T;
 }
 pub struct LocalCacheSecurityContextHolderStrategy;
 
-static mut EMPTY_SECURITY_CONTEXT : Lazy<DefaultSecurityContext> = Lazy::new(||{
-    DefaultSecurityContext::new(DefaultAuthentication::default())
-});
+static mut EMPTY_SECURITY_CONTEXT: Lazy<DefaultSecurityContext> =
+    Lazy::new(|| DefaultSecurityContext::new(DefaultAuthentication::default()));
 #[async_trait::async_trait]
-impl <T, A> SecurityContextHolderStrategy<T, A> for LocalCacheSecurityContextHolderStrategy where for<'a> T :SecurityContext<A> + Send + Sync + serde::Deserialize<'a> + serde::Serialize + Default + 'a, A:Authentication + Send + Sync {
-    async fn get_context(&self,user_request_identity:String) -> T {
+impl<T, A> SecurityContextHolderStrategy<T, A> for LocalCacheSecurityContextHolderStrategy
+where
+    for<'a> T:
+        SecurityContext<A> + Send + Sync + serde::Deserialize<'a> + serde::Serialize + Default + 'a,
+    A: Authentication + Send + Sync,
+{
+    async fn get_context(&self, user_request_identity: String) -> T {
         let key = "security_context::".to_string() + &*user_request_identity;
-        let result:RedisResult<T> = crate::redis::get(&*key).await;
+        let result: RedisResult<T> = crate::redis::get(&*key).await;
         if result.is_ok() {
             result.unwrap()
-        }else {
+        } else {
             self.create_empty_context()
         }
     }
 
-    async fn set_context(&mut self, user_request_identity:String, security_context: T) {
+    async fn set_context(&mut self, user_request_identity: String, security_context: T) {
         let key = "security_context::".to_string() + &*user_request_identity;
-        let result = crate::redis::set(&*key,&security_context).await;
+        let result = crate::redis::set(&*key, &security_context).await;
         if result.is_ok() {
-            info!("设置security_context缓存`{}`成功",user_request_identity);
-        }else {
-            error!("设置security_context缓存`{}`异常：{}",user_request_identity,result.err().unwrap());
+            info!("设置security_context缓存`{}`成功", user_request_identity);
+        } else {
+            error!(
+                "设置security_context缓存`{}`异常：{}",
+                user_request_identity,
+                result.err().unwrap()
+            );
         }
-
     }
 
     fn create_empty_context(&self) -> T {
         T::default()
     }
 }
-pub const DEFAULT_STRATEGY_NAME:&'static str = "redis";
+pub const DEFAULT_STRATEGY_NAME: &'static str = "redis";
 
 pub struct SecurityContextHolder;
 
-impl  SecurityContextHolder{
-    pub async fn get_context<T,A>( user_request_identity:String)-> T  where for<'a> T:SecurityContext<A> + Send + Sync + Default + serde::Serialize  + serde::Deserialize<'a> + 'a,A:Authentication + Send + Sync{
+impl SecurityContextHolder {
+    pub async fn get_context<T, A>(user_request_identity: String) -> T
+    where
+        for<'a> T: SecurityContext<A>
+            + Send
+            + Sync
+            + Default
+            + serde::Serialize
+            + serde::Deserialize<'a>
+            + 'a,
+        A: Authentication + Send + Sync,
+    {
         if SECURITY_CONFIG.security_context_storage_strategy.is_none() {
             SecurityContextHolder::default_security_context(user_request_identity).await
-        }else {
-            let security_context_storage_strategy = SECURITY_CONFIG.security_context_storage_strategy.as_ref().unwrap().clone();
-            if  security_context_storage_strategy == DEFAULT_STRATEGY_NAME.to_string() {
+        } else {
+            let security_context_storage_strategy = SECURITY_CONFIG
+                .security_context_storage_strategy
+                .as_ref()
+                .unwrap()
+                .clone();
+            if security_context_storage_strategy == DEFAULT_STRATEGY_NAME.to_string() {
                 SecurityContextHolder::default_security_context(user_request_identity).await
-            }else {
-                panic!("security_context_storage_strategy `{}`尚未实现",security_context_storage_strategy);
+            } else {
+                panic!(
+                    "security_context_storage_strategy `{}`尚未实现",
+                    security_context_storage_strategy
+                );
             }
         }
     }
-    pub async fn default_security_context<T,A>( user_request_identity:String)-> T  where for<'a> T:SecurityContext<A> + Send + Sync + Default + serde::Serialize  + serde::Deserialize<'a> + 'a,A:Authentication + Send + Sync{
+    pub async fn default_security_context<T, A>(user_request_identity: String) -> T
+    where
+        for<'a> T: SecurityContext<A>
+            + Send
+            + Sync
+            + Default
+            + serde::Serialize
+            + serde::Deserialize<'a>
+            + 'a,
+        A: Authentication + Send + Sync,
+    {
         let security_context_holder_strategy = LocalCacheSecurityContextHolderStrategy;
-        security_context_holder_strategy.get_context(user_request_identity).await
+        security_context_holder_strategy
+            .get_context(user_request_identity)
+            .await
     }
 }
-const ANONYMOUS:&'static str = "anonymous";
+const ANONYMOUS: &'static str = "anonymous";
 
 #[async_trait::async_trait]
-pub trait UserRequestIdentityExtractor{
-    async fn extract(&self,req:&mut RequestCtx)->String;
+pub trait UserRequestIdentityExtractor {
+    async fn extract(&self, req: &mut RequestCtx) -> String;
 }
 pub struct DefaultUserRequestIdentityExtractor;
 #[async_trait::async_trait]
-impl UserRequestIdentityExtractor for DefaultUserRequestIdentityExtractor{
-    async fn extract(&self,req: &mut RequestCtx) -> String {
+impl UserRequestIdentityExtractor for DefaultUserRequestIdentityExtractor {
+    async fn extract(&self, req: &mut RequestCtx) -> String {
         let access_token = req.headers.get("ACCESS_TOKEN");
         if access_token.is_some() {
             let access_token = access_token.unwrap();
@@ -1392,24 +1463,32 @@ impl UserRequestIdentityExtractor for DefaultUserRequestIdentityExtractor{
     }
 }
 #[async_trait::async_trait]
-pub trait AuthenticationExtractor<A> where A:Authentication{
-    async fn extract(&self,req:&mut RequestCtx)->A;
+pub trait AuthenticationExtractor<A>
+where
+    A: Authentication,
+{
+    async fn extract(&self, req: &mut RequestCtx) -> A;
 }
 pub struct DefaultAuthenticationExtractor;
 #[async_trait::async_trait]
-impl AuthenticationExtractor<DefaultAuthentication> for DefaultAuthenticationExtractor{
-    async fn extract(&self,req: &mut RequestCtx) -> DefaultAuthentication {
+impl AuthenticationExtractor<DefaultAuthentication> for DefaultAuthenticationExtractor {
+    async fn extract(&self, req: &mut RequestCtx) -> DefaultAuthentication {
         let user_request_identity_extractor = DefaultUserRequestIdentityExtractor;
         let user_request_identity = user_request_identity_extractor.extract(req).await;
-        let security_context:DefaultSecurityContext = SecurityContextHolder::get_context(user_request_identity).await;
+        let security_context: DefaultSecurityContext =
+            SecurityContextHolder::get_context(user_request_identity).await;
         security_context.authentication
     }
 }
 
 pub struct AuthenticationFilter;
 #[async_trait::async_trait]
-impl Filter for AuthenticationFilter{
-    async fn handle<'a>(&'a self, mut ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response<Body>> {
+impl Filter for AuthenticationFilter {
+    async fn handle<'a>(
+        &'a self,
+        mut ctx: RequestCtx,
+        next: Next<'a>,
+    ) -> anyhow::Result<Response<Body>> {
         let authentication_extractor = DefaultAuthenticationExtractor;
         let authentication = authentication_extractor.extract(&mut ctx).await;
         ctx.authentication = Box::new(authentication);

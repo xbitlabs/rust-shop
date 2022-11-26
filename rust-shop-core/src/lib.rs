@@ -49,19 +49,19 @@ use crate::state::State;
 use crate::EndpointResultCode::{AccessDenied, ClientError, ServerError, Unauthorized, SUCCESS};
 
 pub mod app_config;
-pub mod memory_cache;
 pub mod db;
 pub mod entity;
 pub mod extensions;
 pub mod extract;
 pub mod id_generator;
 pub mod jwt;
+pub mod memory_cache;
+pub mod redis;
 pub mod router;
 pub mod security;
 pub mod serde_utils;
 pub mod state;
 pub mod wechat;
-pub mod redis;
 
 use crate::extract::json::body_to_bytes;
 use http::request::Parts as HttpParts;
@@ -98,14 +98,14 @@ pub struct RequestCtx {
     pub uri: Uri,
     pub version: Version,
     pub extensions: Extensions,
-    pub authentication:Box<(dyn Authentication + Sync + Send)>
+    pub authentication: Box<(dyn Authentication + Sync + Send)>,
 }
 
 impl RequestCtx {
     pub fn extensions_mut(&mut self) -> &mut Extensions {
         self.extensions.borrow_mut()
     }
-    pub fn set_authentication(&mut self, authentication: Box<(dyn Authentication + Sync + Send)>){
+    pub fn set_authentication(&mut self, authentication: Box<(dyn Authentication + Sync + Send)>) {
         self.authentication = authentication;
     }
 }
@@ -609,7 +609,7 @@ impl Server {
                             version,
                             body,
                             extensions: Extensions::new(),
-                            authentication: Box::new(DefaultAuthentication::default())
+                            authentication: Box::new(DefaultAuthentication::default()),
                         };
 
                         let resp_result = next.run(ctx).await;

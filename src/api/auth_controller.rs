@@ -46,7 +46,7 @@ pub mod AuthController {
     pub struct User {
         pub id: u32,
         pub name: String,
-        pub is_auth:bool
+        pub is_auth: bool,
     }
 
     #[route("POST", "/user/:id/:age")]
@@ -62,11 +62,17 @@ pub mod AuthController {
         Query(user1): Query<User>,
         sql_exe: &mut SqlCommandExecutor<'_, '_>,
     ) -> anyhow::Result<Json<User>> {
-        let username = req.authentication.get_authentication_token().get_principal().downcast_ref::<String>().unwrap().to_string();
+        let username = req
+            .authentication
+            .get_authentication_token()
+            .get_principal()
+            .downcast_ref::<String>()
+            .unwrap()
+            .to_string();
         let u = User {
             id: id.unwrap(),
             name: username,
-            is_auth: req.authentication.is_authenticated().clone()
+            is_auth: req.authentication.is_authenticated().clone(),
         };
         //let result = sql_command_executor.execute("").await?;
         let id = ID_GENERATOR.lock().unwrap().real_time_generate();
