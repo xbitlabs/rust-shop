@@ -43,13 +43,13 @@ use crate::extract::header::Header;
 use crate::extract::path_variable::PathVariable;
 use crate::extract::request_param::RequestParam;
 use crate::router::{get_routers, register_route, Router};
-use crate::security::{Authentication, DEFAULT_AUTHENTICATION, UserDetails};
+use crate::security::{Authentication, DefaultAuthentication, UserDetails};
 use crate::security::{AuthenticationProcessingFilter, WebSecurityConfigurer};
 use crate::state::State;
 use crate::EndpointResultCode::{AccessDenied, ClientError, ServerError, Unauthorized, SUCCESS};
 
 pub mod app_config;
-pub mod cache;
+pub mod memory_cache;
 pub mod db;
 pub mod entity;
 pub mod extensions;
@@ -61,6 +61,7 @@ pub mod security;
 pub mod serde_utils;
 pub mod state;
 pub mod wechat;
+pub mod redis;
 
 use crate::extract::json::body_to_bytes;
 use http::request::Parts as HttpParts;
@@ -93,18 +94,18 @@ pub struct RequestCtx {
     pub headers: HashMap<String, Option<String>>,
     //pub request_states: Extensions,
     //pub current_user: Option<Box<dyn UserDetails + Send + Sync>>,
-    method: Method,
-    uri: Uri,
-    version: Version,
-    extensions: Extensions,
-    authentication:Arc<dyn Authentication<dyn UserDetails + Send + Sync> + Send + Sync>
+    pub method: Method,
+    pub uri: Uri,
+    pub version: Version,
+    pub extensions: Extensions,
+    pub authentication:Box<(dyn Authentication + Sync + Send)>
 }
 
 impl RequestCtx {
     pub fn extensions_mut(&mut self) -> &mut Extensions {
         self.extensions.borrow_mut()
     }
-    pub fn set_authentication(&mut self, authentication: Arc<dyn Authentication<dyn UserDetails + Send + Sync> + Sync + Send>){
+    pub fn set_authentication(&mut self, authentication: Box<(dyn Authentication + Sync + Send)>){
         self.authentication = authentication;
     }
 }
@@ -608,7 +609,7 @@ impl Server {
                             version,
                             body,
                             extensions: Extensions::new(),
-                            authentication: DEFAULT_AUTHENTICATION.clone()
+                            authentication: Box::new(DefaultAuthentication::default())
                         };
 
                         let resp_result = next.run(ctx).await;

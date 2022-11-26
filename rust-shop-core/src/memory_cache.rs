@@ -4,16 +4,11 @@ use std::any::Any;
 use std::sync::Arc;
 
 pub struct CacheEntity {
-    value: Arc<dyn Any + Send + Sync>,
+    pub(crate) value: Arc<dyn Any + Send + Sync>,
 }
 impl CacheEntity {
-    pub fn into<T: Send + Sync + 'static>(&self) -> Option<&T> {
-        let result: Option<&T> = self.value.downcast_ref();
-        if result.is_some() {
-            Some(result.unwrap())
-        } else {
-            None
-        }
+    pub fn to<T: Send + Sync + 'static>(&self) -> Option<&T> {
+        self.value.downcast_ref()
     }
 }
 /*impl Clone for CacheEntity {

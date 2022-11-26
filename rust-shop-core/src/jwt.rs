@@ -84,8 +84,6 @@ pub struct AccessToken {
 #[async_trait::async_trait]
 pub trait JwtService {
     async fn grant_access_token(&mut self, user_id: i64) -> anyhow::Result<AccessToken>;
-    async fn decode_access_token(&self, access_token: String) -> anyhow::Result<Claims>;
-    async fn decode_refresh_token(&self, refresh_token: String) -> anyhow::Result<Claims>;
     async fn refresh_token(&mut self, refresh_token: String) -> anyhow::Result<AccessToken>;
     async fn remove_access_token(&mut self, access_token: String) -> anyhow::Result<bool>;
 }
@@ -96,7 +94,23 @@ pub struct JwtConfig {
     pub access_token_validity: i64,
     pub refresh_token_validity: i64,
 }
+pub async fn decode_access_token(access_token: String) -> anyhow::Result<Claims> {
+    let access_token_claims: TokenData<Claims> = decode(
+        access_token.as_str(),
+        &DecodingKey::from_secret(JWT_CONFIG.secret.as_ref()),
+        &Validation::new(Algorithm::HS256),
+    )?;
+    Ok(access_token_claims.claims)
+}
 
+pub async fn decode_refresh_token(refresh_token: String) -> anyhow::Result<Claims> {
+    let token_data: TokenData<Claims> = decode(
+        refresh_token.as_str(),
+        &DecodingKey::from_secret(JWT_CONFIG.secret.as_ref()),
+        &Validation::new(Algorithm::HS256),
+    )?;
+    Ok(token_data.claims)
+}
 lazy_static! {
     ///
     /// 全局配置
@@ -185,28 +199,9 @@ impl<'r, 'a, 'b> JwtService for DefaultJwtService<'r, 'a, 'b> {
         };
     }
 
-    async fn decode_access_token(&self, access_token: String) -> anyhow::Result<Claims> {
-        let access_token_claims: TokenData<Claims> = decode(
-            access_token.as_str(),
-            &DecodingKey::from_secret(JWT_CONFIG.secret.as_ref()),
-            &Validation::new(Algorithm::HS256),
-        )?;
-        Ok(access_token_claims.claims)
-    }
-
-    async fn decode_refresh_token(&self, refresh_token: String) -> anyhow::Result<Claims> {
-        let token_data: TokenData<Claims> = decode(
-            refresh_token.as_str(),
-            &DecodingKey::from_secret(JWT_CONFIG.secret.as_ref()),
-            &Validation::new(Algorithm::HS256),
-        )?;
-        Ok(token_data.claims)
-    }
-
     async fn refresh_token(&mut self, refresh_token: String) -> anyhow::Result<AccessToken> {
         println!("当前线程id={:?}", thread::current().id());
-        let decode_refresh_token = self.decode_refresh_token(refresh_token).await?;
-
+        let decode_refresh_token = decode_refresh_token(refresh_token).await?;
         //let conn_pool = self.mysql_pool_manager.get_pool();
         let mut args = MySqlArguments::default();
         args.add(decode_refresh_token.user_id);
@@ -237,7 +232,7 @@ impl<'r, 'a, 'b> JwtService for DefaultJwtService<'r, 'a, 'b> {
     }
 
     async fn remove_access_token(&mut self, access_token: String) -> anyhow::Result<bool> {
-        let decode_access_token = self.decode_access_token(access_token).await?;
+        let decode_access_token = decode_access_token(access_token).await?;
         //let pool = self.mysql_pool_manager.get_pool();
         let mut args = MySqlArguments::default();
         args.add(decode_access_token.user_id);
