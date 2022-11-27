@@ -41,7 +41,7 @@ pub async fn set<T: serde::Serialize>(key: &str, value: &T) -> RedisResult<()> {
     let mut conn = connection();
     let json = serde_json::to_string(value);
     if json.is_ok() {
-        println!("设置成功{}",key);
+        println!("设置成功{}", key);
         conn?.set(key, json.unwrap())
     } else {
         Err(RedisError::from(json.err().unwrap()))

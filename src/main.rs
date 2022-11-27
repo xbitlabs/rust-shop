@@ -25,7 +25,9 @@ use rust_shop_core::extract::json::Json;
 use rust_shop_core::extract::{FromRequest, IntoResponse};
 use rust_shop_core::router::register_route;
 use rust_shop_core::security::{
-    AuthenticationFilter, AuthenticationProcessingFilter, NopPasswordEncoder, SecurityInterceptor,
+    AdminUserLoadService, AuthenticationFilter, AuthenticationProcessingFilter,
+    BcryptPasswordEncoder, NopPasswordEncoder, SecurityInterceptor,
+    UsernamePasswordAuthenticationTokenResolver,
 };
 use rust_shop_core::security::{
     AuthenticationTokenResolver, AuthenticationTokenResolverFn, DefaultLoadUserService,
@@ -59,7 +61,7 @@ mod vo;
 fn load_user_service_fn<'r, 'a, 'b>(
     sql_command_executor: &'r mut SqlCommandExecutor<'a, 'b>,
 ) -> Box<dyn LoadUserService + Send + Sync + 'r> {
-    WeChatUserService::new(sql_command_executor)
+    AdminUserLoadService::new(sql_command_executor)
 }
 
 #[tokio::main]
@@ -94,10 +96,10 @@ async fn main() -> anyhow::Result<()> {
     security_config.enable_security(false);
     security_config.authentication_token_resolver(AuthenticationTokenResolverFn::from(Box::new(
         || -> Box<dyn AuthenticationTokenResolver + Send + Sync> {
-            Box::new(WeChatMiniAppAuthenticationTokenResolver {})
+            Box::new(UsernamePasswordAuthenticationTokenResolver {})
         },
     )));
-    security_config.password_encoder(Box::new(NopPasswordEncoder {}));
+    security_config.password_encoder(Box::new(BcryptPasswordEncoder {}));
     security_config.load_user_service(LoadUserServiceFn::from(Box::new(
         |req: &mut RequestCtx| -> Box<
             dyn for<'r, 'c, 'd> Fn(

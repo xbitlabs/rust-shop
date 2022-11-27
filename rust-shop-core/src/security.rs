@@ -25,7 +25,7 @@ use rust_shop_macro::FormParser;
 
 use crate::app_config::load_mod_config;
 use crate::db::{SqlCommandExecutor, TransactionManager};
-use crate::entity::{AdminPermission, AdminRole, User};
+use crate::entity::{AdminPermission, AdminRole, AdminUser, User};
 use crate::extensions::Extensions;
 use crate::id_generator::ID_GENERATOR;
 use crate::jwt::{decode_access_token, DefaultJwtService};
@@ -219,6 +219,65 @@ impl<'r, 'a, 'b> LoadUserService for WeChatUserService<'r, 'a, 'b> {
     }
 }
 
+pub struct AdminUserLoadService<'r, 'a, 'b> {
+    sql_command_executor: &'r mut SqlCommandExecutor<'a, 'b>,
+}
+
+impl<'r, 'a, 'b> AdminUserLoadService<'r, 'a, 'b> {
+    pub fn new(
+        sql_command_executor: &'r mut SqlCommandExecutor<'a, 'b>,
+    ) -> Box<dyn LoadUserService + Send + Sync + 'r> {
+        Box::new(AdminUserLoadService {
+            sql_command_executor,
+        })
+    }
+}
+#[async_trait::async_trait]
+impl<'r, 'a, 'b> LoadUserService for AdminUserLoadService<'r, 'a, 'b> {
+    async fn load_user(
+        &mut self,
+        identity: &String,
+    ) -> anyhow::Result<Box<dyn UserDetails + Send + Sync>> {
+        let mut args = MySqlArguments::default();
+        args.add(identity.to_string());
+        let user: Option<AdminUser> = self
+            .sql_command_executor
+            .find_option_with("select * from admin_user where username=?", args)
+            .await?;
+        if user.is_some() {
+            let user = user.unwrap();
+            let mut args = MySqlArguments::default();
+            args.add(user.id);
+            let admin_user_roles: Vec<AdminRole> = self
+                .sql_command_executor
+                .find_all_with(
+                    r#"SELECT
+                            r.*
+                        FROM
+                            admin_role r
+                            JOIN admin_user_role ur ON r.id = ur.admin_role_id
+                        WHERE
+                            ur.admin_user_id = ?"#,
+                    args,
+                )
+                .await?;
+            let mut authorities = vec![];
+            for admin_user_role in admin_user_roles {
+                authorities.push(admin_user_role.code);
+            }
+            Ok(Box::new(DefaultUserDetails {
+                id: user.id,
+                username: user.username,
+                password: user.password,
+                authorities,
+                enable: true,
+            }))
+        } else {
+            Err(anyhow!("用户不存在"))
+        }
+    }
+}
+
 //登录凭证，如用户名、密码
 pub trait AuthenticationToken {
     fn get_principal(&self) -> &(dyn Any + Send + Sync);
@@ -303,8 +362,18 @@ impl DefaultAuthentication {
 
 impl From<&(dyn Authentication + Send + Sync)> for DefaultAuthentication {
     fn from(value: &(dyn Authentication + Send + Sync)) -> Self {
-        let principal = value.get_authentication_token().get_principal().downcast_ref::<String>().unwrap().to_string();
-        let credentials = value.get_authentication_token().get_credentials().downcast_ref::<String>().unwrap().to_string();
+        let principal = value
+            .get_authentication_token()
+            .get_principal()
+            .downcast_ref::<String>()
+            .unwrap()
+            .to_string();
+        let credentials = value
+            .get_authentication_token()
+            .get_credentials()
+            .downcast_ref::<String>()
+            .unwrap()
+            .to_string();
         let mut authorities = vec![];
         for authority in value.get_authorities() {
             authorities.push(authority.to_string());
@@ -313,12 +382,21 @@ impl From<&(dyn Authentication + Send + Sync)> for DefaultAuthentication {
         for authority in value.get_details().get_authorities() {
             user_authorities.push(authority.to_string());
         }
-        let mut user = DefaultUserDetails::new(value.get_details().get_id().clone(),value.get_details().get_username().to_string(),value.get_details().get_password().to_string(),user_authorities,value.get_details().is_enable().clone());
-        DefaultAuthentication{
-            authentication_token: DefaultAuthenticationToken { principal, credentials },
+        let mut user = DefaultUserDetails::new(
+            value.get_details().get_id().clone(),
+            value.get_details().get_username().to_string(),
+            value.get_details().get_password().to_string(),
+            user_authorities,
+            value.get_details().is_enable().clone(),
+        );
+        DefaultAuthentication {
+            authentication_token: DefaultAuthenticationToken {
+                principal,
+                credentials,
+            },
             authorities,
             authenticated: value.is_authenticated().clone(),
-            details: Box::new(user)
+            details: Box::new(user),
         }
     }
 }
@@ -734,7 +812,8 @@ impl AccessDecisionManager for AffirmativeBased {
         config_attributes: &Vec<Box<dyn ConfigAttribute + Send + Sync>>,
     ) -> anyhow::Result<(), SecurityError> {
         let mut deny = 0;
-        for decision_voter in &self.decision_voters {
+        let decision_voters = self.decision_voters.iter();
+        for decision_voter in decision_voters {
             let result = decision_voter.vote(authentication, object, config_attributes);
             match result {
                 Vote::AccessDenied => {
@@ -794,7 +873,7 @@ impl<'de> serde::Deserialize<'de> for SecurityMetadataSource {
             let attrs = item.1.as_array().unwrap();
             for attr in attrs {
                 roles.push(Box::new(DefaultConfigAttribute {
-                    attribute: attr.to_string(),
+                    attribute: attr.get("attribute").unwrap().as_str().unwrap().to_string(),
                 }));
             }
             req_map.insert(item.0.to_string(), roles);
@@ -925,12 +1004,20 @@ impl AccessDecisionVoter for RoleVoter {
         let mut vote = Vote::AccessAbstain;
         //当前用户拥有的角色
         let authorities = authentication.get_authorities();
+        for authority in authorities {
+            println!("当前用户拥有的角色{}", authority);
+        }
         //访问当前资源所需要的角色
         for attribute in attributes {
             if self.supports(attribute) {
                 vote = Vote::AccessDenied;
                 for authority in authorities {
-                    if attribute.get_attribute() == authority {
+                    println!(
+                        "attribute.get_attribute().to_string()={}",
+                        attribute.get_attribute().to_string()
+                    );
+                    println!("authority.to_string()={}", authority.to_string());
+                    if attribute.get_attribute().to_string() == authority.to_string() {
                         vote = Vote::AccessGranted;
                         break;
                     }
@@ -964,15 +1051,15 @@ impl Filter for SecurityInterceptor {
                 .await;
             let req_map = metadata.request_map();
             let uri_req_map = req_map.get(ctx.uri.path());
-            println!("uri = {}",ctx.uri.path());
+            println!("uri = {}", ctx.uri.path());
             if uri_req_map.is_some() {
                 let uri_req_map = uri_req_map.unwrap();
-                println!("{}","找到uri_req_map");
+                println!("{}", "找到uri_req_map");
                 access_decision_manager
                     .decide(ctx.authentication.as_ref(), &ctx, uri_req_map)
                     .await?;
             } else {
-                println!("{}","没找到uri_req_map");
+                println!("{}", "没找到uri_req_map");
                 let current_uri_req_map: Vec<Box<dyn ConfigAttribute + Send + Sync>> = vec![];
                 access_decision_manager
                     .decide(ctx.authentication.as_ref(), &ctx, &current_uri_req_map)
@@ -1033,16 +1120,23 @@ impl Filter for AuthenticationProcessingFilter {
 
             if authentication.is_ok() {
                 let authentication = authentication.unwrap();
-                //let user_request_id = DefaultUserRequestIdentityExtractor.extract(&mut ctx).await;
-                let auth = DefaultAuthentication::from(authentication.as_ref());
-                SecurityContextHolder::set_context(auth.details.get_id().to_string(), DefaultSecurityContext{
-                    authentication: auth
-                }).await;
+
                 let success_handler = security_config.get_authentication_success_handler();
                 if success_handler.is_some() {
                     let result = success_handler.as_ref().unwrap()(&mut ctx)
-                        .handle(authentication)
+                        .handle(&authentication)
                         .await?;
+                    ctx.authentication = authentication;
+                    let user_request_id =
+                        DefaultUserRequestIdentityExtractor.extract(&mut ctx).await;
+                    let auth = DefaultAuthentication::from(ctx.authentication.as_ref());
+                    SecurityContextHolder::set_context(
+                        user_request_id,
+                        DefaultSecurityContext {
+                            authentication: auth,
+                        },
+                    )
+                    .await;
                     Ok(result)
                 } else {
                     let user_details: &Box<dyn UserDetails + Send + Sync> =
@@ -1052,11 +1146,26 @@ impl Filter for AuthenticationProcessingFilter {
                     let access_token = jwt_service
                         .grant_access_token(*user_details.get_id())
                         .await?;
+                    ctx.headers.insert(
+                        "access_token".to_string(),
+                        Some(access_token.access_token.clone()),
+                    );
                     let endpoint_result: EndpointResult<AccessToken> =
                         EndpointResult::ok_with_payload("", access_token);
                     drop(jwt_service);
                     drop(sql_command_executor);
                     tran_manager.commit().await?;
+                    ctx.authentication = authentication;
+                    let user_request_id =
+                        DefaultUserRequestIdentityExtractor.extract(&mut ctx).await;
+                    let auth = DefaultAuthentication::from(ctx.authentication.as_ref());
+                    SecurityContextHolder::set_context(
+                        user_request_id,
+                        DefaultSecurityContext {
+                            authentication: auth,
+                        },
+                    )
+                    .await;
                     Ok(ResponseBuilder::with_endpoint_result(endpoint_result))
                 }
             } else {
@@ -1096,7 +1205,7 @@ pub struct UsernamePassword {
 pub trait AuthenticationSuccessHandler {
     async fn handle(
         &self,
-        authentication: Box<dyn Authentication + Send + Sync>,
+        authentication: &Box<dyn Authentication + Send + Sync>,
     ) -> anyhow::Result<Response<Body>>;
 }
 
@@ -1404,9 +1513,13 @@ impl<'de> serde::Deserialize<'de> for DefaultSecurityContext {
         token.principal = authentication_token_field
             .get("principal")
             .unwrap()
+            .as_str()
+            .unwrap()
             .to_string();
         token.credentials = authentication_token_field
             .get("credentials")
+            .unwrap()
+            .as_str()
             .unwrap()
             .to_string();
 
@@ -1419,16 +1532,26 @@ impl<'de> serde::Deserialize<'de> for DefaultSecurityContext {
             .as_array()
             .unwrap()
         {
-            authorities.push(item.to_string());
+            authorities.push(item.as_str().unwrap().to_string());
         }
         user.authorities = authorities;
         user.enable = details_field.get("enable").unwrap().as_bool().unwrap();
-        user.password = details_field.get("password").unwrap().to_string();
-        user.username = details_field.get("username").unwrap().to_string();
+        user.password = details_field
+            .get("password")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .to_string();
+        user.username = details_field
+            .get("username")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .to_string();
 
         let mut authorities: Vec<String> = vec![];
         for item in authorities_field {
-            authorities.push(item.to_string());
+            authorities.push(item.as_str().unwrap().to_string());
         }
 
         let mut authentication = DefaultAuthentication {
@@ -1464,7 +1587,7 @@ where
 pub struct LocalCacheSecurityContextHolderStrategy;
 
 /*static mut EMPTY_SECURITY_CONTEXT: Lazy<DefaultSecurityContext> =
-    Lazy::new(|| DefaultSecurityContext::new(DefaultAuthentication::default()));*/
+Lazy::new(|| DefaultSecurityContext::new(DefaultAuthentication::default()));*/
 #[async_trait::async_trait]
 impl<T, A> SecurityContextHolderStrategy<T, A> for LocalCacheSecurityContextHolderStrategy
 where
@@ -1550,20 +1673,20 @@ impl SecurityContextHolder {
             .get_context(user_request_identity)
             .await
     }
-    pub async fn set_context<T, A>(user_request_identity: String, security_context:T)
-        where
-                for<'a> T: SecurityContext<A>
-        + Send
-        + Sync
-        + Default
-        + serde::Serialize
-        + serde::Deserialize<'a>
-        + 'a,
-                A: Authentication + Send + Sync,
+    pub async fn set_context<T, A>(user_request_identity: String, security_context: T)
+    where
+        for<'a> T: SecurityContext<A>
+            + Send
+            + Sync
+            + Default
+            + serde::Serialize
+            + serde::Deserialize<'a>
+            + 'a,
+        A: Authentication + Send + Sync,
     {
         let mut security_context_holder_strategy = LocalCacheSecurityContextHolderStrategy;
         security_context_holder_strategy
-            .set_context(user_request_identity,security_context)
+            .set_context(user_request_identity, security_context)
             .await
     }
 }
@@ -1648,5 +1771,9 @@ fn test() {
         .exec(UrlPatternMatchInput::Url(url))
         .unwrap()
         .unwrap();
+
     println!("{:?}", result.pathname);
+    let p = BcryptPasswordEncoder::new();
+    let s = "123456".to_string();
+    println!("{}", p.encode(&s).unwrap())
 }
