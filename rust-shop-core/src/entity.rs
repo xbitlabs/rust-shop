@@ -41,6 +41,7 @@ pub struct AdminPermissionGroup {
 pub struct AdminRole {
     pub id: i64,
     pub name: String,
+    pub code: String,
     pub description: Option<String>,
 }
 #[derive(sqlx::FromRow, serde::Serialize, serde::Deserialize, Debug)]

@@ -25,7 +25,7 @@ use rust_shop_core::extract::json::Json;
 use rust_shop_core::extract::{FromRequest, IntoResponse};
 use rust_shop_core::router::register_route;
 use rust_shop_core::security::{
-    AuthenticationFilter, AuthenticationProcessingFilter, NopPasswordEncoder,
+    AuthenticationFilter, AuthenticationProcessingFilter, NopPasswordEncoder, SecurityInterceptor,
 };
 use rust_shop_core::security::{
     AuthenticationTokenResolver, AuthenticationTokenResolverFn, DefaultLoadUserService,
@@ -85,6 +85,7 @@ async fn main() -> anyhow::Result<()> {
     srv.filter(AuthenticationFilter);
     srv.filter(AccessLogFilter);
     srv.filter(AuthenticationProcessingFilter);
+    srv.filter(SecurityInterceptor);
 
     let conn_pool = mysql_connection_pool().await?;
     srv.extension(State::new(conn_pool.clone()));

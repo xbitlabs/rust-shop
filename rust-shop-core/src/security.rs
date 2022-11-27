@@ -25,7 +25,7 @@ use rust_shop_macro::FormParser;
 
 use crate::app_config::load_mod_config;
 use crate::db::{SqlCommandExecutor, TransactionManager};
-use crate::entity::User;
+use crate::entity::{AdminPermission, AdminRole, User};
 use crate::extensions::Extensions;
 use crate::id_generator::ID_GENERATOR;
 use crate::jwt::{decode_access_token, DefaultJwtService};
@@ -42,6 +42,7 @@ pub struct SecurityConfig {
     allow_if_all_abstain_decisions: Option<bool>,
     intercept_url_patterns: Option<String>,
     security_context_storage_strategy: Option<String>,
+    security_metadata_source_storage_key: String,
 }
 
 lazy_static! {
@@ -300,6 +301,27 @@ impl DefaultAuthentication {
     }
 }
 
+impl From<&(dyn Authentication + Send + Sync)> for DefaultAuthentication {
+    fn from(value: &(dyn Authentication + Send + Sync)) -> Self {
+        let principal = value.get_authentication_token().get_principal().downcast_ref::<String>().unwrap().to_string();
+        let credentials = value.get_authentication_token().get_credentials().downcast_ref::<String>().unwrap().to_string();
+        let mut authorities = vec![];
+        for authority in value.get_authorities() {
+            authorities.push(authority.to_string());
+        }
+        let mut user_authorities = vec![];
+        for authority in value.get_details().get_authorities() {
+            user_authorities.push(authority.to_string());
+        }
+        let mut user = DefaultUserDetails::new(value.get_details().get_id().clone(),value.get_details().get_username().to_string(),value.get_details().get_password().to_string(),user_authorities,value.get_details().is_enable().clone());
+        DefaultAuthentication{
+            authentication_token: DefaultAuthenticationToken { principal, credentials },
+            authorities,
+            authenticated: value.is_authenticated().clone(),
+            details: Box::new(user)
+        }
+    }
+}
 impl Authentication for DefaultAuthentication {
     fn get_authentication_token(&self) -> &(dyn AuthenticationToken) {
         &self.authentication_token
@@ -732,9 +754,11 @@ impl AccessDecisionManager for AffirmativeBased {
     }
 }
 //角色
-pub trait ConfigAttribute {
+pub trait ConfigAttribute: erased_serde::Serialize {
     fn get_attribute(&self) -> &String;
 }
+serialize_trait_object!(ConfigAttribute);
+#[derive(serde::Serialize)]
 pub struct DefaultConfigAttribute {
     pub attribute: String,
 }
@@ -744,7 +768,7 @@ impl ConfigAttribute for DefaultConfigAttribute {
         &self.attribute
     }
 }
-
+#[derive(serde::Serialize)]
 pub struct SecurityMetadataSource {
     //请求的接口url到角色的映射关系
     request_map: HashMap<String, Vec<Box<dyn ConfigAttribute + Send + Sync>>>,
@@ -755,28 +779,115 @@ impl SecurityMetadataSource {
         &self.request_map
     }
 }
-#[async_trait::async_trait]
-pub trait SecurityMetadataSourceProvider {
-    async fn security_metadata_source(&self) -> &SecurityMetadataSource;
-}
+impl<'de> serde::Deserialize<'de> for SecurityMetadataSource {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let map = serde_json::Map::deserialize(deserializer)?;
+        let mut req_map: HashMap<String, Vec<Box<dyn ConfigAttribute + Send + Sync>>> =
+            HashMap::new();
 
-pub struct DefaultSecurityMetadataSourceProvider<'r, 'a, 'b> {
-    sql_command_executor: &'r mut SqlCommandExecutor<'a, 'b>,
-}
-
-impl<'r, 'a, 'b> DefaultSecurityMetadataSourceProvider<'r, 'a, 'b> {
-    pub fn new(sql_command_executor: &'r mut SqlCommandExecutor<'a, 'b>) -> Self {
-        DefaultSecurityMetadataSourceProvider {
-            sql_command_executor,
+        let req_map_field = map.get("request_map").unwrap();
+        for item in req_map_field.as_object().unwrap() {
+            let mut roles: Vec<Box<dyn ConfigAttribute + Send + Sync>> = vec![];
+            let attrs = item.1.as_array().unwrap();
+            for attr in attrs {
+                roles.push(Box::new(DefaultConfigAttribute {
+                    attribute: attr.to_string(),
+                }));
+            }
+            req_map.insert(item.0.to_string(), roles);
         }
+        let mut metadata = SecurityMetadataSource {
+            request_map: req_map,
+        };
+        Ok(metadata)
     }
 }
 #[async_trait::async_trait]
-impl<'r, 'a, 'b> SecurityMetadataSourceProvider
-    for DefaultSecurityMetadataSourceProvider<'r, 'a, 'b>
-{
-    async fn security_metadata_source(&self) -> &SecurityMetadataSource {
-        todo!()
+pub trait SecurityMetadataSourceProvider {
+    async fn security_metadata_source(&self) -> SecurityMetadataSource;
+}
+
+pub struct DefaultSecurityMetadataSourceProvider;
+
+#[async_trait::async_trait]
+impl SecurityMetadataSourceProvider for DefaultSecurityMetadataSourceProvider {
+    async fn security_metadata_source(&self) -> SecurityMetadataSource {
+        unsafe {
+            let metadata_source: RedisResult<SecurityMetadataSource> = crate::redis::get(
+                SECURITY_CONFIG
+                    .security_metadata_source_storage_key
+                    .clone()
+                    .as_str(),
+            )
+            .await;
+            if metadata_source.is_ok() {
+                return metadata_source.unwrap();
+            } else {
+                let pool_state: Option<&State<Pool<MySql>>> = APP_EXTENSIONS.get();
+                let pool = pool_state.unwrap().get_ref();
+                let mut sql_command_executor = SqlCommandExecutor::WithoutTransaction(pool);
+                let permission: anyhow::Result<Vec<AdminPermission>> = sql_command_executor
+                    .find_all("select * from admin_permission")
+                    .await;
+                if permission.is_ok() {
+                    let permissions = permission.unwrap();
+                    let mut req_map: HashMap<String, Vec<Box<dyn ConfigAttribute + Send + Sync>>> =
+                        HashMap::new();
+                    for permission in permissions {
+                        let mut args = MySqlArguments::default();
+                        args.add(permission.url.clone());
+                        let roles: anyhow::Result<Vec<AdminRole>> = sql_command_executor
+                            .find_all_with(
+                                r#"SELECT
+                                            r.*
+                                        FROM
+                                            admin_role r
+                                            JOIN admin_role_permission rp ON r.id = rp.admin_role_id
+                                            JOIN admin_permission p ON rp.admin_permission_id = p.id
+                                        where p.url = ?"#,
+                                args,
+                            )
+                            .await;
+                        if roles.is_ok() {
+                            let roles = roles.unwrap();
+                            let mut config_attrs: Vec<Box<dyn ConfigAttribute + Send + Sync>> =
+                                vec![];
+                            for role in roles {
+                                config_attrs.push(Box::new(DefaultConfigAttribute {
+                                    attribute: role.code,
+                                }));
+                            }
+                            req_map.insert(permission.url.clone(), config_attrs);
+                        }
+                    }
+                    let metadata_source = SecurityMetadataSource {
+                        request_map: req_map,
+                    };
+                    let storage_result = crate::redis::set(
+                        SECURITY_CONFIG
+                            .security_metadata_source_storage_key
+                            .clone()
+                            .as_str(),
+                        &metadata_source,
+                    )
+                    .await;
+                    if storage_result.is_err() {
+                        error!(
+                            "security_metadata_source 存储失败：{}",
+                            storage_result.err().unwrap()
+                        );
+                    }
+                    metadata_source
+                } else {
+                    SecurityMetadataSource {
+                        request_map: HashMap::new(),
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -844,25 +955,24 @@ impl Filter for SecurityInterceptor {
         unsafe {
             let security_config: &mut WebSecurityConfigurer =
                 APP_EXTENSIONS.get_mut::<WebSecurityConfigurer>().unwrap();
-            let access_decision_manager = security_config
-                .get_access_decision_manager()
-                .as_ref()
-                .unwrap();
+            let access_decision_manager = security_config.get_access_decision_manager().as_ref();
             let security_metadata_source_provider = security_config
                 .get_security_metadata_source_provider()
-                .as_ref()
-                .unwrap();
-            let req_map = security_metadata_source_provider
+                .as_ref();
+            let metadata = security_metadata_source_provider
                 .security_metadata_source()
-                .await
-                .request_map();
-            let uri_req_map = req_map.get(ctx.uri.to_string().as_str());
+                .await;
+            let req_map = metadata.request_map();
+            let uri_req_map = req_map.get(ctx.uri.path());
+            println!("uri = {}",ctx.uri.path());
             if uri_req_map.is_some() {
                 let uri_req_map = uri_req_map.unwrap();
+                println!("{}","找到uri_req_map");
                 access_decision_manager
                     .decide(ctx.authentication.as_ref(), &ctx, uri_req_map)
                     .await?;
             } else {
+                println!("{}","没找到uri_req_map");
                 let current_uri_req_map: Vec<Box<dyn ConfigAttribute + Send + Sync>> = vec![];
                 access_decision_manager
                     .decide(ctx.authentication.as_ref(), &ctx, &current_uri_req_map)
@@ -923,6 +1033,11 @@ impl Filter for AuthenticationProcessingFilter {
 
             if authentication.is_ok() {
                 let authentication = authentication.unwrap();
+                //let user_request_id = DefaultUserRequestIdentityExtractor.extract(&mut ctx).await;
+                let auth = DefaultAuthentication::from(authentication.as_ref());
+                SecurityContextHolder::set_context(auth.details.get_id().to_string(), DefaultSecurityContext{
+                    authentication: auth
+                }).await;
                 let success_handler = security_config.get_authentication_success_handler();
                 if success_handler.is_some() {
                     let result = success_handler.as_ref().unwrap()(&mut ctx)
@@ -1055,10 +1170,9 @@ pub struct WebSecurityConfigurer {
     authentication_provider: AuthenticationProviderFn,
     user_details_checker: UserDetailsCheckerFn,
     password_encoder: Box<dyn PasswordEncoder + Send + Sync>,
-    security_metadata_source_provider:
-        Option<Box<dyn SecurityMetadataSourceProvider + Send + Sync>>,
-    access_decision_voter: Option<Box<dyn AccessDecisionVoter + Send + Sync>>,
-    access_decision_manager: Option<Box<dyn AccessDecisionManager + Send + Sync>>,
+    security_metadata_source_provider: Box<dyn SecurityMetadataSourceProvider + Send + Sync>,
+    //access_decision_voter: Option<Box<dyn AccessDecisionVoter + Send + Sync>>,
+    access_decision_manager: Box<dyn AccessDecisionManager + Send + Sync>,
 }
 
 fn load_user_service_fn<'r, 'a, 'b>(
@@ -1126,9 +1240,11 @@ impl WebSecurityConfigurer {
                 },
             )),
             password_encoder: Box::new(BcryptPasswordEncoder::new()),
-            security_metadata_source_provider: None,
-            access_decision_voter: None,
-            access_decision_manager: None,
+            security_metadata_source_provider: Box::new(DefaultSecurityMetadataSourceProvider),
+            //access_decision_voter: Some(Box::new(RoleVoter)),
+            access_decision_manager: Box::new(AffirmativeBased {
+                decision_voters: vec![Box::new(RoleVoter)],
+            }),
         }
     }
     pub fn enable_security(&mut self, enable_security: bool) -> &Self {
@@ -1215,31 +1331,29 @@ impl WebSecurityConfigurer {
         &mut self,
         security_metadata_source_provider: Box<dyn SecurityMetadataSourceProvider + Send + Sync>,
     ) {
-        self.security_metadata_source_provider = Some(security_metadata_source_provider);
+        self.security_metadata_source_provider = security_metadata_source_provider;
     }
-    pub fn access_decision_voter(
+    /*    pub fn access_decision_voter(
         &mut self,
         access_decision_voter: Box<dyn AccessDecisionVoter + Send + Sync>,
     ) {
         self.access_decision_voter = Some(access_decision_voter);
-    }
+    }*/
     pub fn access_decision_manager(
         &mut self,
         access_decision_manager: Box<dyn AccessDecisionManager + Send + Sync>,
     ) {
-        self.access_decision_manager = Some(access_decision_manager);
+        self.access_decision_manager = access_decision_manager;
     }
     pub fn get_security_metadata_source_provider(
         &self,
-    ) -> &Option<Box<dyn SecurityMetadataSourceProvider + Send + Sync>> {
+    ) -> &Box<dyn SecurityMetadataSourceProvider + Send + Sync> {
         &self.security_metadata_source_provider
     }
-    pub fn get_access_decision_voter(&self) -> &Option<Box<dyn AccessDecisionVoter + Send + Sync>> {
+    /*   pub fn get_access_decision_voter(&self) -> &Option<Box<dyn AccessDecisionVoter + Send + Sync>> {
         &self.access_decision_voter
-    }
-    pub fn get_access_decision_manager(
-        &self,
-    ) -> &Option<Box<dyn AccessDecisionManager + Send + Sync>> {
+    }*/
+    pub fn get_access_decision_manager(&self) -> &Box<dyn AccessDecisionManager + Send + Sync> {
         &self.access_decision_manager
     }
 }
@@ -1349,8 +1463,8 @@ where
 }
 pub struct LocalCacheSecurityContextHolderStrategy;
 
-static mut EMPTY_SECURITY_CONTEXT: Lazy<DefaultSecurityContext> =
-    Lazy::new(|| DefaultSecurityContext::new(DefaultAuthentication::default()));
+/*static mut EMPTY_SECURITY_CONTEXT: Lazy<DefaultSecurityContext> =
+    Lazy::new(|| DefaultSecurityContext::new(DefaultAuthentication::default()));*/
 #[async_trait::async_trait]
 impl<T, A> SecurityContextHolderStrategy<T, A> for LocalCacheSecurityContextHolderStrategy
 where
@@ -1436,6 +1550,22 @@ impl SecurityContextHolder {
             .get_context(user_request_identity)
             .await
     }
+    pub async fn set_context<T, A>(user_request_identity: String, security_context:T)
+        where
+                for<'a> T: SecurityContext<A>
+        + Send
+        + Sync
+        + Default
+        + serde::Serialize
+        + serde::Deserialize<'a>
+        + 'a,
+                A: Authentication + Send + Sync,
+    {
+        let mut security_context_holder_strategy = LocalCacheSecurityContextHolderStrategy;
+        security_context_holder_strategy
+            .set_context(user_request_identity,security_context)
+            .await
+    }
 }
 const ANONYMOUS: &'static str = "anonymous";
 
@@ -1447,7 +1577,7 @@ pub struct DefaultUserRequestIdentityExtractor;
 #[async_trait::async_trait]
 impl UserRequestIdentityExtractor for DefaultUserRequestIdentityExtractor {
     async fn extract(&self, req: &mut RequestCtx) -> String {
-        let access_token = req.headers.get("ACCESS_TOKEN");
+        let access_token = req.headers.get("access_token");
         if access_token.is_some() {
             let access_token = access_token.unwrap();
             if access_token.is_some() {
