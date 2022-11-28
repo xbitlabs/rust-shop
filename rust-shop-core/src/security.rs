@@ -10,6 +10,7 @@ use anyhow::anyhow;
 use bcrypt::{hash, verify, DEFAULT_COST};
 use chrono::Local;
 use erased_serde::{serialize_trait_object, Error, Serializer};
+use http::HeaderValue;
 use hyper::{Body, Request, Response};
 use lazy_static::lazy_static;
 use log::{error, info};
@@ -19,6 +20,7 @@ use serde::{Deserializer, Serialize};
 use sqlx::mysql::MySqlArguments;
 use sqlx::{Acquire, Arguments, MySql, Pool};
 use thiserror::Error;
+use url::Url;
 use urlpattern::{UrlPattern, UrlPatternInit, UrlPatternMatchInput};
 
 use rust_shop_macro::FormParser;
@@ -43,6 +45,7 @@ pub struct SecurityConfig {
     intercept_url_patterns: Option<String>,
     security_context_storage_strategy: Option<String>,
     security_metadata_source_storage_key: String,
+    cookie_based: bool,
 }
 
 lazy_static! {
@@ -961,6 +964,7 @@ impl SecurityMetadataSourceProvider for DefaultSecurityMetadataSourceProvider {
                     }
                     metadata_source
                 } else {
+                    error!("查询异常admin_permission：{}", permission.err().unwrap());
                     SecurityMetadataSource {
                         request_map: HashMap::new(),
                     }
@@ -1030,7 +1034,29 @@ impl AccessDecisionVoter for RoleVoter {
         return vote;
     }
 }
-
+pub(crate) fn req_matches(req: &RequestCtx, url_patterns: &String) -> bool {
+    let init = UrlPatternInit {
+        pathname: Some(url_patterns.clone()),
+        ..Default::default()
+    };
+    let pattern = <UrlPattern>::parse(init);
+    if pattern.is_ok() {
+        let pattern = pattern.unwrap();
+        // Match the pattern against a URL.
+        let url = ("http://127.0.0.1".to_string() + &*req.uri.to_string()).parse::<Url>();
+        if url.is_ok() {
+            let url = url.unwrap();
+            let result = pattern.exec(UrlPatternMatchInput::Url(url));
+            if result.is_ok() {
+                let result = result.unwrap();
+                if result.is_some() {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
 pub struct SecurityInterceptor;
 #[async_trait::async_trait]
 impl Filter for SecurityInterceptor {
@@ -1051,21 +1077,28 @@ impl Filter for SecurityInterceptor {
                 .await;
             let req_map = metadata.request_map();
             let uri_req_map = req_map.get(ctx.uri.path());
-            println!("uri = {}", ctx.uri.path());
             if uri_req_map.is_some() {
+                println!("uri = {}", ctx.uri.path());
                 let uri_req_map = uri_req_map.unwrap();
                 println!("{}", "找到uri_req_map");
                 access_decision_manager
                     .decide(ctx.authentication.as_ref(), &ctx, uri_req_map)
                     .await?;
+                return next.run(ctx).await;
             } else {
-                println!("{}", "没找到uri_req_map");
-                let current_uri_req_map: Vec<Box<dyn ConfigAttribute + Send + Sync>> = vec![];
-                access_decision_manager
-                    .decide(ctx.authentication.as_ref(), &ctx, &current_uri_req_map)
-                    .await?;
+                for (url, attrs) in req_map {
+                    if req_matches(&ctx, url) {
+                        println!("uri = {}", ctx.uri.path());
+                        println!("{}", "找到uri_req_map");
+                        access_decision_manager
+                            .decide(ctx.authentication.as_ref(), &ctx, attrs)
+                            .await?;
+                        return next.run(ctx).await;
+                    }
+                }
             }
-            next.run(ctx).await
+            info!("访问`{}`被拒绝：{}", ctx.uri.to_string(), "没有权限");
+            return Err(anyhow!("没有权限"));
         }
     }
 
@@ -1123,12 +1156,13 @@ impl Filter for AuthenticationProcessingFilter {
 
                 let success_handler = security_config.get_authentication_success_handler();
                 if success_handler.is_some() {
-                    let result = success_handler.as_ref().unwrap()(&mut ctx)
-                        .handle(&authentication)
+                    let user_request_id = UserRequestIdentityFactory::user_request_identity()
+                        .generate(authentication.as_ref())
                         .await?;
+                    let success_handler = success_handler.as_ref().unwrap();
+                    let mut result = success_handler(&mut ctx).handle(&authentication).await?;
+                    drop(success_handler);
                     ctx.authentication = authentication;
-                    let user_request_id =
-                        DefaultUserRequestIdentityExtractor.extract(&mut ctx).await;
                     let auth = DefaultAuthentication::from(ctx.authentication.as_ref());
                     SecurityContextHolder::set_context(
                         user_request_id,
@@ -1146,18 +1180,16 @@ impl Filter for AuthenticationProcessingFilter {
                     let access_token = jwt_service
                         .grant_access_token(*user_details.get_id())
                         .await?;
-                    ctx.headers.insert(
-                        "access_token".to_string(),
-                        Some(access_token.access_token.clone()),
-                    );
-                    let endpoint_result: EndpointResult<AccessToken> =
-                        EndpointResult::ok_with_payload("", access_token);
+
                     drop(jwt_service);
                     drop(sql_command_executor);
-                    tran_manager.commit().await?;
+                    let endpoint_result: EndpointResult<AccessToken> =
+                        EndpointResult::ok_with_payload("", access_token);
+                    let mut result = ResponseBuilder::with_endpoint_result(endpoint_result);
+                    let user_request_id = UserRequestIdentityFactory::user_request_identity()
+                        .generate(authentication.as_ref())
+                        .await?;
                     ctx.authentication = authentication;
-                    let user_request_id =
-                        DefaultUserRequestIdentityExtractor.extract(&mut ctx).await;
                     let auth = DefaultAuthentication::from(ctx.authentication.as_ref());
                     SecurityContextHolder::set_context(
                         user_request_id,
@@ -1166,7 +1198,9 @@ impl Filter for AuthenticationProcessingFilter {
                         },
                     )
                     .await;
-                    Ok(ResponseBuilder::with_endpoint_result(endpoint_result))
+                    tran_manager.commit().await?;
+
+                    Ok(result)
                 }
             } else {
                 let fail_handler = security_config.get_authentication_failure_handler();
@@ -1586,8 +1620,6 @@ where
 }
 pub struct LocalCacheSecurityContextHolderStrategy;
 
-/*static mut EMPTY_SECURITY_CONTEXT: Lazy<DefaultSecurityContext> =
-Lazy::new(|| DefaultSecurityContext::new(DefaultAuthentication::default()));*/
 #[async_trait::async_trait]
 impl<T, A> SecurityContextHolderStrategy<T, A> for LocalCacheSecurityContextHolderStrategy
 where
@@ -1596,7 +1628,7 @@ where
     A: Authentication + Send + Sync,
 {
     async fn get_context(&self, user_request_identity: String) -> T {
-        let key = "security_context::".to_string() + &*user_request_identity;
+        let key = format!("security_context:{0}", user_request_identity);
         let result: RedisResult<T> = crate::redis::get(&*key).await;
         if result.is_ok() {
             result.unwrap()
@@ -1606,7 +1638,7 @@ where
     }
 
     async fn set_context(&mut self, user_request_identity: String, security_context: T) {
-        let key = "security_context::".to_string() + &*user_request_identity;
+        let key = format!("security_context:{0}", user_request_identity);
         let result = crate::redis::set(&*key, &security_context).await;
         if result.is_ok() {
             info!("设置security_context缓存`{}`成功", user_request_identity);
@@ -1693,26 +1725,70 @@ impl SecurityContextHolder {
 const ANONYMOUS: &'static str = "anonymous";
 
 #[async_trait::async_trait]
-pub trait UserRequestIdentityExtractor {
-    async fn extract(&self, req: &mut RequestCtx) -> String;
+pub trait UserRequestIdentity {
+    async fn extract(&self, req: &mut RequestCtx) -> anyhow::Result<String>;
+    async fn generate(
+        &self,
+        authentication: &(dyn Authentication + Send + Sync),
+    ) -> anyhow::Result<String>;
 }
-pub struct DefaultUserRequestIdentityExtractor;
+pub struct DefaultUserRequestIdentity;
 #[async_trait::async_trait]
-impl UserRequestIdentityExtractor for DefaultUserRequestIdentityExtractor {
-    async fn extract(&self, req: &mut RequestCtx) -> String {
+impl UserRequestIdentity for DefaultUserRequestIdentity {
+    async fn extract(&self, req: &mut RequestCtx) -> anyhow::Result<String> {
         let access_token = req.headers.get("access_token");
         if access_token.is_some() {
             let access_token = access_token.unwrap();
             if access_token.is_some() {
                 let access_token = access_token.as_ref().unwrap();
-                let result = decode_access_token(access_token.clone()).await;
-                if result.is_ok() {
-                    let result = result.unwrap().user_id;
-                    return result.to_string();
-                }
+                let result = decode_access_token(access_token.clone()).await?;
+                let result = result.user_id;
+                return Ok(result.to_string());
             }
         }
-        return ANONYMOUS.to_string();
+        return Ok(ANONYMOUS.parse()?);
+    }
+
+    async fn generate(
+        &self,
+        authentication: &(dyn Authentication + Send + Sync),
+    ) -> anyhow::Result<String> {
+        Ok(authentication.get_details().get_id().to_string())
+    }
+}
+pub struct CookieBasedUserRequestIdentity;
+#[async_trait::async_trait]
+impl UserRequestIdentity for CookieBasedUserRequestIdentity {
+    async fn extract(&self, req: &mut RequestCtx) -> anyhow::Result<String> {
+        let session_id = req.headers.get("session_id");
+        if session_id.is_some() {
+            let session_id = session_id.unwrap();
+            if session_id.is_some() {
+                let session_id = session_id.as_ref().unwrap();
+                return Ok(session_id.to_string());
+            }
+        }
+        return Err(anyhow!("未发现session_id"));
+    }
+
+    async fn generate(
+        &self,
+        authentication: &(dyn Authentication + Send + Sync),
+    ) -> anyhow::Result<String> {
+        let val = authentication.get_details().get_id().to_string()
+            + &*Local::now().timestamp().to_string();
+        let digest = md5::compute(val);
+        Ok(format!("{:x}", digest))
+    }
+}
+pub struct UserRequestIdentityFactory;
+impl UserRequestIdentityFactory {
+    pub fn user_request_identity<'a>() -> &'a (dyn UserRequestIdentity + Send + Sync) {
+        if SECURITY_CONFIG.cookie_based {
+            &CookieBasedUserRequestIdentity
+        } else {
+            &DefaultUserRequestIdentity
+        }
     }
 }
 #[async_trait::async_trait]
@@ -1720,17 +1796,17 @@ pub trait AuthenticationExtractor<A>
 where
     A: Authentication,
 {
-    async fn extract(&self, req: &mut RequestCtx) -> A;
+    async fn extract(&self, req: &mut RequestCtx) -> anyhow::Result<A>;
 }
 pub struct DefaultAuthenticationExtractor;
 #[async_trait::async_trait]
 impl AuthenticationExtractor<DefaultAuthentication> for DefaultAuthenticationExtractor {
-    async fn extract(&self, req: &mut RequestCtx) -> DefaultAuthentication {
-        let user_request_identity_extractor = DefaultUserRequestIdentityExtractor;
-        let user_request_identity = user_request_identity_extractor.extract(req).await;
+    async fn extract(&self, req: &mut RequestCtx) -> anyhow::Result<DefaultAuthentication> {
+        let user_request_identity_extractor = DefaultUserRequestIdentity;
+        let user_request_identity = user_request_identity_extractor.extract(req).await?;
         let security_context: DefaultSecurityContext =
             SecurityContextHolder::get_context(user_request_identity).await;
-        security_context.authentication
+        Ok(security_context.authentication)
     }
 }
 
@@ -1743,7 +1819,7 @@ impl Filter for AuthenticationFilter {
         next: Next<'a>,
     ) -> anyhow::Result<Response<Body>> {
         let authentication_extractor = DefaultAuthenticationExtractor;
-        let authentication = authentication_extractor.extract(&mut ctx).await;
+        let authentication = authentication_extractor.extract(&mut ctx).await?;
         ctx.authentication = Box::new(authentication);
         next.run(ctx).await
     }

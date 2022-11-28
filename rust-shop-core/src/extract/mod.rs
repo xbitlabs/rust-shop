@@ -9,6 +9,7 @@ use thiserror::Error;
 
 use crate::RequestCtx;
 
+pub mod cookie;
 pub mod extension;
 pub mod form;
 pub mod header;

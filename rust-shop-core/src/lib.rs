@@ -43,7 +43,7 @@ use crate::extract::header::Header;
 use crate::extract::path_variable::PathVariable;
 use crate::extract::request_param::RequestParam;
 use crate::router::{get_routers, register_route, Router};
-use crate::security::{Authentication, DefaultAuthentication, UserDetails};
+use crate::security::{req_matches, Authentication, DefaultAuthentication, UserDetails};
 use crate::security::{AuthenticationProcessingFilter, WebSecurityConfigurer};
 use crate::state::State;
 use crate::EndpointResultCode::{AccessDenied, ClientError, ServerError, Unauthorized, SUCCESS};
@@ -63,7 +63,9 @@ pub mod serde_utils;
 pub mod state;
 pub mod wechat;
 
+use crate::extract::cookie::CookieJar;
 use crate::extract::json::body_to_bytes;
+use crate::extract::FromRequest;
 use http::request::Parts as HttpParts;
 use moka::sync::Cache;
 use once_cell::sync::Lazy;
@@ -99,6 +101,7 @@ pub struct RequestCtx {
     pub version: Version,
     pub extensions: Extensions,
     pub authentication: Box<(dyn Authentication + Sync + Send)>,
+    pub cookies: CookieJar,
 }
 
 impl RequestCtx {
@@ -326,60 +329,76 @@ impl<'a> Next<'a> {
     /// Asynchronously execute the remaining filter chain.
     pub async fn run(mut self, mut ctx: RequestCtx) -> anyhow::Result<Response<Body>> {
         if let Some((current, next)) = self.next_filter.split_first() {
-            let init = UrlPatternInit {
-                pathname: Some(current.url_patterns()),
-                ..Default::default()
-            };
-            let pattern = <UrlPattern>::parse(init);
-            if pattern.is_ok() {
-                let pattern = pattern.unwrap();
-                // Match the pattern against a URL.
-                let url = ("http://127.0.0.1".to_string() + &*ctx.uri.to_string()).parse::<Url>();
-                if url.is_ok() {
-                    let url = url.unwrap();
-                    let result = pattern.exec(UrlPatternMatchInput::Url(url));
-                    if result.is_ok() {
-                        let result = result.unwrap();
-                        if result.is_some() {
-                            info!(
-                                "filter表达式`{}`跟当前请求`{}`匹配，将执行filter",
-                                current.url_patterns(),
-                                ctx.uri
-                            );
-                            self.next_filter = next;
-                            current.handle(ctx, self).await
-                        } else {
-                            info!(
-                                "filter表达式`{}`跟当前请求`{}`不匹配，filter将被跳过",
-                                current.url_patterns(),
-                                ctx.uri
-                            );
-                            self.skip_current_and_exec_next(next, ctx).await
-                        }
-                    } else {
-                        error!(
-                            "执行filter表达式`{}`异常：{:?}",
+            if req_matches(&ctx, &current.url_patterns()) {
+                info!(
+                    "filter表达式`{}`跟当前请求`{}`匹配，将执行filter",
+                    current.url_patterns(),
+                    ctx.uri
+                );
+                self.next_filter = next;
+                current.handle(ctx, self).await
+            } else {
+                info!(
+                    "filter表达式`{}`跟当前请求`{}`不匹配，filter将被跳过",
+                    current.url_patterns(),
+                    ctx.uri
+                );
+                self.skip_current_and_exec_next(next, ctx).await
+            }
+        /*      let init = UrlPatternInit {
+            pathname: Some(current.url_patterns()),
+            ..Default::default()
+        };
+        let pattern = <UrlPattern>::parse(init);
+        if pattern.is_ok() {
+            let pattern = pattern.unwrap();
+            // Match the pattern against a URL.
+            let url = ("http://127.0.0.1".to_string() + &*ctx.uri.to_string()).parse::<Url>();
+            if url.is_ok() {
+                let url = url.unwrap();
+                let result = pattern.exec(UrlPatternMatchInput::Url(url));
+                if result.is_ok() {
+                    let result = result.unwrap();
+                    if result.is_some() {
+                        info!(
+                            "filter表达式`{}`跟当前请求`{}`匹配，将执行filter",
                             current.url_patterns(),
-                            result.err().unwrap()
+                            ctx.uri
+                        );
+                        self.next_filter = next;
+                        current.handle(ctx, self).await
+                    } else {
+                        info!(
+                            "filter表达式`{}`跟当前请求`{}`不匹配，filter将被跳过",
+                            current.url_patterns(),
+                            ctx.uri
                         );
                         self.skip_current_and_exec_next(next, ctx).await
                     }
                 } else {
                     error!(
-                        "转换filter url `{}`异常：{:?}",
+                        "执行filter表达式`{}`异常：{:?}",
                         current.url_patterns(),
-                        url.err().unwrap()
+                        result.err().unwrap()
                     );
                     self.skip_current_and_exec_next(next, ctx).await
                 }
             } else {
                 error!(
-                    "初始化filter表达式`{}`异常：{:?}",
+                    "转换filter url `{}`异常：{:?}",
                     current.url_patterns(),
-                    pattern.err().unwrap()
+                    url.err().unwrap()
                 );
                 self.skip_current_and_exec_next(next, ctx).await
             }
+        } else {
+            error!(
+                "初始化filter表达式`{}`异常：{:?}",
+                current.url_patterns(),
+                pattern.err().unwrap()
+            );
+            self.skip_current_and_exec_next(next, ctx).await
+        }*/
         } else {
             (self.endpoint).handle(ctx).await
         }
@@ -610,7 +629,10 @@ impl Server {
                             body,
                             extensions: Extensions::new(),
                             authentication: Box::new(DefaultAuthentication::default()),
+                            cookies: CookieJar::default(),
                         };
+                        let cookies = CookieJar::from_request(&mut ctx).await?;
+                        ctx.cookies = cookies;
 
                         let resp_result = next.run(ctx).await;
                         match resp_result {
