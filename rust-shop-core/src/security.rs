@@ -1157,16 +1157,13 @@ impl Filter for AuthenticationProcessingFilter {
 
                 let success_handler = security_config.get_authentication_success_handler();
                 if success_handler.is_some() {
-                    let user_request_id = UserRequestIdentityFactory::user_request_identity()
-                        .generate(authentication.as_ref())
-                        .await?;
                     let success_handler = success_handler.as_ref().unwrap();
                     let mut result = success_handler(&mut ctx).handle(&authentication).await?;
                     drop(success_handler);
                     ctx.authentication = authentication;
                     let auth = DefaultAuthentication::from(ctx.authentication.as_ref());
                     SecurityContextHolder::set_context(
-                        user_request_id,
+                        &ctx,
                         DefaultSecurityContext {
                             authentication: auth,
                         },
@@ -1187,13 +1184,10 @@ impl Filter for AuthenticationProcessingFilter {
                     let endpoint_result: EndpointResult<AccessToken> =
                         EndpointResult::ok_with_payload("", access_token);
                     let mut result = ResponseBuilder::with_endpoint_result(endpoint_result);
-                    let user_request_id = UserRequestIdentityFactory::user_request_identity()
-                        .generate(authentication.as_ref())
-                        .await?;
                     ctx.authentication = authentication;
                     let auth = DefaultAuthentication::from(ctx.authentication.as_ref());
                     SecurityContextHolder::set_context(
-                        user_request_id,
+                        &ctx,
                         DefaultSecurityContext {
                             authentication: auth,
                         },
@@ -1628,8 +1622,8 @@ where
         SecurityContext<A> + Send + Sync + serde::Deserialize<'a> + serde::Serialize + Default + 'a,
     A: Authentication + Send + Sync,
 {
-    async fn get_context(&self, user_request_identity: String) -> T {
-        let key = format!("security_context:{0}", user_request_identity);
+    async fn get_context(&self, session_id: String) -> T {
+        let key = format!("security_context:{0}", session_id);
         let result: RedisResult<T> = crate::redis::get(&*key).await;
         if result.is_ok() {
             result.unwrap()
@@ -1638,15 +1632,15 @@ where
         }
     }
 
-    async fn set_context(&mut self, user_request_identity: String, security_context: T) {
-        let key = format!("security_context:{0}", user_request_identity);
+    async fn set_context(&mut self, session_id: String, security_context: T) {
+        let key = format!("security_context:{0}", session_id);
         let result = crate::redis::set(&*key, &security_context).await;
         if result.is_ok() {
-            info!("设置security_context缓存`{}`成功", user_request_identity);
+            info!("设置security_context缓存`{}`成功", session_id);
         } else {
             error!(
                 "设置security_context缓存`{}`异常：{}",
-                user_request_identity,
+                session_id,
                 result.err().unwrap()
             );
         }
@@ -1657,11 +1651,12 @@ where
     }
 }
 pub const DEFAULT_STRATEGY_NAME: &'static str = "redis";
+pub const SESSION_ID:&'static str = "session_id";
 
 pub struct SecurityContextHolder;
 
 impl SecurityContextHolder {
-    pub async fn get_context<T, A>(user_request_identity: String) -> T
+    pub async fn get_context<T, A>(req: &RequestCtx) -> T
     where
         for<'a> T: SecurityContext<A>
             + Send
@@ -1672,8 +1667,19 @@ impl SecurityContextHolder {
             + 'a,
         A: Authentication + Send + Sync,
     {
+        let mut session_id = ANONYMOUS.to_string();
+        let session_header = req.headers.get(SESSION_ID);
+        if session_header.is_some() {
+            let session_header = session_header.unwrap();
+            if session_header.is_some() {
+                let session_header = session_header.as_ref().unwrap();
+                if !session_header.is_empty() {
+                    session_id = session_header.clone();
+                }
+            }
+        }
         if SECURITY_CONFIG.security_context_storage_strategy.is_none() {
-            SecurityContextHolder::default_security_context(user_request_identity).await
+            SecurityContextHolder::default_security_context(session_id).await
         } else {
             let security_context_storage_strategy = SECURITY_CONFIG
                 .security_context_storage_strategy
@@ -1681,7 +1687,7 @@ impl SecurityContextHolder {
                 .unwrap()
                 .clone();
             if security_context_storage_strategy == DEFAULT_STRATEGY_NAME.to_string() {
-                SecurityContextHolder::default_security_context(user_request_identity).await
+                SecurityContextHolder::default_security_context(session_id).await
             } else {
                 panic!(
                     "security_context_storage_strategy `{}`尚未实现",
@@ -1689,8 +1695,9 @@ impl SecurityContextHolder {
                 );
             }
         }
+
     }
-    pub async fn default_security_context<T, A>(user_request_identity: String) -> T
+    pub async fn default_security_context<T, A>(session_id: String) -> T
     where
         for<'a> T: SecurityContext<A>
             + Send
@@ -1703,10 +1710,10 @@ impl SecurityContextHolder {
     {
         let security_context_holder_strategy = LocalCacheSecurityContextHolderStrategy;
         security_context_holder_strategy
-            .get_context(user_request_identity)
+            .get_context(session_id)
             .await
     }
-    pub async fn set_context<T, A>(user_request_identity: String, security_context: T)
+    pub async fn set_context<T, A>(req:&RequestCtx, security_context: T)
     where
         for<'a> T: SecurityContext<A>
             + Send
@@ -1717,99 +1724,24 @@ impl SecurityContextHolder {
             + 'a,
         A: Authentication + Send + Sync,
     {
-        let mut security_context_holder_strategy = LocalCacheSecurityContextHolderStrategy;
-        security_context_holder_strategy
-            .set_context(user_request_identity, security_context)
-            .await
-    }
-}
-const ANONYMOUS: &'static str = "anonymous";
-
-#[async_trait::async_trait]
-pub trait UserRequestIdentity {
-    async fn extract(&self, req: &mut RequestCtx) -> anyhow::Result<String>;
-    async fn generate(
-        &self,
-        authentication: &(dyn Authentication + Send + Sync),
-    ) -> anyhow::Result<String>;
-}
-pub struct DefaultUserRequestIdentity;
-#[async_trait::async_trait]
-impl UserRequestIdentity for DefaultUserRequestIdentity {
-    async fn extract(&self, req: &mut RequestCtx) -> anyhow::Result<String> {
-        let access_token = req.headers.get("access_token");
-        if access_token.is_some() {
-            let access_token = access_token.unwrap();
-            if access_token.is_some() {
-                let access_token = access_token.as_ref().unwrap();
-                let result = decode_access_token(access_token.clone()).await?;
-                let result = result.user_id;
-                return Ok(result.to_string());
-            }
-        }
-        return Ok(ANONYMOUS.parse()?);
-    }
-
-    async fn generate(
-        &self,
-        authentication: &(dyn Authentication + Send + Sync),
-    ) -> anyhow::Result<String> {
-        Ok(authentication.get_details().get_id().to_string())
-    }
-}
-pub struct CookieBasedUserRequestIdentity;
-#[async_trait::async_trait]
-impl UserRequestIdentity for CookieBasedUserRequestIdentity {
-    async fn extract(&self, req: &mut RequestCtx) -> anyhow::Result<String> {
-        let session_id = req.headers.get("session_id");
+        let session_id = req.headers.get(SESSION_ID);
         if session_id.is_some() {
             let session_id = session_id.unwrap();
             if session_id.is_some() {
                 let session_id = session_id.as_ref().unwrap();
-                return Ok(session_id.to_string());
+                if !session_id.is_empty() {
+                    let mut security_context_holder_strategy = LocalCacheSecurityContextHolderStrategy;
+                    security_context_holder_strategy
+                        .set_context(session_id.clone(), security_context)
+                        .await
+                }
             }
         }
-        return Err(anyhow!("未发现session_id"));
-    }
-
-    async fn generate(
-        &self,
-        authentication: &(dyn Authentication + Send + Sync),
-    ) -> anyhow::Result<String> {
-        let val = authentication.get_details().get_id().to_string()
-            + &*Local::now().timestamp().to_string();
-        let digest = md5::compute(val);
-        Ok(format!("{:x}", digest))
+        error!("没有找到session_id，无法保存security_context");
+        panic!("没有找到session_id，无法保存security_context");
     }
 }
-pub struct UserRequestIdentityFactory;
-impl UserRequestIdentityFactory {
-    pub fn user_request_identity<'a>() -> &'a (dyn UserRequestIdentity + Send + Sync) {
-        if SECURITY_CONFIG.cookie_based {
-            &CookieBasedUserRequestIdentity
-        } else {
-            &DefaultUserRequestIdentity
-        }
-    }
-}
-#[async_trait::async_trait]
-pub trait AuthenticationExtractor<A>
-where
-    A: Authentication,
-{
-    async fn extract(&self, req: &mut RequestCtx) -> anyhow::Result<A>;
-}
-pub struct DefaultAuthenticationExtractor;
-#[async_trait::async_trait]
-impl AuthenticationExtractor<DefaultAuthentication> for DefaultAuthenticationExtractor {
-    async fn extract(&self, req: &mut RequestCtx) -> anyhow::Result<DefaultAuthentication> {
-        let user_request_identity_extractor = DefaultUserRequestIdentity;
-        let user_request_identity = user_request_identity_extractor.extract(req).await?;
-        let security_context: DefaultSecurityContext =
-            SecurityContextHolder::get_context(user_request_identity).await;
-        Ok(security_context.authentication)
-    }
-}
+const ANONYMOUS: &'static str = "anonymous";
 
 pub struct AuthenticationFilter;
 #[async_trait::async_trait]
@@ -1819,9 +1751,8 @@ impl Filter for AuthenticationFilter {
         mut ctx: RequestCtx,
         next: Next<'a>,
     ) -> anyhow::Result<Response<Body>> {
-        let authentication_extractor = DefaultAuthenticationExtractor;
-        let authentication = authentication_extractor.extract(&mut ctx).await?;
-        ctx.authentication = Box::new(authentication);
+        let context:DefaultSecurityContext = SecurityContextHolder::get_context(&ctx).await;
+        ctx.authentication = Box::new(context.authentication);
         next.run(ctx).await
     }
 

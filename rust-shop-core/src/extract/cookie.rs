@@ -181,7 +181,10 @@ fn cookies_from_request(req: &mut RequestCtx) -> Vec<Cookie<'static>> {
     let cookies_str = cookies_str.split(";");
     let mut result = vec![];
     for item in cookies_str {
-        result.push(Cookie::parse_encoded(item.to_string().as_str().to_owned()).unwrap())
+        let cookie = Cookie::parse_encoded(item.to_string().as_str().to_owned());
+        if  cookie.is_ok(){
+            result.push(cookie.unwrap());
+        }
     }
     result
 }

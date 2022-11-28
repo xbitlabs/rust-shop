@@ -62,6 +62,9 @@ pub mod security;
 pub mod serde_utils;
 pub mod state;
 pub mod wechat;
+pub mod handler_interceptor;
+mod application_context;
+mod dispatcher;
 
 use crate::extract::cookie::CookieJar;
 use crate::extract::json::body_to_bytes;
@@ -345,60 +348,6 @@ impl<'a> Next<'a> {
                 );
                 self.skip_current_and_exec_next(next, ctx).await
             }
-        /*      let init = UrlPatternInit {
-            pathname: Some(current.url_patterns()),
-            ..Default::default()
-        };
-        let pattern = <UrlPattern>::parse(init);
-        if pattern.is_ok() {
-            let pattern = pattern.unwrap();
-            // Match the pattern against a URL.
-            let url = ("http://127.0.0.1".to_string() + &*ctx.uri.to_string()).parse::<Url>();
-            if url.is_ok() {
-                let url = url.unwrap();
-                let result = pattern.exec(UrlPatternMatchInput::Url(url));
-                if result.is_ok() {
-                    let result = result.unwrap();
-                    if result.is_some() {
-                        info!(
-                            "filter表达式`{}`跟当前请求`{}`匹配，将执行filter",
-                            current.url_patterns(),
-                            ctx.uri
-                        );
-                        self.next_filter = next;
-                        current.handle(ctx, self).await
-                    } else {
-                        info!(
-                            "filter表达式`{}`跟当前请求`{}`不匹配，filter将被跳过",
-                            current.url_patterns(),
-                            ctx.uri
-                        );
-                        self.skip_current_and_exec_next(next, ctx).await
-                    }
-                } else {
-                    error!(
-                        "执行filter表达式`{}`异常：{:?}",
-                        current.url_patterns(),
-                        result.err().unwrap()
-                    );
-                    self.skip_current_and_exec_next(next, ctx).await
-                }
-            } else {
-                error!(
-                    "转换filter url `{}`异常：{:?}",
-                    current.url_patterns(),
-                    url.err().unwrap()
-                );
-                self.skip_current_and_exec_next(next, ctx).await
-            }
-        } else {
-            error!(
-                "初始化filter表达式`{}`异常：{:?}",
-                current.url_patterns(),
-                pattern.err().unwrap()
-            );
-            self.skip_current_and_exec_next(next, ctx).await
-        }*/
         } else {
             (self.endpoint).handle(ctx).await
         }
@@ -491,10 +440,6 @@ impl Server {
         handler: impl HTTPHandler,
     ) {
         let method = method.to_string().to_uppercase();
-        /*self.router
-        .entry(method)
-        .or_insert_with(MethodRouter::new)
-        .add(path.as_ref(), Box::new(handler));*/
         register_route(method.to_string(), path.as_ref().to_string(), handler);
     }
 
@@ -584,20 +529,7 @@ impl Server {
                                 .into_owned()
                                 .collect::<HashMap<String, String>>();
                         };
-
                         let url = req.uri().to_string();
-
-                        /*        let mut request_states = Extensions::new();
-                        for state_provider in request_state_providers.iter() {
-                            let provider: Option<&Box<dyn RequestStateProvider + Sync + Send>> =
-                                request_state_providers.get();
-                            let state = provider.unwrap().get_state( &mut ctx);
-                            request_states.insert(state);
-                        }
-                        let arc_request_states = Arc::new(request_states);*/
-
-                        //let mut request_states = Extensions::new();
-
                         let mut headers = HashMap::new();
                         for header in req.headers() {
                             let value = match header.1.to_str() {
