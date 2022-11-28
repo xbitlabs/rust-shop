@@ -1043,6 +1043,7 @@ pub(crate) fn req_matches(req: &RequestCtx, url_patterns: &String) -> bool {
     if pattern.is_ok() {
         let pattern = pattern.unwrap();
         // Match the pattern against a URL.
+        println!("req uri = {}",req.uri.to_string());
         let url = ("http://127.0.0.1".to_string() + &*req.uri.to_string()).parse::<Url>();
         if url.is_ok() {
             let url = url.unwrap();
