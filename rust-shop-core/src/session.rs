@@ -1,7 +1,7 @@
 use crate::RequestCtx;
 use anyhow::anyhow;
 use log::error;
-use redis::Commands;
+use redis::{Commands, RedisResult};
 use serde::ser::{SerializeMap, SerializeStruct};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Error;
@@ -16,7 +16,6 @@ pub trait Session {
     fn get_session_id(&self) -> &String;
     fn set_session_id(&mut self, session_id: String);
     fn is_new(&self) -> bool;
-    fn set_new(&mut self, new: bool);
     fn insert_or_update<T>(&mut self, key: String, value: T)
     where
         T: 'static + serde::Serialize + for<'a> serde::Deserialize<'a> + Send + Sync;
@@ -33,6 +32,16 @@ pub struct DefaultSession {
     session_id: String,
     inner: HashMap<String, String>,
 }
+
+impl Default for DefaultSession {
+    fn default() -> Self {
+        DefaultSession{
+            new: false,
+            session_id: "".to_string(),
+            inner: Default::default()
+        }
+    }
+}
 impl Session for DefaultSession {
     fn get_session_id(&self) -> &String {
         &self.session_id
@@ -44,9 +53,6 @@ impl Session for DefaultSession {
 
     fn is_new(&self) -> bool {
         self.new
-    }
-    fn set_new(&mut self, new: bool) {
-        self.new = new;
     }
     fn insert_or_update<T>(&mut self, key: String, value: T)
     where
@@ -88,17 +94,80 @@ impl Session for DefaultSession {
         };
     }
 }
+#[async_trait::async_trait]
+pub trait SessionStorage{
+    async fn insert_or_update(&mut self,value: &DefaultSession)->bool;
+    async fn get(&self, session_id: String) -> Option<DefaultSession>;
+    async fn remove(&mut self, session_id: String) -> bool;
+}
+pub struct RedisSession;
+#[async_trait::async_trait]
+impl SessionStorage for RedisSession{
+    async fn insert_or_update(&mut self, value: &DefaultSession) -> bool {
+        let key = String::from("session:") + value.session_id.as_str();
+        let result = crate::redis::set(key.as_str(),value).await;
+        return match result {
+            Ok(_) => {
+                true
+            }
+            Err(err) => {
+                error!("保存session失败：{}",err);
+                false
+            }
+        }
+    }
 
+    async fn get(&self, key: String) -> Option<DefaultSession> {
+        let key = String::from("session:") + key.as_str();
+        let result:RedisResult<DefaultSession> = crate::redis::get(key.as_str()).await;
+        return match result {
+            Ok(session) => {
+                Some(session)
+            }
+            Err(err) => {
+                error!("获取session失败：{}",err);
+                None
+            }
+        }
+    }
+
+    async fn remove(&mut self, key: String) -> bool {
+        let key = String::from("session:") + key.as_str();
+        crate::redis::remove(key.as_str()).await
+    }
+}
+#[async_trait::async_trait]
 pub trait SessionManager<T: Session> {
-    fn session_for_request(&mut self, req: &RequestCtx) -> anyhow::Result<T>;
-    fn generate_session_id(&self, req: &RequestCtx) -> String;
-    fn save_session(&mut self,req:&RequestCtx);
+    async fn session_for_request(&mut self, req: &RequestCtx) -> T;
+    async fn generate_session_id(&self, req: &RequestCtx) -> String;
+    async fn save_session(&mut self,req:&mut RequestCtx);
 }
 pub struct DefaultSessionManager {
-    inner: HashMap<String, String>,
+    session_storage: Box<dyn SessionStorage + Send + Sync>,
 }
+
+impl DefaultSessionManager{
+    pub fn new(session_storage: Box<dyn SessionStorage + Send + Sync>,)->Self{
+        DefaultSessionManager{
+            session_storage
+        }
+    }
+    async fn generate_new_session(&mut self, req: &RequestCtx) ->DefaultSession{
+        let new_session_id = self.generate_session_id(req).await;
+        let session = DefaultSession {
+            new: true,
+            session_id: new_session_id.clone(),
+            inner: HashMap::new(),
+        };
+        self.session_storage
+            .insert_or_update(&session);
+        return session;
+
+    }
+}
+#[async_trait::async_trait]
 impl SessionManager<DefaultSession> for DefaultSessionManager {
-    fn session_for_request(&mut self, req: &RequestCtx) -> anyhow::Result<DefaultSession> {
+    async fn session_for_request(&mut self, req: &RequestCtx) -> DefaultSession {
         let session_id = req.headers.get("session_id");
         if session_id.is_some() {
             let session_id = session_id.unwrap();
@@ -106,45 +175,24 @@ impl SessionManager<DefaultSession> for DefaultSessionManager {
             if session_id.is_ok() {
                 let session_id = session_id.unwrap();
                 if !session_id.is_empty() {
-                    let session = self.inner.get(session_id);
+                    let session = self.session_storage.get(session_id.to_string()).await;
                     if session.is_some() {
                         let session = session.unwrap();
-                        let parse: Result<DefaultSession, Error> =
-                            serde_json::from_str(session.as_str());
-                        return match parse {
-                            Ok(obj) => Ok(obj),
-                            Err(err) => Err(anyhow!("获取session时转换json失败：{}", err)),
-                        };
+                        return session;
                     }
                 }
             }
         }
-
-        let new_session_id = self.generate_session_id(req);
-        let session = DefaultSession {
-            new: true,
-            session_id: new_session_id.clone(),
-            inner: HashMap::new(),
-        };
-        let session_to_json = serde_json::to_string(&session);
-        self.inner
-            .insert(new_session_id.clone(), session_to_json.unwrap());
-
-        return Ok(session);
+        return self.generate_new_session(req).await;
     }
-    fn generate_session_id(&self, req: &RequestCtx) -> String {
+    async fn generate_session_id(&self, req: &RequestCtx) -> String {
         let session_id = Uuid::new_v4().to_string();
         session_id
     }
 
-    fn save_session(&mut self,req: &RequestCtx) {
-        let session = self.session_for_request(req);
-        match session {
-            Ok(s) => {
-                self.inner.insert(s.session_id.clone(),serde_json::to_string(&s).unwrap());
-            }
-            Err(_) => {}
-        }
+    async fn save_session(&mut self, req: &mut RequestCtx) {
+        req.session.new = false;
+        self.session_storage.insert_or_update(&req.session).await;
     }
 }
 

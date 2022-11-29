@@ -3,6 +3,7 @@ use crate::security::{DefaultAuthenticationToken, DefaultSecurityContext, Defaul
 use crate::DefaultAuthentication;
 use anyhow::anyhow;
 use lazy_static::lazy_static;
+use log::error;
 use redis::{
     Commands, Connection, ConnectionAddr, ConnectionInfo, JsonCommands, RedisConnectionInfo,
     RedisError, RedisResult,
@@ -61,6 +62,23 @@ pub async fn get<T: for<'a> serde::Deserialize<'a>>(key: &str) -> RedisResult<T>
         }
     } else {
         Err(RedisError::from(result.err().unwrap()))
+    }
+}
+pub async fn remove(key: &str) -> bool {
+    let mut conn = connection();
+    if conn.is_err() {
+        error!("获取redis链接失败：{}",conn.err().unwrap());
+        return false;
+    }
+    let result: RedisResult<String> = conn.unwrap().del(key);
+    return match result {
+        Ok(_) => {
+            true
+        }
+        Err(err) => {
+            error!("删除redis key 失败：{}",err);
+            false
+        }
     }
 }
 macro_rules! aw {

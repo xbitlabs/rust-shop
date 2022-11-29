@@ -41,6 +41,7 @@ pub mod AuthController {
     use crate::StatusCode;
     use rust_shop_core::db::TransactionManager;
     use rust_shop_core::APP_EXTENSIONS;
+    use rust_shop_core::entity::AdminUser;
 
     #[derive(serde::Serialize, serde::Deserialize, Debug)]
     pub struct User {
@@ -60,7 +61,7 @@ pub mod AuthController {
         RequestParam(address): RequestParam<String>,
         Form(user): Form<User>,
         Query(user1): Query<User>,
-        sql_exe: &mut SqlCommandExecutor<'_, '_>,
+        sql_exe_with_tran: &mut SqlCommandExecutor<'_, '_>,
     ) -> anyhow::Result<Json<User>> {
         let username = req
             .authentication
@@ -80,7 +81,7 @@ pub mod AuthController {
         args.add(wx_open_id);
         args.add(1);
         args.add(Local::now());
-        let result = sql_exe
+        let result = sql_exe_with_tran
             .execute_with(
                 "insert into user(id,wx_open_id,enable,created_time) values(?,?,?,?)",
                 args,
@@ -94,7 +95,7 @@ pub mod AuthController {
         args.add(wx_open_id);
         args.add(1);
         args.add(Local::now());
-        let result = sql_exe
+        let result = sql_exe_with_tran
             .execute_with(
                 "insert into user(id,wx_open_id,enable,created_time) values(?,?,?,?)",
                 args,
@@ -108,12 +109,16 @@ pub mod AuthController {
         args.add(wx_open_id);
         args.add(1);
         args.add(Local::now());
-        let result = sql_exe
+        let result = sql_exe_with_tran
             .execute_with(
                 "insert into user(id,wx_open_id,enable,created_time) values(?,?,?,?)",
                 args,
             )
             .await?;
+        let admins:Vec<AdminUser> = sql_exe_with_tran.find_all("select * from admin_user").await?;
+        let mut args = MySqlArguments::default();
+        args.add("admin");
+        let admins:Option<AdminUser> = sql_exe_with_tran.find_option_with("select * from admin_user where username=?",args).await?;
         Ok(Json(u))
     }
 }

@@ -242,13 +242,17 @@ impl<'r, 'a, 'b> LoadUserService for AdminUserLoadService<'r, 'a, 'b> {
         &mut self,
         identity: &String,
     ) -> anyhow::Result<Box<dyn UserDetails + Send + Sync>> {
+        let start = Local::now().timestamp_millis();
         let mut args = MySqlArguments::default();
         args.add(identity.to_string());
         let user: Option<AdminUser> = self
             .sql_command_executor
             .find_option_with("select * from admin_user where username=?", args)
             .await?;
+        let end = Local::now().timestamp_millis();
+        println!("select * from admin_user where username=? 耗时：{}",end - start);
         if user.is_some() {
+            let start = Local::now().timestamp_millis();
             let user = user.unwrap();
             let mut args = MySqlArguments::default();
             args.add(user.id);
@@ -269,6 +273,8 @@ impl<'r, 'a, 'b> LoadUserService for AdminUserLoadService<'r, 'a, 'b> {
             for admin_user_role in admin_user_roles {
                 authorities.push(admin_user_role.code);
             }
+            let end = Local::now().timestamp_millis();
+            println!("查询角色耗时：{}",end - start);
             Ok(Box::new(DefaultUserDetails {
                 id: user.id,
                 username: user.username,
@@ -1122,6 +1128,7 @@ impl Filter for AuthenticationProcessingFilter {
         next: Next<'a>,
     ) -> anyhow::Result<Response<Body>> {
         unsafe {
+
             let pool_state: Option<&State<Pool<MySql>>> = APP_EXTENSIONS.get();
             let pool = pool_state.unwrap().get_ref();
             let tran = pool.begin().await?;
@@ -1136,11 +1143,14 @@ impl Filter for AuthenticationProcessingFilter {
             let authentication_token = authentication_token_resolver.resolve(&mut ctx).await?;
             drop(authentication_token_resolver);
 
+            let start = Local::now().timestamp_millis();
             let mut auth_provider =
                 security_config.get_authentication_provider()(&mut ctx)(&mut sql_command_executor);
             let authentication = auth_provider
                 .authenticate(&mut ctx, authentication_token)
                 .await;
+            let end = Local::now().timestamp_millis();
+            println!("查询用户耗时{}",end  - start);
             //手动释放load_user_service，不然无法第二次借用可变sql_command_executor
             drop(auth_provider);
 
@@ -1166,10 +1176,12 @@ impl Filter for AuthenticationProcessingFilter {
                         authentication.get_details();
                     let mut jwt_service =
                         security_config.get_jwt_service()(&mut ctx)(&mut sql_command_executor);
+                    let start = Local::now().timestamp_millis();
                     let access_token = jwt_service
                         .grant_access_token(*user_details.get_id())
                         .await?;
-
+                    let end = Local::now().timestamp_millis();
+                    println!("生成token耗时{}",end - start);
                     drop(jwt_service);
                     drop(sql_command_executor);
                     let endpoint_result: EndpointResult<AccessToken> =

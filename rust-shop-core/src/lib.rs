@@ -75,6 +75,8 @@ use moka::sync::Cache;
 use once_cell::sync::Lazy;
 use url::Url;
 use urlpattern::{UrlPattern, UrlPatternInit, UrlPatternMatchInput};
+use crate::application_context::APPLICATION_CONTEXT;
+use crate::session::{DefaultSession, DefaultSessionManager, SessionManager};
 
 pub static mut APP_EXTENSIONS: Lazy<Extensions> = Lazy::new(|| {
     let mut extensions: Extensions = Extensions::new();
@@ -106,6 +108,7 @@ pub struct RequestCtx {
     pub extensions: Extensions,
     pub authentication: Box<(dyn Authentication + Sync + Send)>,
     pub cookies: CookieJar,
+    pub session:DefaultSession
 }
 
 impl RequestCtx {
@@ -485,7 +488,6 @@ impl Server {
         } = self;
         let router = Arc::new(router);
         let filters = Arc::new(filters);
-        //let extensions = Arc::new(extensions);
         let request_state_providers = Arc::new(request_state_providers);
 
         let make_svc = make_service_fn(|conn: &hyper::server::conn::AddrStream| {
@@ -493,14 +495,12 @@ impl Server {
 
             let router = router.clone();
             let filters = filters.clone();
-            //let extensions = extensions.clone();
             let request_state_providers = request_state_providers.clone();
 
             async move {
                 Ok::<_, Infallible>(service_fn(move |req: Request<Body>| {
                     let router = router.clone();
                     let filters = filters.clone();
-                    //let extensions = extensions.clone();
                     let request_state_providers = request_state_providers.clone();
 
                     async move {
@@ -531,14 +531,6 @@ impl Server {
                                 .collect::<HashMap<String, String>>();
                         };
                         let url = req.uri().to_string();
-                        /*let mut headers = HashMap::new();
-                        for header in req.headers() {
-                            let value = match header.1.to_str() {
-                                Ok(val) => Some(val.to_string()),
-                                Err(_) => None,
-                            };
-                            headers.insert(header.0.to_string(), value);
-                        }*/
                         let (
                             http::request::Parts {
                                 method,
@@ -551,7 +543,6 @@ impl Server {
                         ) = req.into_parts();
 
                         let mut ctx = RequestCtx {
-                            //request: req,
                             router_params,
                             remote_addr,
                             query_params,
@@ -563,11 +554,20 @@ impl Server {
                             extensions: Extensions::new(),
                             authentication: Box::new(DefaultAuthentication::default()),
                             cookies: CookieJar::default(),
+                            session: DefaultSession::default()
                         };
                         let cookies = CookieJar::from_request(&mut ctx).await?;
                         ctx.cookies = cookies;
 
+                        unsafe {
+                            let session = APPLICATION_CONTEXT.session_manager.session_for_request(&ctx).await;
+                            ctx.session = session;
+                        }
+
                         let resp_result = next.run(ctx).await;
+                        /*unsafe {
+                            APPLICATION_CONTEXT.session_manager.save_session(&mut ctx);
+                        }*/
                         match resp_result {
                             Ok(resp) => Ok::<_, anyhow::Error>(resp),
                             Err(error) => {

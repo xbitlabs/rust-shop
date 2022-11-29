@@ -178,16 +178,6 @@ impl<'r, 'a, 'b> JwtService for DefaultJwtService<'r, 'a, 'b> {
         args.add(NaiveDateTime::from_timestamp(iat.unix_timestamp(), 0));
 
         let rows_affected = self.sql_command_executor.execute_with("insert into user_jwt(id,user_id,token_id,access_token,refresh_token,issue_time) values(?,?,?,?,?,?)", args).await?;
-        /*sqlx::query!(r#"insert into user_jwt(id,user_id,token_id,access_token,refresh_token,issue_time) values(?,?,?,?,?,?)"#,
-                user_jwt_id,
-                user_id,
-                token_id.as_str().to_string(),
-                access_token.as_str().to_string(),
-                refresh_token.as_str().to_string(),
-                NaiveDateTime::from_timestamp(iat.unix_timestamp(),0),
-         )
-        .execute(conn_pool).await?
-        .rows_affected();*/
         return if rows_affected > 0 {
             Ok(AccessToken {
                 access_token,

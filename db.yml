@@ -2,9 +2,9 @@ url: mysql://root:123456@127.0.0.1:3306/rust_shop?useUnicode=true&characterEncod
 #连接空闲超时，毫秒
 idle_timeout:
 #最大连接数
-max_connections:
+max_connections: 1000
 #最小连接数
-min_connections:
+min_connections: 10
 #最大存活时间，毫秒
 max_lifetime:
 #获取连接超时时间，毫秒
