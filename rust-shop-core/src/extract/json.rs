@@ -64,21 +64,25 @@ where
     }
 }
 
-fn json_content_type(ctx: &RequestCtx) -> bool {
-    let content_type = ctx.headers.get(header::CONTENT_TYPE.as_str());
-    if content_type.is_none() {
+fn json_content_type(req: &RequestCtx) -> bool {
+    let content_type = if let Some(content_type) = req.headers.get(header::CONTENT_TYPE) {
+        content_type
+    } else {
         return false;
-    }
-    let content_type = content_type.as_ref().unwrap();
-    if content_type.is_none() {
+    };
+
+    let content_type = if let Ok(content_type) = content_type.to_str() {
+        content_type
+    } else {
         return false;
-    }
-    let content_type = content_type.as_ref().unwrap();
-    let mime = content_type.parse::<mime::Mime>();
-    if mime.is_err() {
+    };
+
+    let mime = if let Ok(mime) = content_type.parse::<mime::Mime>() {
+        mime
+    } else {
         return false;
-    }
-    let mime = mime.unwrap();
+    };
+
     let is_json_content_type = mime.type_() == "application"
         && (mime.subtype() == "json" || mime.suffix().map_or(false, |name| name == "json"));
 

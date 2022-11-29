@@ -60,15 +60,18 @@ where
 }
 
 // this is duplicated in `axum/src/extract/mod.rs`
-fn has_content_type(ctx: &RequestCtx, expected_content_type: &mime::Mime) -> bool {
-    let content_type = ctx.headers.get(header::CONTENT_TYPE.as_str());
-    if content_type.is_none() {
+fn has_content_type(req: &RequestCtx, expected_content_type: &mime::Mime) -> bool {
+    let content_type = if let Some(content_type) = req.headers.get(header::CONTENT_TYPE) {
+        content_type
+    } else {
         return false;
-    }
-    let content_type = content_type.as_ref().unwrap();
-    if content_type.is_none() {
+    };
+
+    let content_type = if let Ok(content_type) = content_type.to_str() {
+        content_type
+    } else {
         return false;
-    }
-    let content_type = content_type.as_ref().unwrap();
+    };
+
     content_type.starts_with(expected_content_type.as_ref())
 }

@@ -65,6 +65,7 @@ pub mod wechat;
 pub mod handler_interceptor;
 mod application_context;
 mod dispatcher;
+pub mod session;
 
 use crate::extract::cookie::CookieJar;
 use crate::extract::json::body_to_bytes;
@@ -96,7 +97,7 @@ pub struct RequestCtx {
     pub router_params: Params,
     pub remote_addr: SocketAddr,
     pub query_params: HashMap<String, String>,
-    pub headers: HashMap<String, Option<String>>,
+    pub headers: HeaderMap,
     //pub request_states: Extensions,
     //pub current_user: Option<Box<dyn UserDetails + Send + Sync>>,
     pub method: Method,
@@ -403,7 +404,7 @@ impl Filter for AccessLogFilter {
     }
 
     fn url_patterns(&self) -> String {
-        "/**".to_string()
+        "/*".to_string()
     }
 
     fn order(&self) -> u64 {
@@ -530,21 +531,21 @@ impl Server {
                                 .collect::<HashMap<String, String>>();
                         };
                         let url = req.uri().to_string();
-                        let mut headers = HashMap::new();
+                        /*let mut headers = HashMap::new();
                         for header in req.headers() {
                             let value = match header.1.to_str() {
                                 Ok(val) => Some(val.to_string()),
                                 Err(_) => None,
                             };
                             headers.insert(header.0.to_string(), value);
-                        }
+                        }*/
                         let (
                             http::request::Parts {
                                 method,
                                 uri,
                                 version,
                                 extensions,
-                                ..
+                                headers, ..
                             },
                             body,
                         ) = req.into_parts();

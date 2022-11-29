@@ -1,6 +1,7 @@
 use std::any::Any;
 use std::borrow::BorrowMut;
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::string::ToString;
@@ -108,10 +109,10 @@ pub struct WeChatMiniAppAuthenticationToken {
 }
 
 impl AuthenticationToken for WeChatMiniAppAuthenticationToken {
-    fn get_principal(&self) -> &(dyn Any + Sync + Send) {
+    fn get_principal(&self) -> &(dyn Display + Sync + Send) {
         &self.principal
     }
-    fn get_credentials(&self) -> &(dyn Any + Sync + Send) {
+    fn get_credentials(&self) -> &(dyn Display + Sync + Send) {
         &self.js_code
     }
 }
@@ -283,8 +284,8 @@ impl<'r, 'a, 'b> LoadUserService for AdminUserLoadService<'r, 'a, 'b> {
 
 //登录凭证，如用户名、密码
 pub trait AuthenticationToken {
-    fn get_principal(&self) -> &(dyn Any + Send + Sync);
-    fn get_credentials(&self) -> &(dyn Any + Send + Sync);
+    fn get_principal(&self) -> &(dyn Display + Send + Sync);
+    fn get_credentials(&self) -> &(dyn Display + Send + Sync);
 }
 
 //登录的用户信息
@@ -330,11 +331,11 @@ impl DefaultAuthenticationToken {
 }
 
 impl AuthenticationToken for DefaultAuthenticationToken {
-    fn get_principal(&self) -> &(dyn Any + Send + Sync) {
+    fn get_principal(&self) -> &(dyn Display + Send + Sync) {
         &self.principal
     }
 
-    fn get_credentials(&self) -> &(dyn Any + Send + Sync) {
+    fn get_credentials(&self) -> &(dyn Display + Send + Sync) {
         &self.credentials
     }
 }
@@ -365,17 +366,10 @@ impl DefaultAuthentication {
 
 impl From<&(dyn Authentication + Send + Sync)> for DefaultAuthentication {
     fn from(value: &(dyn Authentication + Send + Sync)) -> Self {
-        let principal = value
-            .get_authentication_token()
-            .get_principal()
-            .downcast_ref::<String>()
-            .unwrap()
-            .to_string();
+        let principal = value.get_authentication_token().get_principal().to_string();
         let credentials = value
             .get_authentication_token()
             .get_credentials()
-            .downcast_ref::<String>()
-            .unwrap()
             .to_string();
         let mut authorities = vec![];
         for authority in value.get_authorities() {
@@ -520,11 +514,11 @@ impl UsernamePasswordAuthenticationToken {
 }
 
 impl AuthenticationToken for UsernamePasswordAuthenticationToken {
-    fn get_principal(&self) -> &(dyn Any + Send + Sync) {
+    fn get_principal(&self) -> &(dyn Display + Send + Sync) {
         &self.username
     }
 
-    fn get_credentials(&self) -> &(dyn Any + Send + Sync) {
+    fn get_credentials(&self) -> &(dyn Display + Send + Sync) {
         &self.password
     }
 }
@@ -629,18 +623,18 @@ impl<'r, 'a, 'b> AuthenticationProvider for DefaultAuthenticationProvider<'r, 'a
         req: &mut RequestCtx,
         authentication_token: Box<dyn AuthenticationToken + Send + Sync>,
     ) -> anyhow::Result<Box<dyn Authentication + Send + Sync>> {
-        let identify: Option<&String> = authentication_token.get_principal().downcast_ref();
+        let identify: String = authentication_token.get_principal().to_string();
         unsafe {
             let mut security_config: &mut WebSecurityConfigurer = APP_EXTENSIONS
                 .get_mut::<WebSecurityConfigurer>()
                 .unwrap()
                 .borrow_mut();
 
-            let identify = identify.unwrap();
+            //let identify = identify.unwrap();
 
             let load_user_service_fn = security_config.get_load_user_service()(req);
             let mut load_user_service = load_user_service_fn(self.sql_command_executor);
-            let details = load_user_service.load_user(identify).await?;
+            let details = load_user_service.load_user(&identify).await?;
             //手动释放load_user_service，不然无法第二次借用可变sql_command_executor
             drop(load_user_service);
             let user_details_checker: Box<dyn UserDetailsChecker + Send + Sync> =
@@ -653,8 +647,7 @@ impl<'r, 'a, 'b> AuthenticationProvider for DefaultAuthenticationProvider<'r, 'a
             for authority in details.get_authorities() {
                 authorities.push(authority.to_string());
             }
-            let password: Option<&String> = authentication_token.get_credentials().downcast_ref();
-            let password = password.unwrap();
+            let password: String = authentication_token.get_credentials().to_string();
             let authentication: UsernamePasswordAuthentication = UsernamePasswordAuthentication {
                 authentication_token: UsernamePasswordAuthenticationToken {
                     username: identify.to_string(),
@@ -678,11 +671,10 @@ impl<'r, 'a, 'b> AuthenticationProvider for DefaultAuthenticationProvider<'r, 'a
         unsafe {
             let security_config: &mut WebSecurityConfigurer =
                 APP_EXTENSIONS.get_mut::<WebSecurityConfigurer>().unwrap();
-            let password: Option<&String> = authentication_token.get_credentials().downcast_ref();
-            let password = password.unwrap();
+            let password: String = authentication_token.get_credentials().to_string();
             let matches = security_config
                 .get_password_encoder()
-                .matches(password, user_details.get_password())?;
+                .matches(&password, user_details.get_password())?;
             return if matches {
                 Ok(())
             } else {
@@ -1043,7 +1035,7 @@ pub(crate) fn req_matches(req: &RequestCtx, url_patterns: &String) -> bool {
     if pattern.is_ok() {
         let pattern = pattern.unwrap();
         // Match the pattern against a URL.
-        println!("req uri = {}",req.uri.to_string());
+        println!("req uri = {}", req.uri.to_string());
         let url = ("http://127.0.0.1".to_string() + &*req.uri.to_string()).parse::<Url>();
         if url.is_ok() {
             let url = url.unwrap();
@@ -1159,7 +1151,6 @@ impl Filter for AuthenticationProcessingFilter {
                 if success_handler.is_some() {
                     let success_handler = success_handler.as_ref().unwrap();
                     let mut result = success_handler(&mut ctx).handle(&authentication).await?;
-                    drop(success_handler);
                     ctx.authentication = authentication;
                     let auth = DefaultAuthentication::from(ctx.authentication.as_ref());
                     SecurityContextHolder::set_context(
@@ -1651,7 +1642,7 @@ where
     }
 }
 pub const DEFAULT_STRATEGY_NAME: &'static str = "redis";
-pub const SESSION_ID:&'static str = "session_id";
+pub const SESSION_ID: &'static str = "session_id";
 
 pub struct SecurityContextHolder;
 
@@ -1667,17 +1658,7 @@ impl SecurityContextHolder {
             + 'a,
         A: Authentication + Send + Sync,
     {
-        let mut session_id = ANONYMOUS.to_string();
-        let session_header = req.headers.get(SESSION_ID);
-        if session_header.is_some() {
-            let session_header = session_header.unwrap();
-            if session_header.is_some() {
-                let session_header = session_header.as_ref().unwrap();
-                if !session_header.is_empty() {
-                    session_id = session_header.clone();
-                }
-            }
-        }
+        let session_id = SecurityContextHolder::session_id(req).await;
         if SECURITY_CONFIG.security_context_storage_strategy.is_none() {
             SecurityContextHolder::default_security_context(session_id).await
         } else {
@@ -1695,7 +1676,6 @@ impl SecurityContextHolder {
                 );
             }
         }
-
     }
     pub async fn default_security_context<T, A>(session_id: String) -> T
     where
@@ -1713,7 +1693,7 @@ impl SecurityContextHolder {
             .get_context(session_id)
             .await
     }
-    pub async fn set_context<T, A>(req:&RequestCtx, security_context: T)
+    pub async fn set_context<T, A>(req: &RequestCtx, security_context: T)
     where
         for<'a> T: SecurityContext<A>
             + Send
@@ -1724,21 +1704,48 @@ impl SecurityContextHolder {
             + 'a,
         A: Authentication + Send + Sync,
     {
-        let session_id = req.headers.get(SESSION_ID);
-        if session_id.is_some() {
-            let session_id = session_id.unwrap();
+        let session_id = SecurityContextHolder::session_id(req).await;
+        let mut security_context_holder_strategy = LocalCacheSecurityContextHolderStrategy;
+        security_context_holder_strategy
+            .set_context(session_id, security_context)
+            .await
+    }
+    async fn session_id(req: &RequestCtx) -> String {
+        return if SECURITY_CONFIG.cookie_based {
+            let session_id = req.headers.get(SESSION_ID);
             if session_id.is_some() {
-                let session_id = session_id.as_ref().unwrap();
-                if !session_id.is_empty() {
-                    let mut security_context_holder_strategy = LocalCacheSecurityContextHolderStrategy;
-                    security_context_holder_strategy
-                        .set_context(session_id.clone(), security_context)
-                        .await
+                let session_id = session_id.unwrap();
+                let session_id = session_id.to_str();
+                if session_id.is_ok() {
+                    let session_id = session_id.unwrap();
+                    if !session_id.is_empty() {
+                        return session_id.to_string();
+                    }
                 }
             }
-        }
-        error!("没有找到session_id，无法保存security_context");
-        panic!("没有找到session_id，无法保存security_context");
+            ANONYMOUS.to_string()
+        } else {
+            if *req.authentication.is_authenticated() {
+                req.authentication.get_details().get_id().to_string()
+            } else {
+                let access_token = req.headers.get("access_token");
+                return if access_token.is_some() {
+                    let access_token = access_token.unwrap();
+                    let access_token = access_token.to_str();
+                    if access_token.is_ok() {
+                        let access_token = access_token.unwrap();
+                        let claims = decode_access_token(access_token.to_string()).await;
+                        if claims.is_ok() {
+                            let claims = claims.unwrap();
+                            return claims.user_id.to_string();
+                        }
+                    }
+                    ANONYMOUS.to_string()
+                } else {
+                    ANONYMOUS.to_string()
+                }
+            }
+        };
     }
 }
 const ANONYMOUS: &'static str = "anonymous";
@@ -1751,7 +1758,7 @@ impl Filter for AuthenticationFilter {
         mut ctx: RequestCtx,
         next: Next<'a>,
     ) -> anyhow::Result<Response<Body>> {
-        let context:DefaultSecurityContext = SecurityContextHolder::get_context(&ctx).await;
+        let context: DefaultSecurityContext = SecurityContextHolder::get_context(&ctx).await;
         ctx.authentication = Box::new(context.authentication);
         next.run(ctx).await
     }

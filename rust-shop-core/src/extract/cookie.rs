@@ -168,23 +168,13 @@ impl<'a, K> Iterator for PrivateCookieJarIter<'a, K> {
         }
     }
 }
-fn cookies_from_request(req: &mut RequestCtx) -> Vec<Cookie<'static>> {
-    let mut cookies_str = "".to_string();
-    let cookies = req.headers.get(COOKIE.as_str());
-    if cookies.is_some() {
-        let cookies = cookies.unwrap();
-        if cookies.is_some() {
-            cookies_str = cookies.as_ref().unwrap().to_string();
-        }
-    }
-    let cookies_str = cookies_str.clone();
-    let cookies_str = cookies_str.split(";");
-    let mut result = vec![];
-    for item in cookies_str {
-        let cookie = Cookie::parse_encoded(item.to_string().as_str().to_owned());
-        if  cookie.is_ok(){
-            result.push(cookie.unwrap());
-        }
-    }
-    result
+fn cookies_from_request(
+    req: &mut RequestCtx,
+) -> impl Iterator<Item = Cookie<'static>> + '_ {
+    req.headers
+        .get_all(COOKIE)
+        .into_iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(';'))
+        .filter_map(|cookie| Cookie::parse_encoded(cookie.to_owned()).ok())
 }

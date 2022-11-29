@@ -666,24 +666,6 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                         }
                         _ => {}
                     }
-                    /*if type_name == "Json" {
-                        handler_param_type = "Json".to_string();
-                    }
-                    else if type_name == "Form" {
-                        handler_param_type = "Form".to_string();
-                    }
-                    else if type_name == "Query" {
-                        handler_param_type = "Query".to_string();
-                    }else if type_name == "Header" {
-                        handler_param_type = "Header".to_string();
-                    } else if type_name == "PathVariable" {
-                        handler_param_type = "PathVariable".to_string();
-                    } else if type_name == "RequestParam" {
-                        handler_param_type = "RequestParam".to_string();
-                    }else if type_name == "RequestCtx" {
-                        handler_param_type = "RequestCtx".to_string();
-                    } else {
-                    }*/
                 }
                 _ => {}
             }
@@ -739,9 +721,10 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                             "let mut {0}:Header<Option<String>> = Header(None);\r\n
                         let {1} = ctx.headers.get(\"{0}\");\r\n
                         if {1}.is_some() {{\r\n
-                            let {1} = {1}.unwrap();\r\n
-                            if {1}.is_some() {{\r\n
-                                {0} = Header(Some({1}.as_ref().unwrap().to_string()));\r\n
+                            let {1} = {1}.unwrap();\r\n\
+                            let {1} = {1}.to_str();
+                            if {1}.is_ok() {{\r\n
+                                {0} = Header(Some({1}.unwrap().to_string()));\r\n
                             }}\r\n
                         }}\r\n",
                             param.param_name.clone(),
@@ -758,11 +741,12 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
                         if {1}.is_none() {{                           \r\n
                             return Err(anyhow!(\"{2}\"));            \r\n
                         }}else{{                                       \r\n
-                            let {1} = {1}.unwrap();                  \r\n
-                            if {1}.is_none() {{                       \r\n
+                            let {1} = {1}.unwrap();                  \r\n\
+                            let {1} = {1}.to_str();                  \r\n
+                            if {1}.is_err() {{                       \r\n
                                 return Err(anyhow!(\"{2}\"));        \r\n
                             }}else {{                                  \r\n
-                                {0} = Some(Header({1}.as_ref().unwrap().to_string()));    \r\n
+                                {0} = Some(Header({1}.unwrap().to_string()));    \r\n
                             }}                                        \r\n
                         }}                                            \r\n
                         let {3}:Header<String> = {0}.unwrap();       \r\n",

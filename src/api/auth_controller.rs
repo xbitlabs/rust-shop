@@ -66,8 +66,6 @@ pub mod AuthController {
             .authentication
             .get_authentication_token()
             .get_principal()
-            .downcast_ref::<String>()
-            .unwrap()
             .to_string();
         let u = User {
             id: id.unwrap(),

@@ -69,6 +69,7 @@ redis = { version = "0.22.1", features = ["tokio-comp","json"] }
 erased-serde = "0.3.23"
 md5 = "0.7.0"
 cookie = {version="0.16.1",features =["private","percent-encode","signed","key-expansion","secure"]}
+dashmap = "5.4.0"
 
 [dev-dependencies]
 tokio-test = "*"
