@@ -92,6 +92,7 @@ impl Session for DefaultSession {
 pub trait SessionManager<T: Session> {
     fn session_for_request(&mut self, req: &RequestCtx) -> anyhow::Result<T>;
     fn generate_session_id(&self, req: &RequestCtx) -> String;
+    fn save_session(&mut self,req:&RequestCtx);
 }
 pub struct DefaultSessionManager {
     inner: HashMap<String, String>,
@@ -134,6 +135,16 @@ impl SessionManager<DefaultSession> for DefaultSessionManager {
     fn generate_session_id(&self, req: &RequestCtx) -> String {
         let session_id = Uuid::new_v4().to_string();
         session_id
+    }
+
+    fn save_session(&mut self,req: &RequestCtx) {
+        let session = self.session_for_request(req);
+        match session {
+            Ok(s) => {
+                self.inner.insert(s.session_id.clone(),serde_json::to_string(&s).unwrap());
+            }
+            Err(_) => {}
+        }
     }
 }
 
