@@ -17,7 +17,7 @@ pub trait Session {
     fn set_session_id(&mut self, session_id: String);
     fn is_new(&self) -> bool;
     fn set_new(&mut self, new: bool);
-    fn insert<T>(&mut self, key: String, value: T)
+    fn insert_or_update<T>(&mut self, key: String, value: T)
     where
         T: 'static + serde::Serialize + for<'a> serde::Deserialize<'a> + Send + Sync;
     fn get<T>(&self, key: String) -> Option<T>
@@ -48,7 +48,7 @@ impl Session for DefaultSession {
     fn set_new(&mut self, new: bool) {
         self.new = new;
     }
-    fn insert<T>(&mut self, key: String, value: T)
+    fn insert_or_update<T>(&mut self, key: String, value: T)
     where
         T: 'static + serde::Serialize + for<'a> serde::Deserialize<'a> + Send + Sync,
     {
