@@ -42,6 +42,7 @@ pub mod AuthController {
     use rust_shop_core::db::TransactionManager;
     use rust_shop_core::APP_EXTENSIONS;
     use rust_shop_core::entity::AdminUser;
+    use rust_shop_core::mode_and_view::ModelAndView;
     use rust_shop_core::session::Session;
 
     #[derive(serde::Serialize, serde::Deserialize, Debug)]
@@ -124,5 +125,16 @@ pub mod AuthController {
         req.session.insert_or_update("user".to_string(),&u);
 
         Ok(Json(u))
+    }
+    #[route("GET", "model_and_view")]
+    pub async fn model_and_view(ctx:&mut RequestCtx)->anyhow::Result<ModelAndView>{
+        let mut model_and_view = ModelAndView::new("test.html".to_string());
+        let user = User{
+            id: 0,
+            name: "pgg".to_string(),
+            is_auth: false
+        };
+        model_and_view.insert("user",&user);
+        Ok(model_and_view)
     }
 }

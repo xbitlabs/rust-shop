@@ -22,7 +22,7 @@ use chrono::Local;
 use chrono::NaiveDateTime;
 use chrono::Utc;
 use criterion::Criterion;
-use http::{Method, Uri, Version};
+use http::{header, Method, Uri, Version};
 use hyper::body::{Buf, Bytes};
 use hyper::header::{HeaderValue, ToStrError};
 use hyper::service::{make_service_fn, service_fn};
@@ -303,6 +303,16 @@ impl ResponseBuilder {
         hyper::Response::builder()
             .status(status)
             .body(Body::empty())
+            .unwrap()
+    }
+    pub fn with_status_and_html(status: StatusCode,html:String) -> Response<Body> {
+        hyper::Response::builder()
+            .header(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static(mime::TEXT_HTML.as_ref()),
+            )
+            .status(status)
+            .body(Body::from(html))
             .unwrap()
     }
 }
