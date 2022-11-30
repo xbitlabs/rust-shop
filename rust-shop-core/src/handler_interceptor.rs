@@ -3,6 +3,6 @@ use hyper::Body;
 use crate::RequestCtx;
 
 pub trait HandlerInterceptor{
-    fn pre_handle(&self,request:&mut RequestCtx) ->bool;
-    fn after_completion(&self,request:&mut RequestCtx, response:&mut Request<Body>);
+    fn pre_handle(&self,request:RequestCtx) ->bool;
+    fn after_completion(&self,request:RequestCtx, response:&mut Request<Body>);
 }

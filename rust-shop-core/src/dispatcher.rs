@@ -1,9 +1,21 @@
-use crate::RequestCtx;
+use http::{Request, Response};
+use hyper::Body;
+use crate::handler_interceptor::HandlerInterceptor;
+use crate::{Next, RequestCtx};
 
-pub struct Dispatcher;
+pub struct Dispatcher{
+
+}
 
 impl Dispatcher {
-    pub async fn do_dispatch(req:&mut RequestCtx)->anyhow::Result<()>{
-        Ok(())
-    }
+
 }
+/*impl HandlerInterceptor for Dispatcher{
+    fn pre_handle(&self, request:RequestCtx) -> anyhow::Result<Response<Body>> {
+        todo!()
+    }
+
+    fn after_completion(&self, request:RequestCtx, response: &mut Request<Body>) {
+        todo!()
+    }
+}*/

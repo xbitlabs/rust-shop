@@ -40,6 +40,7 @@ pub struct IndexController;
 
 impl<'a> IndexController {
     pub async fn index(mut ctx: RequestCtx) -> anyhow::Result<hyper::Response<hyper::Body>> {
+        println!("{:?}",ctx.session);
         let endpoint_result = EndpointResult::ok_with_payload("", "");
         Ok(ResponseBuilder::with_endpoint_result(endpoint_result))
     }

@@ -23,6 +23,8 @@ use sqlx::{Acquire, Arguments, MySql, Pool};
 use thiserror::Error;
 use url::Url;
 use urlpattern::{UrlPattern, UrlPatternInit, UrlPatternMatchInput};
+use sha2::{Sha256, Sha512, Digest};
+use base64ct::{Base64, Encoding};
 
 use rust_shop_macro::FormParser;
 
@@ -47,6 +49,7 @@ pub struct SecurityConfig {
     security_context_storage_strategy: Option<String>,
     security_metadata_source_storage_key: String,
     cookie_based: bool,
+    password_salt:String
 }
 
 lazy_static! {
@@ -733,6 +736,21 @@ impl PasswordEncoder for NopPasswordEncoder {
 
     fn matches(&self, _: &String, _: &String) -> anyhow::Result<bool> {
         Ok(true)
+    }
+}
+pub struct Sha512PasswordEncoder;
+
+impl PasswordEncoder for Sha512PasswordEncoder {
+    fn encode(&self, raw_password: &String) -> anyhow::Result<String> {
+        let mut buf = [0u8; 64];
+        hash_password::<Sha512>(raw_password.as_ref(), SECURITY_CONFIG.password_salt.as_ref(), &mut buf);
+        let base64_hash = Base64::encode_string(&buf);
+        Ok(base64_hash)
+    }
+
+    fn matches(&self, raw_password: &String, encoded_password: &String) -> anyhow::Result<bool> {
+        let encode = self.encode(raw_password)?;
+        Ok(encode == encoded_password.to_string())
     }
 }
 
@@ -1784,8 +1802,29 @@ impl Filter for AuthenticationFilter {
     }
 }
 
+// Toy example, do not use it in practice!
+// Instead use crates from: https://github.com/RustCrypto/password-hashing
+fn hash_password<D: Digest>(password: &str, salt: &str, output: &mut [u8]) {
+    let mut hasher = D::new();
+    hasher.update(password.as_bytes());
+    hasher.update(b"$");
+    hasher.update(salt.as_bytes());
+    output.copy_from_slice(&hasher.finalize())
+}
+
 #[test]
 fn test() {
+
+    let start = Local::now().timestamp_millis();
+    let mut buf1 = [0u8; 64];
+    hash_password::<Sha512>("123456", "123456", &mut buf1);
+
+    let base64_hash = Base64::encode_string(&buf1);
+    println!("Base64-encoded hash: {}", base64_hash);
+
+    let end = Local::now().timestamp_millis();
+    println!("耗时：{}",end - start);
+
     let init = UrlPatternInit {
         pathname: Some("/login".to_owned()),
         ..Default::default()

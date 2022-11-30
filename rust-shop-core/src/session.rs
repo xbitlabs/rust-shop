@@ -10,13 +10,16 @@ use std::borrow::BorrowMut;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::{Arc, LockResult, Mutex};
+use chrono::Local;
 use uuid::Uuid;
 
 pub trait Session {
+    fn get_last_activity(&mut self)->i64;
+    fn set_last_activity(&mut self,last_activity:i64);
     fn get_session_id(&self) -> &String;
     fn set_session_id(&mut self, session_id: String);
     fn is_new(&self) -> bool;
-    fn insert_or_update<T>(&mut self, key: String, value: T)
+    fn insert_or_update<T>(&mut self, key: String, value: &T)
     where
         T: 'static + serde::Serialize + for<'a> serde::Deserialize<'a> + Send + Sync;
     fn get<T>(&self, key: String) -> Option<T>
@@ -26,8 +29,9 @@ pub trait Session {
     where
         T: 'static + serde::Serialize + for<'a> serde::Deserialize<'a> + Send + Sync;
 }
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize,Clone,Debug)]
 pub struct DefaultSession {
+    last_activity:i64,
     new: bool,
     session_id: String,
     inner: HashMap<String, String>,
@@ -36,6 +40,7 @@ pub struct DefaultSession {
 impl Default for DefaultSession {
     fn default() -> Self {
         DefaultSession{
+            last_activity: Local::now().timestamp_millis(),
             new: false,
             session_id: "".to_string(),
             inner: Default::default()
@@ -43,6 +48,12 @@ impl Default for DefaultSession {
     }
 }
 impl Session for DefaultSession {
+    fn set_last_activity(&mut self,last_activity:i64){
+        self.last_activity = last_activity;
+    }
+    fn get_last_activity(&mut self)->i64{
+        self.last_activity
+    }
     fn get_session_id(&self) -> &String {
         &self.session_id
     }
@@ -54,7 +65,7 @@ impl Session for DefaultSession {
     fn is_new(&self) -> bool {
         self.new
     }
-    fn insert_or_update<T>(&mut self, key: String, value: T)
+    fn insert_or_update<T>(&mut self, key: String, value: &T)
     where
         T: 'static + serde::Serialize + for<'a> serde::Deserialize<'a> + Send + Sync,
     {
@@ -155,6 +166,7 @@ impl DefaultSessionManager{
     async fn generate_new_session(&mut self, req: &RequestCtx) ->DefaultSession{
         let new_session_id = self.generate_session_id(req).await;
         let session = DefaultSession {
+            last_activity: Local::now().timestamp_millis(),
             new: true,
             session_id: new_session_id.clone(),
             inner: HashMap::new(),
@@ -168,19 +180,14 @@ impl DefaultSessionManager{
 #[async_trait::async_trait]
 impl SessionManager<DefaultSession> for DefaultSessionManager {
     async fn session_for_request(&mut self, req: &RequestCtx) -> DefaultSession {
-        let session_id = req.headers.get("session_id");
-        if session_id.is_some() {
-            let session_id = session_id.unwrap();
-            let session_id = session_id.to_str();
-            if session_id.is_ok() {
-                let session_id = session_id.unwrap();
-                if !session_id.is_empty() {
-                    let session = self.session_storage.get(session_id.to_string()).await;
-                    if session.is_some() {
-                        let session = session.unwrap();
-                        return session;
-                    }
-                }
+        let cookie = req.cookies.get("session_id");
+        if cookie.is_some() {
+            let cookie = cookie.unwrap();
+            let session_id = cookie.value();
+            let session = self.session_storage.get(session_id.to_string()).await;
+            if session.is_some() {
+                let session = session.unwrap();
+                return session;
             }
         }
         return self.generate_new_session(req).await;

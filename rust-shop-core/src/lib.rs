@@ -66,6 +66,7 @@ pub mod handler_interceptor;
 mod application_context;
 mod dispatcher;
 pub mod session;
+pub mod mode_and_view;
 
 use crate::extract::cookie::CookieJar;
 use crate::extract::json::body_to_bytes;
@@ -76,7 +77,7 @@ use once_cell::sync::Lazy;
 use url::Url;
 use urlpattern::{UrlPattern, UrlPatternInit, UrlPatternMatchInput};
 use crate::application_context::APPLICATION_CONTEXT;
-use crate::session::{DefaultSession, DefaultSessionManager, SessionManager};
+use crate::session::{DefaultSession, DefaultSessionManager, Session, SessionManager};
 
 pub static mut APP_EXTENSIONS: Lazy<Extensions> = Lazy::new(|| {
     let mut extensions: Extensions = Extensions::new();
@@ -119,7 +120,16 @@ impl RequestCtx {
         self.authentication = authentication;
     }
 }
-
+use futures::executor::block_on;
+#[async_trait::async_trait]
+impl Drop for RequestCtx {
+    fn drop(&mut self) {
+        unsafe {
+            block_on(APPLICATION_CONTEXT.session_manager.save_session(self));
+            println!("请求结束");
+        }
+    }
+}
 //处理http请求过程中状态保持
 //pub type RequestStateProvider = dyn Fn() -> State<T> + Send + Sync;
 pub trait RequestStateProvider {
@@ -559,8 +569,13 @@ impl Server {
                         let cookies = CookieJar::from_request(&mut ctx).await?;
                         ctx.cookies = cookies;
 
+                        let mut is_new_session = false;
+                        let mut session_id = String::from("session_id=");
                         unsafe {
-                            let session = APPLICATION_CONTEXT.session_manager.session_for_request(&ctx).await;
+                            let mut session = APPLICATION_CONTEXT.session_manager.session_for_request(&ctx).await;
+                            session.set_last_activity(Local::now().timestamp_millis());
+                            is_new_session = session.is_new();
+                            session_id = session_id + session.get_session_id().to_string().as_str() + "; Path=/; Max-Age=2592000";
                             ctx.session = session;
                         }
 
@@ -569,7 +584,13 @@ impl Server {
                             APPLICATION_CONTEXT.session_manager.save_session(&mut ctx);
                         }*/
                         match resp_result {
-                            Ok(resp) => Ok::<_, anyhow::Error>(resp),
+                            Ok(mut resp) => {
+                                if is_new_session {
+                                    let session = session_id.parse().unwrap();
+                                    resp.headers_mut().insert("Set-Cookie", session);
+                                }
+                                Ok::<_, anyhow::Error>(resp)
+                            },
                             Err(error) => {
                                 error!("处理请求异常{}：{}", url, error);
                                 let endpoint_result: EndpointResult<String> =

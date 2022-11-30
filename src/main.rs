@@ -24,11 +24,7 @@ use rust_shop_core::extensions::Extensions;
 use rust_shop_core::extract::json::Json;
 use rust_shop_core::extract::{FromRequest, IntoResponse};
 use rust_shop_core::router::register_route;
-use rust_shop_core::security::{
-    AdminUserLoadService, AuthenticationFilter, AuthenticationProcessingFilter,
-    BcryptPasswordEncoder, NopPasswordEncoder, SecurityInterceptor,
-    UsernamePasswordAuthenticationTokenResolver,
-};
+use rust_shop_core::security::{AdminUserLoadService, AuthenticationFilter, AuthenticationProcessingFilter, BcryptPasswordEncoder, NopPasswordEncoder, SecurityInterceptor, Sha512PasswordEncoder, UsernamePasswordAuthenticationTokenResolver};
 use rust_shop_core::security::{
     AuthenticationTokenResolver, AuthenticationTokenResolverFn, DefaultLoadUserService,
     LoadUserService, LoadUserServiceFn, WeChatMiniAppAuthenticationTokenResolver,
@@ -64,6 +60,8 @@ fn load_user_service_fn<'r, 'a, 'b>(
     AdminUserLoadService::new(sql_command_executor)
 }
 
+//https://crates.io/crates/message-io#app-list
+//开源socket库
 #[tokio::main]
 #[rust_shop_macro::scan_route("/src")]
 async fn main() -> anyhow::Result<()> {
@@ -99,7 +97,7 @@ async fn main() -> anyhow::Result<()> {
             Box::new(UsernamePasswordAuthenticationTokenResolver {})
         },
     )));
-    security_config.password_encoder(Box::new(BcryptPasswordEncoder {}));
+    security_config.password_encoder(Box::new(Sha512PasswordEncoder));
     security_config.load_user_service(LoadUserServiceFn::from(Box::new(
         |req: &mut RequestCtx| -> Box<
             dyn for<'r, 'c, 'd> Fn(

@@ -42,6 +42,7 @@ pub mod AuthController {
     use rust_shop_core::db::TransactionManager;
     use rust_shop_core::APP_EXTENSIONS;
     use rust_shop_core::entity::AdminUser;
+    use rust_shop_core::session::Session;
 
     #[derive(serde::Serialize, serde::Deserialize, Debug)]
     pub struct User {
@@ -119,6 +120,9 @@ pub mod AuthController {
         let mut args = MySqlArguments::default();
         args.add("admin");
         let admins:Option<AdminUser> = sql_exe_with_tran.find_option_with("select * from admin_user where username=?",args).await?;
+
+        req.session.insert_or_update("user".to_string(),&u);
+
         Ok(Json(u))
     }
 }

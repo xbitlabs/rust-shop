@@ -3,3 +3,5 @@ intercept_url_patterns: /*
 security_context_storage_strategy: redis
 security_metadata_source_storage_key: security_metadata_source
 cookie_based: false
+password_salt: 123456
+session_timeout: 3600
