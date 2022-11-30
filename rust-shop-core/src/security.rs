@@ -1134,6 +1134,10 @@ impl Filter for SecurityInterceptor {
     fn order(&self) -> u64 {
         todo!()
     }
+
+    fn name(&self) -> String {
+        "SecurityInterceptor".to_string()
+    }
 }
 
 pub struct AuthenticationProcessingFilter;
@@ -1240,6 +1244,10 @@ impl Filter for AuthenticationProcessingFilter {
 
     fn order(&self) -> u64 {
         todo!()
+    }
+
+    fn name(&self) -> String {
+        "AuthenticationProcessingFilter".to_string()
     }
 }
 
@@ -1799,6 +1807,10 @@ impl Filter for AuthenticationFilter {
 
     fn order(&self) -> u64 {
         todo!()
+    }
+
+    fn name(&self) -> String {
+        "AuthenticationFilter".to_string()
     }
 }
 

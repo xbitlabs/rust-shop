@@ -1,7 +1,7 @@
 allow_if_all_abstain_decisions: false
-intercept_url_patterns: /*
+intercept_url_patterns: /admin*
 security_context_storage_strategy: redis
 security_metadata_source_storage_key: security_metadata_source
-cookie_based: false
+cookie_based: true
 password_salt: 123456
 session_timeout: 3600

@@ -47,6 +47,7 @@ use crate::security::{req_matches, Authentication, DefaultAuthentication, UserDe
 use crate::security::{AuthenticationProcessingFilter, WebSecurityConfigurer};
 use crate::state::State;
 use crate::EndpointResultCode::{AccessDenied, ClientError, ServerError, Unauthorized, SUCCESS};
+use async_recursion::async_recursion;
 
 pub mod app_config;
 pub mod db;
@@ -121,6 +122,9 @@ impl RequestCtx {
     }
 }
 use futures::executor::block_on;
+use futures_util::future::BoxFuture;
+use futures_util::FutureExt;
+
 #[async_trait::async_trait]
 impl Drop for RequestCtx {
     fn drop(&mut self) {
@@ -344,6 +348,7 @@ pub trait Filter: Send + Sync + 'static {
     ) -> anyhow::Result<Response<Body>>;
     fn url_patterns(&self) -> String;
     fn order(&self) -> u64;
+    fn name(&self)->String;
 }
 
 #[allow(missing_debug_implementations)]
@@ -358,17 +363,19 @@ impl<'a> Next<'a> {
         if let Some((current, next)) = self.next_filter.split_first() {
             if req_matches(&ctx, &current.url_patterns()) {
                 info!(
-                    "filter表达式`{}`跟当前请求`{}`匹配，将执行filter",
+                    "filter表达式`{}`跟当前请求`{}`匹配，将执行filter：{}",
                     current.url_patterns(),
-                    ctx.uri
+                    ctx.uri,
+                    current.name()
                 );
                 self.next_filter = next;
                 current.handle(ctx, self).await
             } else {
                 info!(
-                    "filter表达式`{}`跟当前请求`{}`不匹配，filter将被跳过",
+                    "filter表达式`{}`跟当前请求`{}`不匹配，filter `{}`将被跳过",
                     current.url_patterns(),
-                    ctx.uri
+                    ctx.uri,
+                    current.name()
                 );
                 self.skip_current_and_exec_next(next, ctx).await
             }
@@ -376,17 +383,35 @@ impl<'a> Next<'a> {
             (self.endpoint).handle(ctx).await
         }
     }
-    async fn skip_current_and_exec_next(
+    fn skip_current_and_exec_next(
         mut self,
-        chain: &[Arc<dyn Filter>],
+        chain: &'a [Arc<dyn Filter>],
         mut ctx: RequestCtx,
-    ) -> anyhow::Result<Response<Body>> {
-        if let Some((current, next)) = chain.split_first() {
-            self.next_filter = next;
-            current.handle(ctx, self).await
-        } else {
-            (self.endpoint).handle(ctx).await
-        }
+    ) -> BoxFuture<anyhow::Result<Response<Body>>> {
+        async move {
+            if let Some((current, next)) = chain.split_first() {
+                if req_matches(&ctx, &current.url_patterns()) {
+                    info!(
+                    "filter表达式`{}`跟当前请求`{}`匹配，将执行filter：{}",
+                    current.url_patterns(),
+                    ctx.uri,
+                    current.name()
+                );
+                    self.next_filter = next;
+                    current.handle(ctx, self).await
+                } else {
+                    info!(
+                    "filter表达式`{}`跟当前请求`{}`不匹配，filter `{}`将被跳过",
+                    current.url_patterns(),
+                    ctx.uri,
+                    current.name()
+                );
+                    self.skip_current_and_exec_next(next, ctx).await
+                }
+            } else {
+                (self.endpoint).handle(ctx).await
+            }
+        }.boxed()
     }
 }
 
@@ -432,6 +457,10 @@ impl Filter for AccessLogFilter {
 
     fn order(&self) -> u64 {
         todo!()
+    }
+
+    fn name(&self) -> String {
+        "AccessLogFilter".to_string()
     }
 }
 

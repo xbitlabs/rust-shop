@@ -4,3 +4,5 @@ pub(crate) mod index_controller;
 pub(crate) mod product_controller;
 pub(crate) mod static_file_controller;
 pub(crate) mod upload_controller;
+mod search_controller;
+

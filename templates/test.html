@@ -5,6 +5,36 @@
     <title>Title</title>
 </head>
 <body>
-{{user.name}}
+<div>
+    <label for="username">用户名：</label><input type="text" id="username" name="username">
+</div>
+<div>
+    <label for="password">密码：</label><input type="text" id="password" name="password">
+</div>
+<div>
+    <button type="button" id="login">登录</button>
+</div>
+<script src="https://code.jquery.com/jquery-3.6.1.min.js"></script>
+<script>
+    $(function (){
+       $('#login').bind('click',function (){
+           $.ajax({
+               url:'/login',
+               method:'POST',
+               contentType:'application/x-www-form-urlencoded',
+               data:{
+                   username:'admin',
+                   password:'123456'
+               },
+               success:function (res){
+
+               },
+               error:function (){
+                   alert('登录失败');
+               }
+           })
+       });
+    });
+</script>
 </body>
 </html>

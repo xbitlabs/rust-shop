@@ -112,7 +112,7 @@ async fn main() -> anyhow::Result<()> {
     //let mysql_pool_state_provider : Box<dyn RequestStateProvider + Sync + Send> = Box::new(MysqlPoolStateProvider);
     //srv.request_state(mysql_pool_state_provider);
 
-    srv.post("/", IndexController::index);
+    srv.get("/", IndexController::index);
     //上传
     //srv.post("/upload", UploadController::upload);
     //静态文件

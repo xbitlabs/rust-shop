@@ -90,6 +90,7 @@ pub mod AuthController {
             )
             .await?;
 
+
         let id = ID_GENERATOR.lock().unwrap().real_time_generate();
         let wx_open_id = Uuid::new_v4().to_string();
         let mut args = MySqlArguments::default();
@@ -135,6 +136,7 @@ pub mod AuthController {
             is_auth: false
         };
         model_and_view.insert("user",&user);
+        ctx.session.insert_or_update("user".to_string(),&user);
         Ok(model_and_view)
     }
 }
