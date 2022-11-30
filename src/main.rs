@@ -44,7 +44,6 @@ use crate::config::load_config::APP_CONFIG;
 
 pub mod api;
 mod config;
-mod core;
 pub mod entity;
 mod extensions;
 mod filter;
