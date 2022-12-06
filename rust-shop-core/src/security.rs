@@ -12,7 +12,7 @@ use bcrypt::{hash, verify, DEFAULT_COST};
 use chrono::Local;
 use erased_serde::{serialize_trait_object, Error, Serializer};
 use http::HeaderValue;
-use hyper::{Body, Request, Response};
+use hyper::{Body, Request};
 use lazy_static::lazy_static;
 use log::{error, info};
 use once_cell::sync::Lazy;
@@ -41,6 +41,7 @@ use crate::wechat::WeChatMiniAppService;
 use crate::{
     parse_form_params, EndpointResult, Filter, Next, RequestCtx, ResponseBuilder, APP_EXTENSIONS,
 };
+use crate::response::Response;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct SecurityConfig {
@@ -1081,7 +1082,7 @@ impl Filter for SecurityInterceptor {
         &'a self,
         mut ctx: RequestCtx,
         next: Next<'a>,
-    ) -> anyhow::Result<Response<Body>> {
+    ) -> anyhow::Result<Response> {
         unsafe {
             let security_config: &mut WebSecurityConfigurer =
                 APP_EXTENSIONS.get_mut::<WebSecurityConfigurer>().unwrap();
@@ -1148,7 +1149,7 @@ impl Filter for AuthenticationProcessingFilter {
         &'a self,
         mut ctx: RequestCtx,
         next: Next<'a>,
-    ) -> anyhow::Result<Response<Body>> {
+    ) -> anyhow::Result<Response> {
         unsafe {
 
             let pool_state: Option<&State<Pool<MySql>>> = APP_EXTENSIONS.get();
@@ -1264,12 +1265,12 @@ pub trait AuthenticationSuccessHandler {
     async fn handle(
         &self,
         authentication: &Box<dyn Authentication + Send + Sync>,
-    ) -> anyhow::Result<Response<Body>>;
+    ) -> anyhow::Result<Response>;
 }
 
 #[async_trait::async_trait]
 pub trait AuthenticationFailureHandler {
-    async fn handle(&self, error: anyhow::Error) -> anyhow::Result<Response<Body>>;
+    async fn handle(&self, error: anyhow::Error) -> anyhow::Result<Response>;
 }
 
 pub type AuthenticationTokenResolverFn =
@@ -1795,7 +1796,7 @@ impl Filter for AuthenticationFilter {
         &'a self,
         mut ctx: RequestCtx,
         next: Next<'a>,
-    ) -> anyhow::Result<Response<Body>> {
+    ) -> anyhow::Result<Response> {
         let context: DefaultSecurityContext = SecurityContextHolder::get_context(&ctx).await;
         ctx.authentication = Box::new(context.authentication);
         next.run(ctx).await

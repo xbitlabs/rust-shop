@@ -7,6 +7,7 @@ use hyper::Request;
 
 use rust_shop_core::parse_form_params;
 use rust_shop_core::parse_request_json;
+use rust_shop_core::response::Response;
 use rust_shop_macro::FormParser;
 
 use crate::service::product_category_service::ProductCategoryService;
@@ -39,7 +40,7 @@ pub struct Test {
 pub struct IndexController;
 
 impl<'a> IndexController {
-    pub async fn index(mut ctx: RequestCtx) -> anyhow::Result<hyper::Response<hyper::Body>> {
+    pub async fn index(mut ctx: RequestCtx) -> anyhow::Result<Response> {
         println!("{:?}",ctx.session);
         let endpoint_result = EndpointResult::ok_with_payload("", "");
         Ok(ResponseBuilder::with_endpoint_result(endpoint_result))

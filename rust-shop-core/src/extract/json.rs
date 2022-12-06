@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use bytes::Buf;
 use hyper::body::{Bytes, HttpBody};
 use hyper::header::HeaderValue;
-use hyper::{header, Body, Response, StatusCode};
+use hyper::{header, Body, StatusCode};
 use log::error;
 use multer::bytes::{BufMut, BytesMut};
 use serde::de::DeserializeOwned;
@@ -14,8 +14,10 @@ use serde::{Deserialize, Serialize};
 use crate::extract::ExtractError::{
     JsonDataError, JsonIoError, JsonSyntaxError, MissingJsonContentType,
 };
-use crate::extract::{ExtractError, FromRequest, IntoResponse};
+use crate::extract::{ExtractError, FromRequest};
 use crate::{BoxError, EndpointResult, RequestCtx, ResponseBuilder};
+use crate::response::into_response::IntoResponse;
+use crate::response::Response;
 
 #[derive(Debug, Clone, Copy, Default)]
 #[cfg_attr(docsrs, doc(cfg(feature = "json")))]
@@ -143,7 +145,7 @@ impl<T> IntoResponse for Json<T>
 where
     T: Serialize,
 {
-    fn into_response(self) -> Response<Body> {
+    fn into_response(self) -> Response {
         let mut buf = BytesMut::new().writer();
         match serde_json::to_writer(&mut buf, &self.0) {
             Ok(()) => {
@@ -153,13 +155,13 @@ where
                         HeaderValue::from_static(mime::APPLICATION_JSON.as_ref()),
                     )
                     .status(StatusCode::OK);
-                builder.body(Body::from(buf.into_inner().freeze())).unwrap()
+                builder.body(Body::from(buf.into_inner().freeze())).unwrap().into_response()
             }
             Err(err) => {
                 error!("转换json数据为对象时异常：{}", err);
                 let result: EndpointResult<String> =
                     EndpointResult::client_error_with_payload("无效的JSON数据", String::from(""));
-                ResponseBuilder::with_endpoint_result(result)
+                ResponseBuilder::with_endpoint_result(result).into_response()
             }
         }
     }

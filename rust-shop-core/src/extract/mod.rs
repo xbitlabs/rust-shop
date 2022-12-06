@@ -3,11 +3,13 @@ use std::io;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use hyper::body::Bytes;
-use hyper::{Body, Error, Request, Response, StatusCode};
+use hyper::{Body, Error, Request, StatusCode};
 use log::{error, log};
 use thiserror::Error;
 
 use crate::RequestCtx;
+use crate::response::into_response::IntoResponse;
+use crate::response::Response;
 
 pub mod cookie;
 pub mod extension;
@@ -20,10 +22,6 @@ pub mod query;
 pub mod request_param;
 pub mod request_state;
 
-pub trait IntoResponse {
-    /// Create a response.
-    fn into_response(self) -> Response<Body>;
-}
 
 #[async_trait]
 pub trait FromRequest: Sized {
@@ -55,9 +53,9 @@ pub enum ExtractError {
 }
 
 impl IntoResponse for ExtractError {
-    fn into_response(self) -> Response<Body> {
+    fn into_response(self) -> Response {
         let mut builder = Response::builder().status(StatusCode::BAD_REQUEST);
         error!("转换url参数/form表单为对象时异常");
-        builder.body(Body::from("无效请求")).unwrap()
+        builder.body(Body::from("无效请求")).unwrap().into_response()
     }
 }

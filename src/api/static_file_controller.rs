@@ -1,9 +1,11 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use hyper::{Body, Request, Response, StatusCode, Uri};
+use hyper::{Body, Request, StatusCode, Uri};
 
 use hyper_staticfile::Static;
+use rust_shop_core::response::into_response::IntoResponse;
+use rust_shop_core::response::Response;
 
 use crate::config::load_config::APP_CONFIG;
 use crate::{RequestCtx, ResponseBuilder};
@@ -11,14 +13,14 @@ use crate::{RequestCtx, ResponseBuilder};
 pub struct StaticFileController;
 
 impl StaticFileController {
-    pub async fn handle(req: Request<Body>) -> anyhow::Result<Response<Body>> {
+    pub async fn handle(req: Request<Body>) -> anyhow::Result<Response> {
         let upload_config = &APP_CONFIG.upload;
         let mut static_ = Static::new(upload_config.save_path.as_str());
         static_.custom_path_resolver = Some(Arc::new(custom_path_resolver));
         let response_future = static_.serve(req);
         let response_result = response_future.await;
         match response_result {
-            Ok(response) => Ok(response),
+            Ok(response) => Ok(response.into_response()),
             Err(_) => Ok(ResponseBuilder::with_status(
                 StatusCode::INTERNAL_SERVER_ERROR,
             )),

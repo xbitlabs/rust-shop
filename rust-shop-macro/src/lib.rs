@@ -923,7 +923,7 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let handler_proxy_fn = String::from("pub async fn ")
         + &*handler_proxy_name
-        + "(mut req_ctx:RequestCtx)->anyhow::Result<Response<Body>>{\r\n"
+        + "(mut req_ctx:RequestCtx)->anyhow::Result<Response>{\r\n"
         + "let ctx = &mut req_ctx;"
         + &*sql_command_executor_inject_code
         + &*handler_proxy_fn_body

@@ -10,7 +10,6 @@ pub mod AuthController {
     use anyhow::anyhow;
     use chrono::Local;
     use hyper::Body;
-    use hyper::Response;
     use lazy_static::lazy_static;
     use sqlx::mysql::MySqlArguments;
     use sqlx::{Arguments, MySql, Pool, Row};
@@ -27,7 +26,6 @@ pub mod AuthController {
     use rust_shop_core::extract::request_param::RequestParam;
     use rust_shop_core::extract::request_state::RequestState;
     use rust_shop_core::extract::FromRequest;
-    use rust_shop_core::extract::IntoResponse;
     use rust_shop_core::id_generator::ID_GENERATOR;
     use rust_shop_core::router::register_route;
     use rust_shop_core::security::UserDetails;
@@ -44,6 +42,8 @@ pub mod AuthController {
     use rust_shop_core::entity::AdminUser;
     use rust_shop_core::mode_and_view::ModelAndView;
     use rust_shop_core::session::Session;
+    use rust_shop_core::response::into_response::IntoResponse;
+    use rust_shop_core::response::Response;
 
     #[derive(serde::Serialize, serde::Deserialize, Debug)]
     pub struct User {

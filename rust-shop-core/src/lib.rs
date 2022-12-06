@@ -1,84 +1,81 @@
 extern crate core;
 
-use std::any::{Any, TypeId};
-use std::borrow::{Borrow, BorrowMut};
-use std::cell::RefCell;
+use std::any::Any;
+use std::borrow::BorrowMut;
+
 use std::collections::HashMap;
 use std::convert::Infallible;
-use std::fmt::{Display, Formatter};
+
 use std::future::Future;
-use std::io::Cursor;
+
 use std::net::SocketAddr;
-use std::ops::Deref;
-use std::pin::Pin;
-use std::rc::Rc;
-use std::sync::Mutex;
-use std::sync::{Arc, LockResult};
+
+use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::anyhow;
-use bcrypt::{hash, verify, DEFAULT_COST};
+
 use chrono::Local;
-use chrono::NaiveDateTime;
-use chrono::Utc;
-use criterion::Criterion;
+
 use http::{header, Method, Uri, Version};
-use hyper::body::{Buf, Bytes};
-use hyper::header::{HeaderValue, ToStrError};
+use hyper::body::Buf;
+use hyper::header::HeaderValue;
 use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, HeaderMap, Request, Response, StatusCode};
-use lazy_static::lazy_static;
+use hyper::{Body, HeaderMap, Request, StatusCode};
+
 use log::{error, info};
-use route_recognizer::{Params, Router as MethodRouter};
-use schemars::_private::NoSerialize;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use sqlx::encode::IsNull::No;
-use sqlx::{Acquire, Error, MySql, MySqlPool, Pool, Transaction};
-use time::OffsetDateTime;
-use tokio::task_local;
+use route_recognizer::Params;
+
+use serde::Serialize;
 
 use crate::extensions::Extensions;
-use crate::extract::header::Header;
-use crate::extract::path_variable::PathVariable;
-use crate::extract::request_param::RequestParam;
+
 use crate::router::{get_routers, register_route, Router};
-use crate::security::{req_matches, Authentication, DefaultAuthentication, UserDetails};
+use crate::security::{req_matches, Authentication, DefaultAuthentication};
 use crate::security::{AuthenticationProcessingFilter, WebSecurityConfigurer};
 use crate::state::State;
 use crate::EndpointResultCode::{AccessDenied, ClientError, ServerError, Unauthorized, SUCCESS};
-use async_recursion::async_recursion;
 
 pub mod app_config;
+mod application_context;
 pub mod db;
+mod dispatcher;
 pub mod entity;
 pub mod extensions;
 pub mod extract;
+pub mod handler_interceptor;
 pub mod id_generator;
 pub mod jwt;
 pub mod memory_cache;
+pub mod mode_and_view;
 pub mod redis;
 pub mod router;
 pub mod security;
 pub mod serde_utils;
+pub mod session;
 pub mod state;
 pub mod wechat;
-pub mod handler_interceptor;
-mod application_context;
-mod dispatcher;
-pub mod session;
-pub mod mode_and_view;
 
+#[macro_use]
+pub(crate) mod macros;
+
+pub mod body;
+pub mod response;
+
+pub mod error;
+pub use self::error::Error;
+
+use crate::application_context::APPLICATION_CONTEXT;
 use crate::extract::cookie::CookieJar;
 use crate::extract::json::body_to_bytes;
 use crate::extract::FromRequest;
-use http::request::Parts as HttpParts;
-use moka::sync::Cache;
-use once_cell::sync::Lazy;
-use url::Url;
-use urlpattern::{UrlPattern, UrlPatternInit, UrlPatternMatchInput};
-use crate::application_context::APPLICATION_CONTEXT;
 use crate::session::{DefaultSession, DefaultSessionManager, Session, SessionManager};
+use futures::executor::block_on;
+use futures_util::future::BoxFuture;
+use futures_util::FutureExt;
+use once_cell::sync::Lazy;
+use crate::response::into_response::IntoResponse;
+use crate::response::Response;
 
 pub static mut APP_EXTENSIONS: Lazy<Extensions> = Lazy::new(|| {
     let mut extensions: Extensions = Extensions::new();
@@ -110,7 +107,7 @@ pub struct RequestCtx {
     pub extensions: Extensions,
     pub authentication: Box<(dyn Authentication + Sync + Send)>,
     pub cookies: CookieJar,
-    pub session:DefaultSession
+    pub session: DefaultSession,
 }
 
 impl RequestCtx {
@@ -121,9 +118,6 @@ impl RequestCtx {
         self.authentication = authentication;
     }
 }
-use futures::executor::block_on;
-use futures_util::future::BoxFuture;
-use futures_util::FutureExt;
 
 #[async_trait::async_trait]
 impl Drop for RequestCtx {
@@ -252,19 +246,19 @@ impl<T: Serialize> EndpointResult<T> {
 pub struct ResponseBuilder;
 
 impl ResponseBuilder {
-    pub fn with_msg(msg: &'static str, code: EndpointResultCode) -> Response<Body> {
+    pub fn with_msg(msg: &'static str, code: EndpointResultCode) -> Response {
         let mut endpoint_result = EndpointResult::new();
         endpoint_result.set_msg(msg);
         endpoint_result.set_code(code);
         endpoint_result.set_payload(Some(""));
 
-        ResponseBuilder::with_endpoint_result(endpoint_result)
+        ResponseBuilder::with_endpoint_result(endpoint_result).into_response()
     }
     pub fn with_msg_and_payload<T>(
         msg: &'static str,
         payload: T,
         code: EndpointResultCode,
-    ) -> Response<Body>
+    ) -> Response
     where
         T: serde::Serialize,
     {
@@ -272,10 +266,10 @@ impl ResponseBuilder {
         endpoint_result.set_msg(msg);
         endpoint_result.set_code(code);
         endpoint_result.set_payload(Some(payload));
-        ResponseBuilder::with_endpoint_result(endpoint_result)
+        ResponseBuilder::with_endpoint_result(endpoint_result).into_response()
     }
 
-    pub fn with_endpoint_result<T>(endpoint_result: EndpointResult<T>) -> Response<Body>
+    pub fn with_endpoint_result<T>(endpoint_result: EndpointResult<T>) -> Response
     where
         T: serde::Serialize,
     {
@@ -301,15 +295,15 @@ impl ResponseBuilder {
             )
             .status(status)
             .body(hyper::Body::from(json.unwrap()))
-            .unwrap()
+            .unwrap().into_response()
     }
-    pub fn with_status(status: StatusCode) -> Response<Body> {
+    pub fn with_status(status: StatusCode) -> Response {
         hyper::Response::builder()
             .status(status)
             .body(Body::empty())
-            .unwrap()
+            .unwrap().into_response()
     }
-    pub fn with_status_and_html(status: StatusCode,html:String) -> Response<Body> {
+    pub fn with_status_and_html(status: StatusCode, html: String) -> Response {
         hyper::Response::builder()
             .header(
                 header::CONTENT_TYPE,
@@ -317,13 +311,13 @@ impl ResponseBuilder {
             )
             .status(status)
             .body(Body::from(html))
-            .unwrap()
+            .unwrap().into_response()
     }
 }
 
 #[async_trait::async_trait]
 pub trait HTTPHandler: Send + Sync + 'static {
-    async fn handle(&self, mut ctx: RequestCtx) -> anyhow::Result<Response<Body>>;
+    async fn handle(&self, mut ctx: RequestCtx) -> anyhow::Result<Response>;
 }
 
 type BoxHTTPHandler = Box<dyn HTTPHandler>;
@@ -332,9 +326,9 @@ type BoxHTTPHandler = Box<dyn HTTPHandler>;
 impl<F: Send + Sync + 'static, Fut> HTTPHandler for F
 where
     F: Fn(RequestCtx) -> Fut,
-    Fut: Future<Output = anyhow::Result<Response<Body>>> + Send + 'static,
+    Fut: Future<Output = anyhow::Result<Response>> + Send + 'static,
 {
-    async fn handle(&self, mut ctx: RequestCtx) -> anyhow::Result<Response<Body>> {
+    async fn handle(&self, mut ctx: RequestCtx) -> anyhow::Result<Response> {
         self(ctx).await
     }
 }
@@ -345,10 +339,10 @@ pub trait Filter: Send + Sync + 'static {
         &'a self,
         mut ctx: RequestCtx,
         next: Next<'a>,
-    ) -> anyhow::Result<Response<Body>>;
+    ) -> anyhow::Result<Response>;
     fn url_patterns(&self) -> String;
     fn order(&self) -> u64;
-    fn name(&self)->String;
+    fn name(&self) -> String;
 }
 
 #[allow(missing_debug_implementations)]
@@ -359,7 +353,7 @@ pub struct Next<'a> {
 
 impl<'a> Next<'a> {
     /// Asynchronously execute the remaining filter chain.
-    pub async fn run(mut self, mut ctx: RequestCtx) -> anyhow::Result<Response<Body>> {
+    pub async fn run(mut self, mut ctx: RequestCtx) -> anyhow::Result<Response> {
         if let Some((current, next)) = self.next_filter.split_first() {
             if req_matches(&ctx, &current.url_patterns()) {
                 info!(
@@ -387,31 +381,32 @@ impl<'a> Next<'a> {
         mut self,
         chain: &'a [Arc<dyn Filter>],
         mut ctx: RequestCtx,
-    ) -> BoxFuture<anyhow::Result<Response<Body>>> {
+    ) -> BoxFuture<anyhow::Result<Response>> {
         async move {
             if let Some((current, next)) = chain.split_first() {
                 if req_matches(&ctx, &current.url_patterns()) {
                     info!(
-                    "filter表达式`{}`跟当前请求`{}`匹配，将执行filter：{}",
-                    current.url_patterns(),
-                    ctx.uri,
-                    current.name()
-                );
+                        "filter表达式`{}`跟当前请求`{}`匹配，将执行filter：{}",
+                        current.url_patterns(),
+                        ctx.uri,
+                        current.name()
+                    );
                     self.next_filter = next;
                     current.handle(ctx, self).await
                 } else {
                     info!(
-                    "filter表达式`{}`跟当前请求`{}`不匹配，filter `{}`将被跳过",
-                    current.url_patterns(),
-                    ctx.uri,
-                    current.name()
-                );
+                        "filter表达式`{}`跟当前请求`{}`不匹配，filter `{}`将被跳过",
+                        current.url_patterns(),
+                        ctx.uri,
+                        current.name()
+                    );
                     self.skip_current_and_exec_next(next, ctx).await
                 }
             } else {
                 (self.endpoint).handle(ctx).await
             }
-        }.boxed()
+        }
+        .boxed()
     }
 }
 
@@ -433,7 +428,7 @@ impl Filter for AccessLogFilter {
         &'a self,
         mut ctx: RequestCtx,
         next: Next<'a>,
-    ) -> anyhow::Result<Response<Body>> {
+    ) -> anyhow::Result<Response> {
         let start = Instant::now();
         let method = ctx.method.to_string();
         let path = ctx.uri.path().to_string();
@@ -586,7 +581,8 @@ impl Server {
                                 uri,
                                 version,
                                 extensions,
-                                headers, ..
+                                headers,
+                                ..
                             },
                             body,
                         ) = req.into_parts();
@@ -603,7 +599,7 @@ impl Server {
                             extensions: Extensions::new(),
                             authentication: Box::new(DefaultAuthentication::default()),
                             cookies: CookieJar::default(),
-                            session: DefaultSession::default()
+                            session: DefaultSession::default(),
                         };
                         let cookies = CookieJar::from_request(&mut ctx).await?;
                         ctx.cookies = cookies;
@@ -611,10 +607,15 @@ impl Server {
                         let mut is_new_session = false;
                         let mut session_id = String::from("session_id=");
                         unsafe {
-                            let mut session = APPLICATION_CONTEXT.session_manager.session_for_request(&ctx).await;
+                            let mut session = APPLICATION_CONTEXT
+                                .session_manager
+                                .session_for_request(&ctx)
+                                .await;
                             session.set_last_activity(Local::now().timestamp_millis());
                             is_new_session = session.is_new();
-                            session_id = session_id + session.get_session_id().to_string().as_str() + "; Path=/; Max-Age=2592000";
+                            session_id = session_id
+                                + session.get_session_id().to_string().as_str()
+                                + "; Path=/; Max-Age=2592000";
                             ctx.session = session;
                         }
 
@@ -629,7 +630,7 @@ impl Server {
                                     resp.headers_mut().insert("Set-Cookie", session);
                                 }
                                 Ok::<_, anyhow::Error>(resp)
-                            },
+                            }
                             Err(error) => {
                                 error!("处理请求异常{}：{}", url, error);
                                 let endpoint_result: EndpointResult<String> =
@@ -686,7 +687,7 @@ pub async fn parse_form_params(req: &mut RequestCtx) -> HashMap<String, String> 
         .collect::<HashMap<String, String>>();
     params
 }
-async fn handle_not_found(mut ctx: RequestCtx) -> anyhow::Result<Response<Body>> {
+async fn handle_not_found(mut ctx: RequestCtx) -> anyhow::Result<Response> {
     Ok(ResponseBuilder::with_status(StatusCode::NOT_FOUND))
 }
 #[test]

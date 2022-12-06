@@ -1,12 +1,13 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{HashMap};
 use std::error::Error;
-use http::{header, HeaderValue, Response, StatusCode};
-use hyper::Body;
+use http::{header, HeaderValue, StatusCode};
+
 use lazy_static::lazy_static;
 use serde::Serialize;
 use serde_json::{to_value, Value};
-use crate::extract::IntoResponse;
 use tera::{Context, Result, Tera, try_get_value};
+use crate::response::into_response::IntoResponse;
+use crate::response::Response;
 use crate::ResponseBuilder;
 
 lazy_static! {
@@ -55,10 +56,10 @@ impl ModelAndView {
 }
 
 impl IntoResponse for ModelAndView {
-    fn into_response(self) -> Response<Body> {
+    fn into_response(self) -> Response {
         return match TEMPLATES.render(&self.view, &self.models) {
             Ok(result) => {
-                ResponseBuilder::with_status_and_html(StatusCode::OK,result)
+                ResponseBuilder::with_status_and_html(StatusCode::OK,result).into_response()
             },
             Err(e) => {
                 let mut result = String::from(format!("Error: {}\r\n", e));
@@ -68,7 +69,7 @@ impl IntoResponse for ModelAndView {
                     result = result + &*format!("Reason: {}\r\n", e);
                     cause = e.source();
                 }
-                ResponseBuilder::with_status_and_html(StatusCode::INTERNAL_SERVER_ERROR,result)
+                ResponseBuilder::with_status_and_html(StatusCode::INTERNAL_SERVER_ERROR,result).into_response()
             }
         };
     }

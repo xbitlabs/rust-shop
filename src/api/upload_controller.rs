@@ -7,7 +7,7 @@ use std::io::{Read, Write};
 use chrono::{Local, Utc};
 use hyper::body::Buf;
 use hyper::header::CONTENT_TYPE;
-use hyper::{header, Body, Request, Response, StatusCode};
+use hyper::{header, Body, Request, StatusCode};
 use log::{debug, error, info, warn};
 use log4rs;
 use multer::Multipart;
@@ -15,6 +15,8 @@ use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
 use rust_shop_core::EndpointResultCode;
+use rust_shop_core::response::into_response::IntoResponse;
+use rust_shop_core::response::Response;
 
 use crate::config::load_config::APP_CONFIG;
 use crate::{EndpointResult, RequestCtx, ResponseBuilder};
@@ -22,10 +24,10 @@ use crate::{EndpointResult, RequestCtx, ResponseBuilder};
 pub struct UploadController;
 
 impl UploadController {
-    pub async fn upload(req: Request<Body>) -> anyhow::Result<Response<Body>> {
+    pub async fn upload(req: Request<Body>) -> anyhow::Result<Response> {
         let upload_result = UploadController::handle(req).await;
         match upload_result {
-            Ok(result) => Ok(result),
+            Ok(result) => Ok(result.into_response()),
             Err(e) => {
                 let endpoint_result: EndpointResult<String> =
                     EndpointResult::server_error("上传失败");
@@ -34,7 +36,7 @@ impl UploadController {
         }
     }
     // A handler for incoming requests.
-    async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+    async fn handle(req: Request<Body>) -> Result<Response, Infallible> {
         // Extract the `multipart/form-data` boundary from the headers.
         let boundary = req
             .headers()
@@ -47,7 +49,7 @@ impl UploadController {
             return Ok(Response::builder()
                 .status(StatusCode::BAD_REQUEST)
                 .body(Body::from("BAD REQUEST"))
-                .unwrap());
+                .unwrap().into_response());
         }
 
         // Process the multipart e.g. you can store them in files.
