@@ -8,6 +8,7 @@ use std::string::ToString;
 use std::sync::Arc;
 
 use anyhow::anyhow;
+use base64ct::{Base64, Encoding};
 use bcrypt::{hash, verify, DEFAULT_COST};
 use chrono::Local;
 use erased_serde::{serialize_trait_object, Error, Serializer};
@@ -18,13 +19,12 @@ use log::{error, info};
 use once_cell::sync::Lazy;
 use redis::RedisResult;
 use serde::{Deserializer, Serialize};
+use sha2::{Digest, Sha256, Sha512};
 use sqlx::mysql::MySqlArguments;
 use sqlx::{Acquire, Arguments, MySql, Pool};
 use thiserror::Error;
 use url::Url;
 use urlpattern::{UrlPattern, UrlPatternInit, UrlPatternMatchInput};
-use sha2::{Sha256, Sha512, Digest};
-use base64ct::{Base64, Encoding};
 
 use rust_shop_macro::FormParser;
 
@@ -36,12 +36,12 @@ use crate::id_generator::ID_GENERATOR;
 use crate::jwt::{decode_access_token, DefaultJwtService};
 use crate::jwt::{AccessToken, JwtService};
 use crate::memory_cache::{CacheEntity, CACHE};
+use crate::response::Response;
 use crate::state::State;
 use crate::wechat::WeChatMiniAppService;
 use crate::{
     parse_form_params, EndpointResult, Filter, Next, RequestCtx, ResponseBuilder, APP_EXTENSIONS,
 };
-use crate::response::Response;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct SecurityConfig {
@@ -50,7 +50,7 @@ pub struct SecurityConfig {
     security_context_storage_strategy: Option<String>,
     security_metadata_source_storage_key: String,
     cookie_based: bool,
-    password_salt:String
+    password_salt: String,
 }
 
 lazy_static! {
@@ -254,7 +254,10 @@ impl<'r, 'a, 'b> LoadUserService for AdminUserLoadService<'r, 'a, 'b> {
             .find_option_with("select * from admin_user where username=?", args)
             .await?;
         let end = Local::now().timestamp_millis();
-        println!("select * from admin_user where username=? 耗时：{}",end - start);
+        println!(
+            "select * from admin_user where username=? 耗时：{}",
+            end - start
+        );
         if user.is_some() {
             let start = Local::now().timestamp_millis();
             let user = user.unwrap();
@@ -278,7 +281,7 @@ impl<'r, 'a, 'b> LoadUserService for AdminUserLoadService<'r, 'a, 'b> {
                 authorities.push(admin_user_role.code);
             }
             let end = Local::now().timestamp_millis();
-            println!("查询角色耗时：{}",end - start);
+            println!("查询角色耗时：{}", end - start);
             Ok(Box::new(DefaultUserDetails {
                 id: user.id,
                 username: user.username,
@@ -744,7 +747,11 @@ pub struct Sha512PasswordEncoder;
 impl PasswordEncoder for Sha512PasswordEncoder {
     fn encode(&self, raw_password: &String) -> anyhow::Result<String> {
         let mut buf = [0u8; 64];
-        hash_password::<Sha512>(raw_password.as_ref(), SECURITY_CONFIG.password_salt.as_ref(), &mut buf);
+        hash_password::<Sha512>(
+            raw_password.as_ref(),
+            SECURITY_CONFIG.password_salt.as_ref(),
+            &mut buf,
+        );
         let base64_hash = Base64::encode_string(&buf);
         Ok(base64_hash)
     }
@@ -1078,11 +1085,7 @@ pub(crate) fn req_matches(req: &RequestCtx, url_patterns: &String) -> bool {
 pub struct SecurityInterceptor;
 #[async_trait::async_trait]
 impl Filter for SecurityInterceptor {
-    async fn handle<'a>(
-        &'a self,
-        mut ctx: RequestCtx,
-        next: Next<'a>,
-    ) -> anyhow::Result<Response> {
+    async fn handle<'a>(&'a self, mut ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response> {
         unsafe {
             let security_config: &mut WebSecurityConfigurer =
                 APP_EXTENSIONS.get_mut::<WebSecurityConfigurer>().unwrap();
@@ -1145,13 +1148,8 @@ pub struct AuthenticationProcessingFilter;
 
 #[async_trait::async_trait]
 impl Filter for AuthenticationProcessingFilter {
-    async fn handle<'a>(
-        &'a self,
-        mut ctx: RequestCtx,
-        next: Next<'a>,
-    ) -> anyhow::Result<Response> {
+    async fn handle<'a>(&'a self, mut ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response> {
         unsafe {
-
             let pool_state: Option<&State<Pool<MySql>>> = APP_EXTENSIONS.get();
             let pool = pool_state.unwrap().get_ref();
             let tran = pool.begin().await?;
@@ -1173,7 +1171,7 @@ impl Filter for AuthenticationProcessingFilter {
                 .authenticate(&mut ctx, authentication_token)
                 .await;
             let end = Local::now().timestamp_millis();
-            println!("查询用户耗时{}",end  - start);
+            println!("查询用户耗时{}", end - start);
             //手动释放load_user_service，不然无法第二次借用可变sql_command_executor
             drop(auth_provider);
 
@@ -1204,7 +1202,7 @@ impl Filter for AuthenticationProcessingFilter {
                         .grant_access_token(*user_details.get_id())
                         .await?;
                     let end = Local::now().timestamp_millis();
-                    println!("生成token耗时{}",end - start);
+                    println!("生成token耗时{}", end - start);
                     drop(jwt_service);
                     drop(sql_command_executor);
                     let endpoint_result: EndpointResult<AccessToken> =
@@ -1782,7 +1780,7 @@ impl SecurityContextHolder {
                     ANONYMOUS.to_string()
                 } else {
                     ANONYMOUS.to_string()
-                }
+                };
             }
         };
     }
@@ -1792,11 +1790,7 @@ const ANONYMOUS: &'static str = "anonymous";
 pub struct AuthenticationFilter;
 #[async_trait::async_trait]
 impl Filter for AuthenticationFilter {
-    async fn handle<'a>(
-        &'a self,
-        mut ctx: RequestCtx,
-        next: Next<'a>,
-    ) -> anyhow::Result<Response> {
+    async fn handle<'a>(&'a self, mut ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response> {
         let context: DefaultSecurityContext = SecurityContextHolder::get_context(&ctx).await;
         ctx.authentication = Box::new(context.authentication);
         next.run(ctx).await
@@ -1827,7 +1821,6 @@ fn hash_password<D: Digest>(password: &str, salt: &str, output: &mut [u8]) {
 
 #[test]
 fn test() {
-
     let start = Local::now().timestamp_millis();
     let mut buf1 = [0u8; 64];
     hash_password::<Sha512>("123456", "123456", &mut buf1);
@@ -1836,7 +1829,7 @@ fn test() {
     println!("Base64-encoded hash: {}", base64_hash);
 
     let end = Local::now().timestamp_millis();
-    println!("耗时：{}",end - start);
+    println!("耗时：{}", end - start);
 
     let init = UrlPatternInit {
         pathname: Some("/login".to_owned()),

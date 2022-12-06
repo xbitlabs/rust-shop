@@ -15,9 +15,9 @@ use crate::extract::ExtractError::{
     JsonDataError, JsonIoError, JsonSyntaxError, MissingJsonContentType,
 };
 use crate::extract::{ExtractError, FromRequest};
-use crate::{BoxError, EndpointResult, RequestCtx, ResponseBuilder};
 use crate::response::into_response::IntoResponse;
 use crate::response::Response;
+use crate::{BoxError, EndpointResult, RequestCtx, ResponseBuilder};
 
 #[derive(Debug, Clone, Copy, Default)]
 #[cfg_attr(docsrs, doc(cfg(feature = "json")))]
@@ -155,7 +155,10 @@ where
                         HeaderValue::from_static(mime::APPLICATION_JSON.as_ref()),
                     )
                     .status(StatusCode::OK);
-                builder.body(Body::from(buf.into_inner().freeze())).unwrap().into_response()
+                builder
+                    .body(Body::from(buf.into_inner().freeze()))
+                    .unwrap()
+                    .into_response()
             }
             Err(err) => {
                 error!("转换json数据为对象时异常：{}", err);

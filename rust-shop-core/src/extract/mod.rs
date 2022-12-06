@@ -7,9 +7,9 @@ use hyper::{Body, Error, Request, StatusCode};
 use log::{error, log};
 use thiserror::Error;
 
-use crate::RequestCtx;
 use crate::response::into_response::IntoResponse;
 use crate::response::Response;
+use crate::RequestCtx;
 
 pub mod cookie;
 pub mod extension;
@@ -21,7 +21,6 @@ pub mod path_variable;
 pub mod query;
 pub mod request_param;
 pub mod request_state;
-
 
 #[async_trait]
 pub trait FromRequest: Sized {
@@ -56,6 +55,9 @@ impl IntoResponse for ExtractError {
     fn into_response(self) -> Response {
         let mut builder = Response::builder().status(StatusCode::BAD_REQUEST);
         error!("转换url参数/form表单为对象时异常");
-        builder.body(Body::from("无效请求")).unwrap().into_response()
+        builder
+            .body(Body::from("无效请求"))
+            .unwrap()
+            .into_response()
     }
 }

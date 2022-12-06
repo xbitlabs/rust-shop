@@ -69,13 +69,13 @@ use crate::application_context::APPLICATION_CONTEXT;
 use crate::extract::cookie::CookieJar;
 use crate::extract::json::body_to_bytes;
 use crate::extract::FromRequest;
+use crate::response::into_response::IntoResponse;
+use crate::response::Response;
 use crate::session::{DefaultSession, DefaultSessionManager, Session, SessionManager};
 use futures::executor::block_on;
 use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use once_cell::sync::Lazy;
-use crate::response::into_response::IntoResponse;
-use crate::response::Response;
 
 pub static mut APP_EXTENSIONS: Lazy<Extensions> = Lazy::new(|| {
     let mut extensions: Extensions = Extensions::new();
@@ -295,13 +295,15 @@ impl ResponseBuilder {
             )
             .status(status)
             .body(hyper::Body::from(json.unwrap()))
-            .unwrap().into_response()
+            .unwrap()
+            .into_response()
     }
     pub fn with_status(status: StatusCode) -> Response {
         hyper::Response::builder()
             .status(status)
             .body(Body::empty())
-            .unwrap().into_response()
+            .unwrap()
+            .into_response()
     }
     pub fn with_status_and_html(status: StatusCode, html: String) -> Response {
         hyper::Response::builder()
@@ -311,7 +313,8 @@ impl ResponseBuilder {
             )
             .status(status)
             .body(Body::from(html))
-            .unwrap().into_response()
+            .unwrap()
+            .into_response()
     }
 }
 
@@ -335,11 +338,7 @@ where
 
 #[async_trait::async_trait]
 pub trait Filter: Send + Sync + 'static {
-    async fn handle<'a>(
-        &'a self,
-        mut ctx: RequestCtx,
-        next: Next<'a>,
-    ) -> anyhow::Result<Response>;
+    async fn handle<'a>(&'a self, mut ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response>;
     fn url_patterns(&self) -> String;
     fn order(&self) -> u64;
     fn name(&self) -> String;
@@ -424,11 +423,7 @@ pub struct AccessLogFilter;
 
 #[async_trait::async_trait]
 impl Filter for AccessLogFilter {
-    async fn handle<'a>(
-        &'a self,
-        mut ctx: RequestCtx,
-        next: Next<'a>,
-    ) -> anyhow::Result<Response> {
+    async fn handle<'a>(&'a self, mut ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response> {
         let start = Instant::now();
         let method = ctx.method.to_string();
         let path = ctx.uri.path().to_string();

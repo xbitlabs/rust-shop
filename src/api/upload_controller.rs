@@ -14,9 +14,9 @@ use multer::Multipart;
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
-use rust_shop_core::EndpointResultCode;
 use rust_shop_core::response::into_response::IntoResponse;
 use rust_shop_core::response::Response;
+use rust_shop_core::EndpointResultCode;
 
 use crate::config::load_config::APP_CONFIG;
 use crate::{EndpointResult, RequestCtx, ResponseBuilder};
@@ -49,7 +49,8 @@ impl UploadController {
             return Ok(Response::builder()
                 .status(StatusCode::BAD_REQUEST)
                 .body(Body::from("BAD REQUEST"))
-                .unwrap().into_response());
+                .unwrap()
+                .into_response());
         }
 
         // Process the multipart e.g. you can store them in files.

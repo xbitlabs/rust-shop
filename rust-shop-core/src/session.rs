@@ -1,5 +1,6 @@
 use crate::RequestCtx;
 use anyhow::anyhow;
+use chrono::Local;
 use log::error;
 use redis::{Commands, RedisResult};
 use serde::ser::{SerializeMap, SerializeStruct};
@@ -10,12 +11,11 @@ use std::borrow::BorrowMut;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::{Arc, LockResult, Mutex};
-use chrono::Local;
 use uuid::Uuid;
 
 pub trait Session {
-    fn get_last_activity(&mut self)->i64;
-    fn set_last_activity(&mut self,last_activity:i64);
+    fn get_last_activity(&mut self) -> i64;
+    fn set_last_activity(&mut self, last_activity: i64);
     fn get_session_id(&self) -> &String;
     fn set_session_id(&mut self, session_id: String);
     fn is_new(&self) -> bool;
@@ -29,9 +29,9 @@ pub trait Session {
     where
         T: 'static + serde::Serialize + for<'a> serde::Deserialize<'a> + Send + Sync;
 }
-#[derive(serde::Serialize, serde::Deserialize,Clone,Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct DefaultSession {
-    last_activity:i64,
+    last_activity: i64,
     new: bool,
     session_id: String,
     inner: HashMap<String, String>,
@@ -39,19 +39,19 @@ pub struct DefaultSession {
 
 impl Default for DefaultSession {
     fn default() -> Self {
-        DefaultSession{
+        DefaultSession {
             last_activity: Local::now().timestamp_millis(),
             new: false,
             session_id: "".to_string(),
-            inner: Default::default()
+            inner: Default::default(),
         }
     }
 }
 impl Session for DefaultSession {
-    fn set_last_activity(&mut self,last_activity:i64){
+    fn set_last_activity(&mut self, last_activity: i64) {
         self.last_activity = last_activity;
     }
-    fn get_last_activity(&mut self)->i64{
+    fn get_last_activity(&mut self) -> i64 {
         self.last_activity
     }
     fn get_session_id(&self) -> &String {
@@ -106,40 +106,36 @@ impl Session for DefaultSession {
     }
 }
 #[async_trait::async_trait]
-pub trait SessionStorage{
-    async fn insert_or_update(&mut self,value: &DefaultSession)->bool;
+pub trait SessionStorage {
+    async fn insert_or_update(&mut self, value: &DefaultSession) -> bool;
     async fn get(&self, session_id: String) -> Option<DefaultSession>;
     async fn remove(&mut self, session_id: String) -> bool;
 }
 pub struct RedisSession;
 #[async_trait::async_trait]
-impl SessionStorage for RedisSession{
+impl SessionStorage for RedisSession {
     async fn insert_or_update(&mut self, value: &DefaultSession) -> bool {
         let key = String::from("session:") + value.session_id.as_str();
-        let result = crate::redis::set(key.as_str(),value).await;
+        let result = crate::redis::set(key.as_str(), value).await;
         return match result {
-            Ok(_) => {
-                true
-            }
+            Ok(_) => true,
             Err(err) => {
-                error!("保存session失败：{}",err);
+                error!("保存session失败：{}", err);
                 false
             }
-        }
+        };
     }
 
     async fn get(&self, key: String) -> Option<DefaultSession> {
         let key = String::from("session:") + key.as_str();
-        let result:RedisResult<DefaultSession> = crate::redis::get(key.as_str()).await;
+        let result: RedisResult<DefaultSession> = crate::redis::get(key.as_str()).await;
         return match result {
-            Ok(session) => {
-                Some(session)
-            }
+            Ok(session) => Some(session),
             Err(err) => {
-                error!("获取session失败：{}",err);
+                error!("获取session失败：{}", err);
                 None
             }
-        }
+        };
     }
 
     async fn remove(&mut self, key: String) -> bool {
@@ -151,19 +147,17 @@ impl SessionStorage for RedisSession{
 pub trait SessionManager<T: Session> {
     async fn session_for_request(&mut self, req: &RequestCtx) -> T;
     async fn generate_session_id(&self, req: &RequestCtx) -> String;
-    async fn save_session(&mut self,req:&mut RequestCtx);
+    async fn save_session(&mut self, req: &mut RequestCtx);
 }
 pub struct DefaultSessionManager {
     session_storage: Box<dyn SessionStorage + Send + Sync>,
 }
 
-impl DefaultSessionManager{
-    pub fn new(session_storage: Box<dyn SessionStorage + Send + Sync>,)->Self{
-        DefaultSessionManager{
-            session_storage
-        }
+impl DefaultSessionManager {
+    pub fn new(session_storage: Box<dyn SessionStorage + Send + Sync>) -> Self {
+        DefaultSessionManager { session_storage }
     }
-    async fn generate_new_session(&mut self, req: &RequestCtx) ->DefaultSession{
+    async fn generate_new_session(&mut self, req: &RequestCtx) -> DefaultSession {
         let new_session_id = self.generate_session_id(req).await;
         let session = DefaultSession {
             last_activity: Local::now().timestamp_millis(),
@@ -171,10 +165,8 @@ impl DefaultSessionManager{
             session_id: new_session_id.clone(),
             inner: HashMap::new(),
         };
-        self.session_storage
-            .insert_or_update(&session);
+        self.session_storage.insert_or_update(&session);
         return session;
-
     }
 }
 #[async_trait::async_trait]

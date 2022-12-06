@@ -1,11 +1,5 @@
 #![feature(try_trait_v2)]
 
-
-
-
-
-
-
 use std::net::SocketAddr;
 use std::string::ToString;
 use std::sync::{Arc, Mutex};
@@ -22,9 +16,13 @@ use syn::{Item, ItemMod};
 use rust_shop_core::db::{mysql_connection_pool, SqlCommandExecutor};
 use rust_shop_core::extensions::Extensions;
 use rust_shop_core::extract::json::Json;
-use rust_shop_core::extract::{FromRequest};
+use rust_shop_core::extract::FromRequest;
 use rust_shop_core::router::register_route;
-use rust_shop_core::security::{AdminUserLoadService, AuthenticationFilter, AuthenticationProcessingFilter, BcryptPasswordEncoder, NopPasswordEncoder, SecurityInterceptor, Sha512PasswordEncoder, UsernamePasswordAuthenticationTokenResolver};
+use rust_shop_core::security::{
+    AdminUserLoadService, AuthenticationFilter, AuthenticationProcessingFilter,
+    BcryptPasswordEncoder, NopPasswordEncoder, SecurityInterceptor, Sha512PasswordEncoder,
+    UsernamePasswordAuthenticationTokenResolver,
+};
 use rust_shop_core::security::{
     AuthenticationTokenResolver, AuthenticationTokenResolverFn, DefaultLoadUserService,
     LoadUserService, LoadUserServiceFn, WeChatMiniAppAuthenticationTokenResolver,

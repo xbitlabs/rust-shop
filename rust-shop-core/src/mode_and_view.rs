@@ -1,14 +1,14 @@
-use std::collections::{HashMap};
-use std::error::Error;
 use http::{header, HeaderValue, StatusCode};
+use std::collections::HashMap;
+use std::error::Error;
 
-use lazy_static::lazy_static;
-use serde::Serialize;
-use serde_json::{to_value, Value};
-use tera::{Context, Result, Tera, try_get_value};
 use crate::response::into_response::IntoResponse;
 use crate::response::Response;
 use crate::ResponseBuilder;
+use lazy_static::lazy_static;
+use serde::Serialize;
+use serde_json::{to_value, Value};
+use tera::{try_get_value, Context, Result, Tera};
 
 lazy_static! {
     pub static ref TEMPLATES: Tera = {
@@ -29,16 +29,16 @@ pub fn do_nothing_filter(value: &Value, _: &HashMap<String, Value>) -> Result<Va
     Ok(to_value(&s).unwrap())
 }
 
-pub struct ModelAndView{
-    view:String,
-    models:Context,
+pub struct ModelAndView {
+    view: String,
+    models: Context,
 }
 
 impl ModelAndView {
-    pub fn new(view:String)->Self{
-        ModelAndView{
+    pub fn new(view: String) -> Self {
+        ModelAndView {
             view,
-            models: Context::new()
+            models: Context::new(),
         }
     }
     pub fn insert<T: Serialize + ?Sized, S: Into<String>>(&mut self, key: S, val: &T) {
@@ -59,8 +59,8 @@ impl IntoResponse for ModelAndView {
     fn into_response(self) -> Response {
         return match TEMPLATES.render(&self.view, &self.models) {
             Ok(result) => {
-                ResponseBuilder::with_status_and_html(StatusCode::OK,result).into_response()
-            },
+                ResponseBuilder::with_status_and_html(StatusCode::OK, result).into_response()
+            }
             Err(e) => {
                 let mut result = String::from(format!("Error: {}\r\n", e));
 
@@ -69,7 +69,8 @@ impl IntoResponse for ModelAndView {
                     result = result + &*format!("Reason: {}\r\n", e);
                     cause = e.source();
                 }
-                ResponseBuilder::with_status_and_html(StatusCode::INTERNAL_SERVER_ERROR,result).into_response()
+                ResponseBuilder::with_status_and_html(StatusCode::INTERNAL_SERVER_ERROR, result)
+                    .into_response()
             }
         };
     }

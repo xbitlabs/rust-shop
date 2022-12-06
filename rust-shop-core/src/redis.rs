@@ -67,19 +67,17 @@ pub async fn get<T: for<'a> serde::Deserialize<'a>>(key: &str) -> RedisResult<T>
 pub async fn remove(key: &str) -> bool {
     let mut conn = connection();
     if conn.is_err() {
-        error!("获取redis链接失败：{}",conn.err().unwrap());
+        error!("获取redis链接失败：{}", conn.err().unwrap());
         return false;
     }
     let result: RedisResult<String> = conn.unwrap().del(key);
     return match result {
-        Ok(_) => {
-            true
-        }
+        Ok(_) => true,
         Err(err) => {
-            error!("删除redis key 失败：{}",err);
+            error!("删除redis key 失败：{}", err);
             false
         }
-    }
+    };
 }
 macro_rules! aw {
     ($e:expr) => {

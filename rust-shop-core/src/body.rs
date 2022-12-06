@@ -1,6 +1,6 @@
 //! HTTP body utilities.
 
-use crate::{BoxError};
+use crate::BoxError;
 use bytes::Bytes;
 use bytes::{Buf, BufMut};
 use http_body::Body;

@@ -168,9 +168,7 @@ impl<'a, K> Iterator for PrivateCookieJarIter<'a, K> {
         }
     }
 }
-fn cookies_from_request(
-    req: &mut RequestCtx,
-) -> impl Iterator<Item = Cookie<'static>> + '_ {
+fn cookies_from_request(req: &mut RequestCtx) -> impl Iterator<Item = Cookie<'static>> + '_ {
     req.headers
         .get_all(COOKIE)
         .into_iter()

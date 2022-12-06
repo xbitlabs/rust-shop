@@ -38,12 +38,12 @@ pub mod AuthController {
     use crate::service::product_category_service::ProductCategoryService;
     use crate::StatusCode;
     use rust_shop_core::db::TransactionManager;
-    use rust_shop_core::APP_EXTENSIONS;
     use rust_shop_core::entity::AdminUser;
     use rust_shop_core::mode_and_view::ModelAndView;
-    use rust_shop_core::session::Session;
     use rust_shop_core::response::into_response::IntoResponse;
     use rust_shop_core::response::Response;
+    use rust_shop_core::session::Session;
+    use rust_shop_core::APP_EXTENSIONS;
 
     #[derive(serde::Serialize, serde::Deserialize, Debug)]
     pub struct User {
@@ -90,7 +90,6 @@ pub mod AuthController {
             )
             .await?;
 
-
         let id = ID_GENERATOR.lock().unwrap().real_time_generate();
         let wx_open_id = Uuid::new_v4().to_string();
         let mut args = MySqlArguments::default();
@@ -118,25 +117,29 @@ pub mod AuthController {
                 args,
             )
             .await?;
-        let admins:Vec<AdminUser> = sql_exe_with_tran.find_all("select * from admin_user").await?;
+        let admins: Vec<AdminUser> = sql_exe_with_tran
+            .find_all("select * from admin_user")
+            .await?;
         let mut args = MySqlArguments::default();
         args.add("admin");
-        let admins:Option<AdminUser> = sql_exe_with_tran.find_option_with("select * from admin_user where username=?",args).await?;
+        let admins: Option<AdminUser> = sql_exe_with_tran
+            .find_option_with("select * from admin_user where username=?", args)
+            .await?;
 
-        req.session.insert_or_update("user".to_string(),&u);
+        req.session.insert_or_update("user".to_string(), &u);
 
         Ok(Json(u))
     }
     #[route("GET", "model_and_view")]
-    pub async fn model_and_view(ctx:&mut RequestCtx)->anyhow::Result<ModelAndView>{
+    pub async fn model_and_view(ctx: &mut RequestCtx) -> anyhow::Result<ModelAndView> {
         let mut model_and_view = ModelAndView::new("test.html".to_string());
-        let user = User{
+        let user = User {
             id: 0,
             name: "pgg".to_string(),
-            is_auth: false
+            is_auth: false,
         };
-        model_and_view.insert("user",&user);
-        ctx.session.insert_or_update("user".to_string(),&user);
+        model_and_view.insert("user", &user);
+        ctx.session.insert_or_update("user".to_string(), &user);
         Ok(model_and_view)
     }
 }

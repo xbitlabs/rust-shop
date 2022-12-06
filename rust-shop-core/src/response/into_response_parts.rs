@@ -1,10 +1,10 @@
-use core::fmt;
-use std::convert::Infallible;
-use http::{Extensions, HeaderMap, HeaderValue};
-use http::header::HeaderName;
-use hyper::{Body, StatusCode};
 use crate::response::into_response::IntoResponse;
 use crate::response::Response;
+use core::fmt;
+use http::header::HeaderName;
+use http::{Extensions, HeaderMap, HeaderValue};
+use hyper::{Body, StatusCode};
+use std::convert::Infallible;
 
 pub trait IntoResponseParts {
     /// The type returned in the event of an error.
@@ -17,8 +17,8 @@ pub trait IntoResponseParts {
 }
 
 impl<T> IntoResponseParts for Option<T>
-    where
-        T: IntoResponseParts,
+where
+    T: IntoResponseParts,
 {
     type Error = T::Error;
 
@@ -71,11 +71,11 @@ impl IntoResponseParts for HeaderMap {
 }
 
 impl<K, V, const N: usize> IntoResponseParts for [(K, V); N]
-    where
-        K: TryInto<HeaderName>,
-        K::Error: fmt::Display,
-        V: TryInto<HeaderValue>,
-        V::Error: fmt::Display,
+where
+    K: TryInto<HeaderName>,
+    K::Error: fmt::Display,
+    V: TryInto<HeaderValue>,
+    V::Error: fmt::Display,
 {
     type Error = TryIntoHeaderError<K::Error, V::Error>;
 
@@ -117,9 +117,9 @@ enum TryIntoHeaderErrorKind<K, V> {
 }
 
 impl<K, V> IntoResponse for TryIntoHeaderError<K, V>
-    where
-        K: fmt::Display,
-        V: fmt::Display,
+where
+    K: fmt::Display,
+    V: fmt::Display,
 {
     fn into_response(self) -> Response {
         match self.kind {
@@ -145,9 +145,9 @@ impl<K, V> fmt::Display for TryIntoHeaderError<K, V> {
 }
 
 impl<K, V> std::error::Error for TryIntoHeaderError<K, V>
-    where
-        K: std::error::Error + 'static,
-        V: std::error::Error + 'static,
+where
+    K: std::error::Error + 'static,
+    V: std::error::Error + 'static,
 {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self.kind {

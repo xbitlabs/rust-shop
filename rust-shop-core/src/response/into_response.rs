@@ -4,25 +4,24 @@ use std::convert::Infallible;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use bytes::{Buf, Bytes, BytesMut};
 use bytes::buf::Chain;
+use bytes::{Buf, Bytes, BytesMut};
 use http::header::HeaderName;
-use http::{Extensions, header, HeaderMap, HeaderValue};
+use http::{header, Extensions, HeaderMap, HeaderValue};
 
-use http_body::{Empty, Full, SizeHint};
 use http_body::combinators::{MapData, MapErr};
+use http_body::{Empty, Full, SizeHint};
 
-use crate::{body, BoxError};
 use crate::response::into_response_parts::IntoResponseParts;
 use crate::response::into_response_parts::ResponseParts;
-use hyper::{Body, StatusCode};
 use crate::response::Response;
+use crate::{body, BoxError};
+use hyper::{Body, StatusCode};
 
 pub trait IntoResponse {
     /// Create a response.
     fn into_response(self) -> Response;
 }
-
 
 impl IntoResponse for StatusCode {
     fn into_response(self) -> Response {
@@ -45,9 +44,9 @@ impl IntoResponse for Infallible {
 }
 
 impl<T, E> IntoResponse for Result<T, E>
-    where
-        T: IntoResponse,
-        E: IntoResponse,
+where
+    T: IntoResponse,
+    E: IntoResponse,
 {
     fn into_response(self) -> Response {
         match self {
@@ -58,9 +57,9 @@ impl<T, E> IntoResponse for Result<T, E>
 }
 
 impl<B> IntoResponse for Response<B>
-    where
-        B: http_body::Body<Data = Bytes> + Send + 'static,
-        B::Error: Into<BoxError>,
+where
+    B: http_body::Body<Data = Bytes> + Send + 'static,
+    B::Error: Into<BoxError>,
 {
     fn into_response(self) -> Response {
         self.map(body::boxed)
@@ -86,8 +85,8 @@ impl IntoResponse for Empty<Bytes> {
 }
 
 impl<E> IntoResponse for http_body::combinators::BoxBody<Bytes, E>
-    where
-        E: Into<BoxError> + 'static,
+where
+    E: Into<BoxError> + 'static,
 {
     fn into_response(self) -> Response {
         Response::new(body::boxed(self))
@@ -95,8 +94,8 @@ impl<E> IntoResponse for http_body::combinators::BoxBody<Bytes, E>
 }
 
 impl<E> IntoResponse for http_body::combinators::UnsyncBoxBody<Bytes, E>
-    where
-        E: Into<BoxError> + 'static,
+where
+    E: Into<BoxError> + 'static,
 {
     fn into_response(self) -> Response {
         Response::new(body::boxed(self))
@@ -104,10 +103,10 @@ impl<E> IntoResponse for http_body::combinators::UnsyncBoxBody<Bytes, E>
 }
 
 impl<B, F> IntoResponse for MapData<B, F>
-    where
-        B: http_body::Body + Send + 'static,
-        F: FnMut(B::Data) -> Bytes + Send + 'static,
-        B::Error: Into<BoxError>,
+where
+    B: http_body::Body + Send + 'static,
+    F: FnMut(B::Data) -> Bytes + Send + 'static,
+    B::Error: Into<BoxError>,
 {
     fn into_response(self) -> Response {
         Response::new(body::boxed(self))
@@ -115,10 +114,10 @@ impl<B, F> IntoResponse for MapData<B, F>
 }
 
 impl<B, F, E> IntoResponse for MapErr<B, F>
-    where
-        B: http_body::Body<Data = Bytes> + Send + 'static,
-        F: FnMut(B::Error) -> E + Send + 'static,
-        E: Into<BoxError>,
+where
+    B: http_body::Body<Data = Bytes> + Send + 'static,
+    F: FnMut(B::Error) -> E + Send + 'static,
+    E: Into<BoxError>,
 {
     fn into_response(self) -> Response {
         Response::new(body::boxed(self))
@@ -166,9 +165,9 @@ impl IntoResponse for BytesMut {
 }
 
 impl<T, U> IntoResponse for Chain<T, U>
-    where
-        T: Buf + Unpin + Send + 'static,
-        U: Buf + Unpin + Send + 'static,
+where
+    T: Buf + Unpin + Send + 'static,
+    U: Buf + Unpin + Send + 'static,
 {
     fn into_response(self) -> Response {
         let (first, second) = self.into_inner();
@@ -190,9 +189,9 @@ struct BytesChainBody<T, U> {
 }
 
 impl<T, U> http_body::Body for BytesChainBody<T, U>
-    where
-        T: Buf + Unpin,
-        U: Buf + Unpin,
+where
+    T: Buf + Unpin,
+    U: Buf + Unpin,
 {
     type Data = Bytes;
     type Error = Infallible;
@@ -262,8 +261,8 @@ impl IntoResponse for Cow<'static, [u8]> {
 }
 
 impl<R> IntoResponse for (StatusCode, R)
-    where
-        R: IntoResponse,
+where
+    R: IntoResponse,
 {
     fn into_response(self) -> Response {
         let mut res = self.1.into_response();
@@ -289,11 +288,11 @@ impl IntoResponse for Extensions {
 }
 
 impl<K, V, const N: usize> IntoResponse for [(K, V); N]
-    where
-        K: TryInto<HeaderName>,
-        K::Error: fmt::Display,
-        V: TryInto<HeaderValue>,
-        V::Error: fmt::Display,
+where
+    K: TryInto<HeaderName>,
+    K::Error: fmt::Display,
+    V: TryInto<HeaderValue>,
+    V::Error: fmt::Display,
 {
     fn into_response(self) -> Response {
         (self, ()).into_response()
@@ -301,8 +300,8 @@ impl<K, V, const N: usize> IntoResponse for [(K, V); N]
 }
 
 impl<R> IntoResponse for (http::response::Parts, R)
-    where
-        R: IntoResponse,
+where
+    R: IntoResponse,
 {
     fn into_response(self) -> Response {
         let (parts, res) = self;
@@ -311,8 +310,8 @@ impl<R> IntoResponse for (http::response::Parts, R)
 }
 
 impl<R> IntoResponse for (http::response::Response<()>, R)
-    where
-        R: IntoResponse,
+where
+    R: IntoResponse,
 {
     fn into_response(self) -> Response {
         let (template, res) = self;
@@ -320,7 +319,6 @@ impl<R> IntoResponse for (http::response::Response<()>, R)
         (parts, res).into_response()
     }
 }
-
 
 macro_rules! impl_into_response {
     ( $($ty:ident),* $(,)? ) => {
