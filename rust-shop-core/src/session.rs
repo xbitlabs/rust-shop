@@ -1,16 +1,13 @@
 use crate::RequestCtx;
-use anyhow::anyhow;
+
 use chrono::Local;
 use log::error;
-use redis::{Commands, RedisResult};
-use serde::ser::{SerializeMap, SerializeStruct};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use redis::RedisResult;
+
 use serde_json::Error;
-use std::any::{Any, TypeId};
-use std::borrow::BorrowMut;
+
 use std::collections::HashMap;
-use std::ops::Deref;
-use std::sync::{Arc, LockResult, Mutex};
+
 use uuid::Uuid;
 
 pub trait Session {
@@ -48,11 +45,11 @@ impl Default for DefaultSession {
     }
 }
 impl Session for DefaultSession {
-    fn set_last_activity(&mut self, last_activity: i64) {
-        self.last_activity = last_activity;
-    }
     fn get_last_activity(&mut self) -> i64 {
         self.last_activity
+    }
+    fn set_last_activity(&mut self, last_activity: i64) {
+        self.last_activity = last_activity;
     }
     fn get_session_id(&self) -> &String {
         &self.session_id

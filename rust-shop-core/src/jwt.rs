@@ -11,7 +11,7 @@ use lazy_static::lazy_static;
 use log::info;
 use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlArguments;
-use sqlx::{Arguments, Database, Executor, MySql};
+use sqlx::Arguments;
 use std::thread;
 use time::Duration;
 use time::OffsetDateTime;
@@ -19,7 +19,7 @@ use uuid::Uuid;
 
 pub mod jwt_date_format {
     //! Custom serialization of OffsetDateTime to conform with the JWT spec (RFC 7519 section 2, "Numeric Date")
-    use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
+    use serde::{self, Deserialize, Deserializer, Serializer};
     use time::OffsetDateTime;
 
     /// Serializes an OffsetDateTime to a Unix timestamp (milliseconds since 1970/1/1T00:00:00T)
@@ -234,9 +234,4 @@ impl<'r, 'a, 'b> JwtService for DefaultJwtService<'r, 'a, 'b> {
             .await?;
         Ok(rows_affected > 0)
     }
-}
-macro_rules! aw {
-    ($e:expr) => {
-        tokio_test::block_on($e)
-    };
 }

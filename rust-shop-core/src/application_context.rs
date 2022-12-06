@@ -1,7 +1,6 @@
 use crate::session::RedisSession;
-use crate::{DefaultSessionManager, Router};
+use crate::DefaultSessionManager;
 use once_cell::sync::Lazy;
-use std::collections::HashMap;
 
 pub static mut APPLICATION_CONTEXT: Lazy<ApplicationContext> = Lazy::new(|| {
     let mut application_context: ApplicationContext = ApplicationContext {

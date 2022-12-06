@@ -1,24 +1,21 @@
 extern crate core;
 
 use proc_macro::{Span, TokenStream};
-use std::alloc::System;
-use std::any::{Any, TypeId};
-use std::collections::HashMap;
+
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::iter::FromIterator;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Arc;
-use std::{env, fs};
 
-use chrono::NaiveDateTime;
+use std::env;
+
 use proc_macro2::TokenTree;
-use quote::__private::ext::RepToTokensExt;
-use quote::{quote, ToTokens, TokenStreamExt};
+
+use quote::{quote, ToTokens};
 use syn::__private::TokenStream2;
 use syn::parse::{Parse, ParseStream};
-use syn::parse_quote;
+
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::Comma;
@@ -26,8 +23,7 @@ use syn::{
     parse_macro_input, Data, DeriveInput, Fields, FnArg, GenericArgument, Ident, Item, ItemFn, Pat,
     PatTuple, PatType, Path, PathArguments, Type, TypePath,
 };
-use thiserror::Error;
-use uuid::Uuid;
+
 use walkdir::WalkDir;
 
 fn is_option_f32_type(type_name: &String) -> bool {

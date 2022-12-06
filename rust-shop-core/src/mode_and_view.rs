@@ -1,4 +1,4 @@
-use http::{header, HeaderValue, StatusCode};
+use http::StatusCode;
 use std::collections::HashMap;
 use std::error::Error;
 

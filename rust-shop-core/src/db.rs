@@ -1,20 +1,15 @@
-use std::any::Any;
 use std::borrow::BorrowMut;
-use std::ops::Deref;
-use std::sync::Arc;
+
 use std::time::Duration;
 
 use anyhow::anyhow;
-use hyper::{Body, Request};
+
 use lazy_static::lazy_static;
 use sqlx::mysql::{MySqlArguments, MySqlPoolOptions, MySqlRow};
 use sqlx::postgres::PgPoolOptions;
-use sqlx::{Acquire, Database, Error, MySql, MySqlPool, PgPool, Pool, Postgres, Transaction};
+use sqlx::{Error, MySql, MySqlPool, PgPool, Pool, Postgres, Transaction};
 
 use crate::app_config::load_mod_config;
-use crate::extensions::Extensions;
-use crate::state::State;
-use crate::RequestStateProvider;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct DbConfig {

@@ -16,7 +16,7 @@ use crate::response::into_response_parts::IntoResponseParts;
 use crate::response::into_response_parts::ResponseParts;
 use crate::response::Response;
 use crate::{body, BoxError};
-use hyper::{Body, StatusCode};
+use hyper::StatusCode;
 
 pub trait IntoResponse {
     /// Create a response.

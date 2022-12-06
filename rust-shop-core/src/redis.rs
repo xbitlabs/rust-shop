@@ -1,12 +1,10 @@
 use crate::app_config::load_mod_config;
-use crate::security::{DefaultAuthenticationToken, DefaultSecurityContext, DefaultUserDetails};
-use crate::DefaultAuthentication;
-use anyhow::anyhow;
+
 use lazy_static::lazy_static;
 use log::error;
 use redis::{
-    Commands, Connection, ConnectionAddr, ConnectionInfo, JsonCommands, RedisConnectionInfo,
-    RedisError, RedisResult,
+    Commands, Connection, ConnectionAddr, ConnectionInfo, RedisConnectionInfo, RedisError,
+    RedisResult,
 };
 use serde::{Deserialize, Serialize};
 
@@ -78,45 +76,4 @@ pub async fn remove(key: &str) -> bool {
             false
         }
     };
-}
-macro_rules! aw {
-    ($e:expr) => {
-        tokio_test::block_on($e)
-    };
-}
-/*
-#[test]
-fn test_wechat_api(){
-    let api = WeChatMiniAppService::new();
-    let result = api.get_access_token();
-    let result1 = aw!(result);
-    println!("{:?}",result1);
-}*/
-#[test]
-fn test() {
-    let token = DefaultAuthenticationToken::new("pgg".parse().unwrap(), "168".to_string());
-    let user = DefaultUserDetails::new(
-        1,
-        "pgg".to_string(),
-        "168".to_string(),
-        vec!["add".to_string(), "update".to_string()],
-        true,
-    );
-    let auth = DefaultAuthentication::new(
-        token,
-        vec!["add".to_string(), "update".to_string()],
-        true,
-        Box::new(user),
-    );
-    let context = DefaultSecurityContext::new(auth);
-    let result = aw!(set("test", &context));
-    let context: RedisResult<DefaultSecurityContext> = aw!(get("test"));
-    if context.is_ok() {
-        let context = context.unwrap();
-        println!("{}", serde_json::to_string(&context).unwrap());
-        println!("ok");
-    } else {
-        println!("{:?}", context.err().unwrap());
-    }
-    println!("{:?}", result);
 }

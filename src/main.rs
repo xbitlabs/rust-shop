@@ -2,42 +2,28 @@
 
 use std::net::SocketAddr;
 use std::string::ToString;
-use std::sync::{Arc, Mutex};
 
-use hyper::{Body, Request, Response, StatusCode};
-use lazy_static::lazy_static;
+use hyper::StatusCode;
+
 use log::info;
-use once_cell::sync::Lazy;
-use snowflake::SnowflakeIdGenerator;
-use sqlx::{MySql, Pool};
-use syn::__private::ToTokens;
-use syn::{Item, ItemMod};
 
 use rust_shop_core::db::{mysql_connection_pool, SqlCommandExecutor};
-use rust_shop_core::extensions::Extensions;
-use rust_shop_core::extract::json::Json;
-use rust_shop_core::extract::FromRequest;
+
 use rust_shop_core::router::register_route;
 use rust_shop_core::security::{
     AdminUserLoadService, AuthenticationFilter, AuthenticationProcessingFilter,
-    BcryptPasswordEncoder, NopPasswordEncoder, SecurityInterceptor, Sha512PasswordEncoder,
-    UsernamePasswordAuthenticationTokenResolver,
+    SecurityInterceptor, Sha512PasswordEncoder, UsernamePasswordAuthenticationTokenResolver,
 };
 use rust_shop_core::security::{
-    AuthenticationTokenResolver, AuthenticationTokenResolverFn, DefaultLoadUserService,
-    LoadUserService, LoadUserServiceFn, WeChatMiniAppAuthenticationTokenResolver,
-    WeChatUserService, WebSecurityConfigurer,
+    AuthenticationTokenResolver, AuthenticationTokenResolverFn, LoadUserService, LoadUserServiceFn,
+    WebSecurityConfigurer,
 };
 use rust_shop_core::state::State;
-use rust_shop_core::{
-    AccessLogFilter, EndpointResult, Filter, Next, RequestCtx, RequestStateProvider,
-    ResponseBuilder, Server,
-};
+use rust_shop_core::{AccessLogFilter, EndpointResult, RequestCtx, ResponseBuilder, Server};
 
 use crate::api::auth_controller;
 use crate::api::index_controller::IndexController;
-use crate::api::static_file_controller::StaticFileController;
-use crate::api::upload_controller::UploadController;
+
 use crate::config::load_config::APP_CONFIG;
 
 pub mod api;
@@ -96,7 +82,7 @@ async fn main() -> anyhow::Result<()> {
     )));
     security_config.password_encoder(Box::new(Sha512PasswordEncoder));
     security_config.load_user_service(LoadUserServiceFn::from(Box::new(
-        |req: &mut RequestCtx| -> Box<
+        |_req: &mut RequestCtx| -> Box<
             dyn for<'r, 'c, 'd> Fn(
                     &'r mut SqlCommandExecutor<'c, 'd>,
                 ) -> Box<(dyn LoadUserService + Send + Sync + 'r)>

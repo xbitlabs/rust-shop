@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 
 #[derive(sqlx::FromRow, serde::Serialize, serde::Deserialize, Debug)]
 pub struct User {

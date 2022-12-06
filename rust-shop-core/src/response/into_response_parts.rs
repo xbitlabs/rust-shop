@@ -3,7 +3,7 @@ use crate::response::Response;
 use core::fmt;
 use http::header::HeaderName;
 use http::{Extensions, HeaderMap, HeaderValue};
-use hyper::{Body, StatusCode};
+use hyper::StatusCode;
 use std::convert::Infallible;
 
 pub trait IntoResponseParts {

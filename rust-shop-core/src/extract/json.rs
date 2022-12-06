@@ -8,7 +8,7 @@ use hyper::header::HeaderValue;
 use hyper::{header, Body, StatusCode};
 use log::error;
 use multer::bytes::{BufMut, BytesMut};
-use serde::de::DeserializeOwned;
+
 use serde::{Deserialize, Serialize};
 
 use crate::extract::ExtractError::{
@@ -17,7 +17,7 @@ use crate::extract::ExtractError::{
 use crate::extract::{ExtractError, FromRequest};
 use crate::response::into_response::IntoResponse;
 use crate::response::Response;
-use crate::{BoxError, EndpointResult, RequestCtx, ResponseBuilder};
+use crate::{EndpointResult, RequestCtx, ResponseBuilder};
 
 #[derive(Debug, Clone, Copy, Default)]
 #[cfg_attr(docsrs, doc(cfg(feature = "json")))]

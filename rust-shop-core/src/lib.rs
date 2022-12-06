@@ -339,9 +339,9 @@ where
 #[async_trait::async_trait]
 pub trait Filter: Send + Sync + 'static {
     async fn handle<'a>(&'a self, mut ctx: RequestCtx, next: Next<'a>) -> anyhow::Result<Response>;
-    fn url_patterns(&self) -> String;
+    fn url_patterns(&self) -> &'static str;
     fn order(&self) -> u64;
-    fn name(&self) -> String;
+    fn name(&self) -> &'static str;
 }
 
 #[allow(missing_debug_implementations)]
@@ -441,16 +441,16 @@ impl Filter for AccessLogFilter {
         res
     }
 
-    fn url_patterns(&self) -> String {
-        "/*".to_string()
+    fn url_patterns(&self) -> &'static str {
+        "/*"
     }
 
     fn order(&self) -> u64 {
         todo!()
     }
 
-    fn name(&self) -> String {
-        "AccessLogFilter".to_string()
+    fn name(&self) -> &'static str {
+        "AccessLogFilter"
     }
 }
 
@@ -652,7 +652,7 @@ impl Server {
 
 impl Default for Server {
     fn default() -> Self {
-        unsafe { Self::new() }
+        Self::new()
     }
 }
 

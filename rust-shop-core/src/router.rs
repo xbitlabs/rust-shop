@@ -1,10 +1,8 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
-use lazy_static::lazy_static;
 use once_cell::sync::Lazy;
-use route_recognizer::{Params, Router as MethodRouter};
+use route_recognizer::Router as MethodRouter;
 
 use crate::{BoxHTTPHandler, HTTPHandler};
 

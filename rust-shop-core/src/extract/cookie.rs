@@ -1,9 +1,9 @@
 use crate::extract::{ExtractError, FromRequest};
 use crate::RequestCtx;
 use async_trait::async_trait;
-use cookie::{Cookie, Iter, Key, PrivateJar};
+use cookie::{Cookie, Key, PrivateJar};
 use http::header::COOKIE;
-use std::convert::Infallible;
+
 use std::fmt;
 use std::marker::PhantomData;
 

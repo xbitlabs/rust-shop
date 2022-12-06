@@ -1,7 +1,7 @@
 use std::fs::read_to_string;
 
 use schemars::schema::RootSchema;
-use serde_json::{from_str as json_from_str, to_string_pretty};
+use serde_json::to_string_pretty;
 use serde_yaml::from_str as yaml_from_str;
 
 #[derive(serde::Serialize, serde::Deserialize)]

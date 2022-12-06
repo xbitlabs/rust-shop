@@ -2,40 +2,35 @@ use std::any::Any;
 use std::borrow::BorrowMut;
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::ops::{Deref, DerefMut};
-use std::pin::Pin;
+
 use std::string::ToString;
-use std::sync::Arc;
 
 use anyhow::anyhow;
 use base64ct::{Base64, Encoding};
 use bcrypt::{hash, verify, DEFAULT_COST};
 use chrono::Local;
-use erased_serde::{serialize_trait_object, Error, Serializer};
-use http::HeaderValue;
-use hyper::{Body, Request};
+use erased_serde::serialize_trait_object;
+
 use lazy_static::lazy_static;
 use log::{error, info};
-use once_cell::sync::Lazy;
+
 use redis::RedisResult;
-use serde::{Deserializer, Serialize};
-use sha2::{Digest, Sha256, Sha512};
+use serde::Deserializer;
+use sha2::{Digest, Sha512};
 use sqlx::mysql::MySqlArguments;
-use sqlx::{Acquire, Arguments, MySql, Pool};
+use sqlx::{Arguments, MySql, Pool};
 use thiserror::Error;
 use url::Url;
 use urlpattern::{UrlPattern, UrlPatternInit, UrlPatternMatchInput};
 
-use rust_shop_macro::FormParser;
-
 use crate::app_config::load_mod_config;
 use crate::db::{SqlCommandExecutor, TransactionManager};
 use crate::entity::{AdminPermission, AdminRole, AdminUser, User};
-use crate::extensions::Extensions;
+
 use crate::id_generator::ID_GENERATOR;
 use crate::jwt::{decode_access_token, DefaultJwtService};
 use crate::jwt::{AccessToken, JwtService};
-use crate::memory_cache::{CacheEntity, CACHE};
+
 use crate::response::Response;
 use crate::state::State;
 use crate::wechat::WeChatMiniAppService;
@@ -1058,9 +1053,9 @@ impl AccessDecisionVoter for RoleVoter {
         return vote;
     }
 }
-pub(crate) fn req_matches(req: &RequestCtx, url_patterns: &String) -> bool {
+pub(crate) fn req_matches(req: &RequestCtx, url_patterns: &str) -> bool {
     let init = UrlPatternInit {
-        pathname: Some(url_patterns.clone()),
+        pathname: Some(url_patterns.to_string()),
         ..Default::default()
     };
     let pattern = <UrlPattern>::parse(init);
@@ -1123,7 +1118,7 @@ impl Filter for SecurityInterceptor {
         }
     }
 
-    fn url_patterns(&self) -> String {
+    fn url_patterns(&self) -> &'static str {
         if SECURITY_CONFIG.intercept_url_patterns.is_none() {
             panic!("intercept_url_patterns尚未配置");
         } else {
@@ -1131,7 +1126,7 @@ impl Filter for SecurityInterceptor {
                 .intercept_url_patterns
                 .as_ref()
                 .unwrap()
-                .clone()
+                .as_str()
         }
     }
 
@@ -1139,8 +1134,8 @@ impl Filter for SecurityInterceptor {
         todo!()
     }
 
-    fn name(&self) -> String {
-        "SecurityInterceptor".to_string()
+    fn name(&self) -> &'static str {
+        "SecurityInterceptor"
     }
 }
 
@@ -1237,16 +1232,16 @@ impl Filter for AuthenticationProcessingFilter {
         }
     }
 
-    fn url_patterns(&self) -> String {
-        "/login".to_string()
+    fn url_patterns(&self) -> &'static str {
+        "/login"
     }
 
     fn order(&self) -> u64 {
         todo!()
     }
 
-    fn name(&self) -> String {
-        "AuthenticationProcessingFilter".to_string()
+    fn name(&self) -> &'static str {
+        "AuthenticationProcessingFilter"
     }
 }
 
@@ -1796,16 +1791,16 @@ impl Filter for AuthenticationFilter {
         next.run(ctx).await
     }
 
-    fn url_patterns(&self) -> String {
-        "/*".to_string()
+    fn url_patterns(&self) -> &'static str {
+        "/*"
     }
 
     fn order(&self) -> u64 {
         todo!()
     }
 
-    fn name(&self) -> String {
-        "AuthenticationFilter".to_string()
+    fn name(&self) -> &'static str {
+        "AuthenticationFilter"
     }
 }
 

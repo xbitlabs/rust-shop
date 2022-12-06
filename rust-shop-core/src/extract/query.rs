@@ -1,4 +1,3 @@
-use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
 use crate::extract::ExtractError::FailedToDeserializeQueryString;

@@ -1,10 +1,7 @@
-use std::io;
-
-use anyhow::anyhow;
 use async_trait::async_trait;
-use hyper::body::Bytes;
-use hyper::{Body, Error, Request, StatusCode};
-use log::{error, log};
+
+use hyper::{Body, StatusCode};
+use log::error;
 use thiserror::Error;
 
 use crate::response::into_response::IntoResponse;
