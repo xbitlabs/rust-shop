@@ -4,6 +4,7 @@ use crate::response::into_response::IntoResponse;
 pub mod append_headers;
 pub mod into_response;
 pub mod into_response_parts;
+pub mod redirect;
 
 /// Type alias for [`http::Response`] whose body type defaults to [`BoxBody`], the most common body
 /// type used with axum.
