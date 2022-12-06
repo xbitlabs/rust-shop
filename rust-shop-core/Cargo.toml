@@ -67,15 +67,13 @@ moka = "0.9.6"
 # if you use tokio
 redis = { version = "0.22.1", features = ["tokio-comp","json"] }
 erased-serde = "0.3.23"
-md5 = "0.7.0"
 cookie = {version="0.16.1",features =["private","percent-encode","signed","key-expansion","secure"]}
 dashmap = "5.4.0"
 sha2 = "0.10.6"
 base64ct = "1.5.3"
 futures = "0.3.25"
+#模板支持
 tera = "1.17.1"
 #event-manager = "0.3.0"
-async-recursion = "1.0.0"
-
 [dev-dependencies]
 tokio-test = "*"
