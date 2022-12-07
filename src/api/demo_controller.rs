@@ -40,7 +40,11 @@ pub mod demo_controller {
         pub name: String,
         pub is_auth: bool,
     }
-
+    #[route("POST", "/hello")]
+    pub async fn hello(RequestParam(user): RequestParam<String>)-> anyhow::Result<String>{
+        let u = user.clone();
+        Ok(format!("hello {}",u))
+    }
     #[route("POST", "/user/:id/:age")]
     pub async fn test(
         req: &mut RequestCtx,
