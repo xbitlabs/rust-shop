@@ -9,7 +9,7 @@ rust-shop是使用rust语言开发的微信商城（商城功能开发中），�
         Ok(format!("hello {}",u))
     }
 ```
-匹配的请求为：
+上面的代码匹配的请求为：
 POST /hello?user=pgg
 #### 2、自动事务。一个请求视为一个事务，框架实现了请求的整体提交或者整体回滚，当发生异常时，自动回滚事务，如果请求没有异常发生，则自动提交事务。也可以实现事务嵌套。
 ```rust 
@@ -18,6 +18,7 @@ POST /hello?user=pgg
         Ok(String::from("hello"))
     }
 ``` 
+如果不想使用事务，只需将sql_exe_with_tran参数名改为sql_exe即可
 ### 3、内置登录、权限模块。只需改变配置即可替换原框架的默认实现。
 ```rust
    let mut security_config = WebSecurityConfigurer::new();
