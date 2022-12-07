@@ -1,12 +1,12 @@
-use std::borrow::BorrowMut;
-use std::fmt::Error;
 
-use chrono::Local;
+
+
+
 use sqlx::{MySql, MySqlPool};
-use uuid::Uuid;
+
 
 use rust_shop_core::db::{mysql_connection_pool, SqlCommandExecutor, TransactionManager};
-use rust_shop_core::id_generator::ID_GENERATOR;
+
 use rust_shop_core::jwt::DefaultJwtService;
 
 use crate::entity::entity::ProductCategory;

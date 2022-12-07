@@ -92,7 +92,7 @@ fn json_content_type(req: &RequestCtx) -> bool {
 }
 pub async fn body_to_bytes<T>(body: &mut T) -> Result<Bytes, T::Error>
 where
-    T: http_body::Body + std::marker::Unpin,
+    T: http_body::Body + Unpin,
 {
     futures_util::pin_mut!(body);
 

@@ -1,9 +1,9 @@
-use std::fs::read_to_string;
+
 
 use lazy_static::lazy_static;
-use schemars::schema::RootSchema;
 
-use rust_shop_core::app_config::{load_conf, EnvConfig};
+
+use rust_shop_core::app_config::{load_conf};
 
 use crate::config::env_config::AppConfig;
 
