@@ -19,7 +19,7 @@ POST /hello?user=pgg
     }
 ``` 
 如果不想使用事务，只需将sql_exe_with_tran参数名改为sql_exe即可
-### 3、内置登录、权限模块。只需改变配置即可替换原框架的默认实现。
+#### 3、内置登录、权限模块。只需改变配置即可替换原框架的默认实现。
 ```rust
    let mut security_config = WebSecurityConfigurer::new();
     security_config.enable_security(false);
@@ -40,9 +40,9 @@ POST /hello?user=pgg
     )));
     srv.security_config(security_config);
 ```
-### 4、http handler支持丰富的返回值类型，如：JSON,String,Bytes等
-### 5、支持session及cookie
-### 6、支持模板
+#### 4、http handler支持丰富的返回值类型，如：JSON,String,Bytes等
+#### 5、支持session及cookie
+#### 6、支持模板
 ```rust
     #[route("GET", "model_and_view")]
     pub async fn model_and_view(ctx: &mut RequestCtx) -> anyhow::Result<ModelAndView> {
@@ -57,8 +57,8 @@ POST /hello?user=pgg
         Ok(model_and_view)
     }
 ```
-### 7、支持http请求处理中间件（类似java spring mvc中的filter）
-### 8、进一步封装了sqlx，数据库访问操作更简便
+#### 7、支持http请求处理中间件（类似java spring mvc中的filter）
+#### 8、进一步封装了sqlx，数据库访问操作更简便
 # 使用方法
 ```rust
 #[tokio::main]
