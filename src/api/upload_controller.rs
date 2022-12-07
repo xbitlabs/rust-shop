@@ -1,31 +1,34 @@
-use std::borrow::{Borrow, BorrowMut};
-use std::convert::Infallible;
-use std::error::Error;
-use std::fs;
-use std::io::{Read, Write};
+pub mod upload_controller {
+    use std::borrow::BorrowMut;
+    use std::convert::Infallible;
 
-use chrono::{Local, Utc};
-use hyper::body::Buf;
-use hyper::header::CONTENT_TYPE;
-use hyper::{header, Body, Request, StatusCode};
-use log::{debug, error, info, warn};
-use log4rs;
-use multer::Multipart;
-use tokio::io::AsyncWriteExt;
-use uuid::Uuid;
+    use std::fs;
+    use std::io::Write;
 
-use rust_shop_core::response::into_response::IntoResponse;
-use rust_shop_core::response::Response;
-use rust_shop_core::EndpointResultCode;
+    use bytes::Bytes;
 
-use crate::config::load_config::APP_CONFIG;
-use crate::{EndpointResult, RequestCtx, ResponseBuilder};
+    use chrono::{Local, Utc};
+    use hyper::body::Buf;
+    use hyper::header::CONTENT_TYPE;
+    use hyper::{header, Body, Request, StatusCode};
+    use log::{debug, error, info};
 
-pub struct UploadController;
+    use multer::Multipart;
+    use tokio::io::AsyncWriteExt;
+    use uuid::Uuid;
 
-impl UploadController {
-    pub async fn upload(req: Request<Body>) -> anyhow::Result<Response> {
-        let upload_result = UploadController::handle(req).await;
+    use rust_shop_core::extract::json::body_to_bytes;
+    use rust_shop_core::response::into_response::IntoResponse;
+    use rust_shop_core::response::Response;
+    use rust_shop_core::EndpointResultCode;
+
+    use crate::config::load_config::APP_CONFIG;
+    use crate::{EndpointResult, RequestCtx, ResponseBuilder};
+    use rust_shop_macro::route;
+
+    #[route("POST", "/upload")]
+    pub async fn upload(req: &mut RequestCtx) -> anyhow::Result<Response> {
+        let upload_result = handle(req).await;
         match upload_result {
             Ok(result) => Ok(result.into_response()),
             Err(e) => {
@@ -35,11 +38,12 @@ impl UploadController {
             }
         }
     }
+
     // A handler for incoming requests.
-    async fn handle(req: Request<Body>) -> Result<Response, Infallible> {
+    async fn handle(req: &mut RequestCtx) -> Result<Response, Infallible> {
         // Extract the `multipart/form-data` boundary from the headers.
         let boundary = req
-            .headers()
+            .headers
             .get(CONTENT_TYPE)
             .and_then(|ct| ct.to_str().ok())
             .and_then(|ct| multer::parse_boundary(ct).ok());
@@ -52,10 +56,8 @@ impl UploadController {
                 .unwrap()
                 .into_response());
         }
-
         // Process the multipart e.g. you can store them in files.
-        let upload_result =
-            UploadController::process_multipart(req.into_body(), boundary.unwrap()).await;
+        let upload_result = process_multipart(req.body.borrow_mut(), boundary.unwrap()).await;
         match upload_result {
             Ok(result) => Ok(ResponseBuilder::with_endpoint_result(result)),
             Err(error) => Ok(ResponseBuilder::with_msg(
@@ -67,11 +69,14 @@ impl UploadController {
 
     // Process the request body as multipart/form-data.
     async fn process_multipart(
-        body: Body,
+        body: &mut Body,
         boundary: String,
-    ) -> multer::Result<EndpointResult<String>> {
+    ) -> anyhow::Result<EndpointResult<String>> {
+        let bytes = body_to_bytes(body).await?;
+        let stream =
+            futures_util::stream::once(async move { Result::<Bytes, Infallible>::Ok(bytes) });
         // Create a Multipart instance from the request body.
-        let mut multipart = Multipart::new(body, boundary);
+        let mut multipart = Multipart::new(stream, boundary);
         // Iterate over the fields, `next_field` method will return the next field if
         // available.
         while let Some(mut field) = multipart.next_field().await? {

@@ -75,6 +75,7 @@ use crate::session::{DefaultSession, DefaultSessionManager, Session, SessionMana
 use futures::executor::block_on;
 use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
+use http_body::Empty;
 use once_cell::sync::Lazy;
 
 pub static mut APP_EXTENSIONS: Lazy<Extensions> = Lazy::new(|| {
@@ -104,15 +105,18 @@ pub struct RequestCtx {
     pub method: Method,
     pub uri: Uri,
     pub version: Version,
-    pub extensions: Extensions,
+    pub extensions: http::Extensions,
     pub authentication: Box<(dyn Authentication + Sync + Send)>,
     pub cookies: CookieJar,
     pub session: DefaultSession,
 }
 
 impl RequestCtx {
-    pub fn extensions_mut(&mut self) -> &mut Extensions {
+    pub fn extensions_mut(&mut self) -> &mut http::Extensions {
         self.extensions.borrow_mut()
+    }
+    pub fn header_mut(&mut self)->&mut HeaderMap{
+        self.headers.borrow_mut()
     }
     pub fn set_authentication(&mut self, authentication: Box<(dyn Authentication + Sync + Send)>) {
         self.authentication = authentication;
@@ -126,6 +130,18 @@ impl Drop for RequestCtx {
             block_on(APPLICATION_CONTEXT.session_manager.save_session(self));
             println!("请求结束");
         }
+    }
+}
+impl Into<Request<Body>> for &mut RequestCtx{
+    fn into(mut self) -> Request<Body> {
+        let method = self.method.clone();
+        let mut req = Request::new(Body::empty());
+        *req.method_mut() = method;
+        *req.version_mut() = self.version;
+        *req.uri_mut() = self.uri.clone();
+        *req.headers_mut() = std::mem::take(self.header_mut());
+        *req.extensions_mut() = std::mem::take(self.extensions_mut());
+        req
     }
 }
 //处理http请求过程中状态保持
@@ -591,7 +607,7 @@ impl Server {
                             uri,
                             version,
                             body,
-                            extensions: Extensions::new(),
+                            extensions,
                             authentication: Box::new(DefaultAuthentication::default()),
                             cookies: CookieJar::default(),
                             session: DefaultSession::default(),

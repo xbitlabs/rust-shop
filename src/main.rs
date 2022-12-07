@@ -2,9 +2,6 @@
 
 use std::net::SocketAddr;
 use std::string::ToString;
-
-use hyper::StatusCode;
-
 use log::info;
 
 use rust_shop_core::db::{mysql_connection_pool, SqlCommandExecutor};
@@ -21,19 +18,18 @@ use rust_shop_core::security::{
 use rust_shop_core::state::State;
 use rust_shop_core::{AccessLogFilter, EndpointResult, RequestCtx, ResponseBuilder, Server};
 
-use crate::api::auth_controller;
-use crate::api::index_controller::IndexController;
+use crate::api::demo_controller;
+use crate::api::static_file_controller;
+use crate::api::upload_controller;
 
 use crate::config::load_config::APP_CONFIG;
 
 pub mod api;
 mod config;
 pub mod entity;
-mod extensions;
 mod filter;
 mod request;
 pub mod service;
-mod state;
 pub mod utils;
 mod vo;
 
@@ -91,15 +87,6 @@ async fn main() -> anyhow::Result<()> {
         > { Box::new(load_user_service_fn) },
     )));
     srv.security_config(security_config);
-
-    //let mysql_pool_state_provider : Box<dyn RequestStateProvider + Sync + Send> = Box::new(MysqlPoolStateProvider);
-    //srv.request_state(mysql_pool_state_provider);
-
-    srv.get("/", IndexController::index);
-    //上传
-    //srv.post("/upload", UploadController::upload);
-    //静态文件
-    //srv.get("/static/:day/:file", StaticFileController::handle);
     srv.run(addr).await.unwrap();
 
     info!("server shutdown!");

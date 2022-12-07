@@ -90,7 +90,7 @@ fn json_content_type(req: &RequestCtx) -> bool {
 
     is_json_content_type
 }
-pub(crate) async fn body_to_bytes<T>(body: &mut T) -> Result<Bytes, T::Error>
+pub async fn body_to_bytes<T>(body: &mut T) -> Result<Bytes, T::Error>
 where
     T: http_body::Body + std::marker::Unpin,
 {

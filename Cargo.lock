@@ -107,23 +107,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "983cd8b9d4b02a6dc6ffa557262eb5858a27a0038ffffe21a0f133eaa819a164"
 
 [[package]]
-name = "arrayvec"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
-
-[[package]]
-name = "async-recursion"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cda8f4bcc10624c4e85bc66b3f452cca98cfa5ca002dc83a16aad2367641bea"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "async-stream"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -182,14 +165,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
-name = "axum_route"
-version = "0.1.1"
-dependencies = [
- "quote",
- "syn",
-]
-
-[[package]]
 name = "base64"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -211,15 +186,6 @@ dependencies = [
  "blowfish",
  "getrandom",
  "zeroize",
-]
-
-[[package]]
-name = "bincode"
-version = "1.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
-dependencies = [
- "serde",
 ]
 
 [[package]]
@@ -309,16 +275,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "card-validate"
-version = "2.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3cac14c52189249e9dcc5db3079074d0fede6c0205ed1f0bc02247e184f0eaad"
-dependencies = [
- "lazy_static",
- "regex",
-]
-
-[[package]]
 name = "cargo-platform"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -370,7 +326,7 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6fac387a98bb7c37292057cffc56d62ecb629900026402633ae9160df93a8766"
 dependencies = [
- "nom 7.1.1",
+ "nom",
 ]
 
 [[package]]
@@ -592,7 +548,7 @@ dependencies = [
  "ciborium",
  "clap",
  "criterion-plot",
- "itertools 0.10.5",
+ "itertools",
  "lazy_static",
  "num-traits",
  "oorandom",
@@ -613,7 +569,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6b50826342786a51a89e2da3a28f1c32b06e387201bc2d19791f622c673706b1"
 dependencies = [
  "cast",
- "itertools 0.10.5",
+ "itertools",
 ]
 
 [[package]]
@@ -1355,7 +1311,6 @@ checksum = "10a35a97730320ffe8e2d410b5d3b69279b98d2c14bdb8b70ea89ecf7888d41e"
 dependencies = [
  "autocfg",
  "hashbrown",
- "serde",
 ]
 
 [[package]]
@@ -1374,15 +1329,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a5bbe824c507c5da5956355e86a746d82e0e1464f65d862cc5e71da70e94b2c"
 dependencies = [
  "cfg-if 1.0.0",
-]
-
-[[package]]
-name = "itertools"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "284f18f85651fe11e8a991b2adb42cb078325c996ed026d994719efcfca1d54b"
-dependencies = [
- "either",
 ]
 
 [[package]]
@@ -1461,19 +1407,6 @@ name = "lazycell"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
-
-[[package]]
-name = "lexical-core"
-version = "0.7.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6607c62aa161d23d17a9072cc5da0be67cdfc89d3afb1e8d9c842bebc2525ffe"
-dependencies = [
- "arrayvec",
- "bitflags",
- "cfg-if 1.0.0",
- "ryu",
- "static_assertions",
-]
 
 [[package]]
 name = "libc"
@@ -1577,15 +1510,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lru-cache"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31e24f1ad8321ca0e8a1e0ac13f23cb668e6f5466c2c57319f6a5cf1cc8e3b1c"
-dependencies = [
- "linked-hash-map",
-]
-
-[[package]]
 name = "mach"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1608,12 +1532,6 @@ checksum = "6365506850d44bff6e2fbcb5176cf63650e48bd45ef2fe2665ae1570e0f4b9ca"
 dependencies = [
  "digest",
 ]
-
-[[package]]
-name = "md5"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "490cc448043f947bae3cbee9c203358d62dbee0db12107a74be5c30ccfd09771"
 
 [[package]]
 name = "memchr"
@@ -1747,17 +1665,6 @@ dependencies = [
 
 [[package]]
 name = "nom"
-version = "5.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ffb4262d26ed83a1c0a33a38fe2bb15797329c85770da05e6b828ddb782627af"
-dependencies = [
- "lexical-core",
- "memchr",
- "version_check",
-]
-
-[[package]]
-name = "nom"
 version = "7.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8903e5a29a317527874d0402f867152a3d21c908bb0b933e416c65e301d4c36"
@@ -1849,12 +1756,6 @@ name = "once_cell"
 version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "86f0b0d4bf799edbc74508c1e8bf170ff5f41238e5f8225603ca7caaae2b7860"
-
-[[package]]
-name = "oncemutex"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44d11de466f4a3006fe8a5e7ec84e93b79c70cb992ae0aa0eb631ad2df8abfe2"
 
 [[package]]
 name = "oorandom"
@@ -2128,26 +2029,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "phonenumber"
-version = "0.3.1+8.12.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1261a014e5f5e048bf2c6f1a72fa5e4c223009dc5f296a385b95fe19b464608f"
-dependencies = [
- "bincode",
- "either",
- "fnv",
- "itertools 0.9.0",
- "lazy_static",
- "nom 5.1.2",
- "quick-xml",
- "regex",
- "regex-cache",
- "serde",
- "serde_derive",
- "thiserror",
-]
-
-[[package]]
 name = "pin-project-lite"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2291,15 +2172,6 @@ dependencies = [
  "wasi 0.10.0+wasi-snapshot-preview1",
  "web-sys",
  "winapi",
-]
-
-[[package]]
-name = "quick-xml"
-version = "0.18.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3cc440ee4802a86e357165021e3e255a9143724da31db1e2ea540214c96a0f82"
-dependencies = [
- "memchr",
 ]
 
 [[package]]
@@ -2471,18 +2343,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "regex-cache"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f7b62d69743b8b94f353b6b7c3deb4c5582828328bcb8d5fedf214373808793"
-dependencies = [
- "lru-cache",
- "oncemutex",
- "regex",
- "regex-syntax 0.6.27",
-]
-
-[[package]]
 name = "regex-syntax"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2568,9 +2428,11 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bcrypt",
+ "bytes",
  "chrono",
  "criterion",
  "form_urlencoded",
+ "futures-util",
  "hyper",
  "hyper-staticfile",
  "hyper-tls",
@@ -2600,7 +2462,9 @@ dependencies = [
  "tokio-test",
  "uri-pattern-matcher",
  "uuid",
- "validator 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "validator",
+ "validator_derive",
+ "validator_types",
 ]
 
 [[package]]
@@ -2609,7 +2473,6 @@ version = "0.1.0"
 dependencies = [
  "ahash 0.8.0",
  "anyhow",
- "async-recursion",
  "async-trait",
  "base64ct",
  "bcrypt",
@@ -2630,7 +2493,6 @@ dependencies = [
  "lazy_static",
  "log",
  "log4rs",
- "md5",
  "mime",
  "moka",
  "multer",
@@ -2659,7 +2521,7 @@ dependencies = [
  "url",
  "urlpattern",
  "uuid",
- "validator 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "validator",
 ]
 
 [[package]]
@@ -2674,8 +2536,8 @@ dependencies = [
  "thiserror",
  "trybuild",
  "uuid",
- "validator 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "validator_derive 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "validator",
+ "validator_derive",
  "walkdir",
 ]
 
@@ -3103,8 +2965,8 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f87e292b4291f154971a43c3774364e2cbcaec599d3f5bf6fa9d122885dbc38a"
 dependencies = [
- "itertools 0.10.5",
- "nom 7.1.1",
+ "itertools",
+ "nom",
  "unicode_categories",
 ]
 
@@ -3337,20 +3199,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bab24d30b911b2376f3a13cc2cd443142f0c81dda04c118693e35b3835757755"
 dependencies = [
  "winapi-util",
-]
-
-[[package]]
-name = "test_macro"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "hyper",
- "lazy_static",
- "rust-shop-core",
- "rust-shop-macro",
- "serde",
- "serde_json",
- "thiserror",
 ]
 
 [[package]]
@@ -3705,17 +3553,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "unic-ucd-common"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9b78b910beafa1aae5c59bf00877c6cece1c5db28a1241ad801e86cecdff4ad"
-dependencies = [
- "unic-char-property",
- "unic-char-range",
- "unic-ucd-version",
-]
-
-[[package]]
 name = "unic-ucd-ident"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3880,24 +3717,6 @@ dependencies = [
 [[package]]
 name = "validator"
 version = "0.16.0"
-dependencies = [
- "card-validate",
- "idna 0.2.3",
- "indexmap",
- "lazy_static",
- "phonenumber",
- "regex",
- "serde",
- "serde_derive",
- "serde_json",
- "unic-ucd-common",
- "url",
- "validator_derive 0.16.0",
-]
-
-[[package]]
-name = "validator"
-version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32ad5bf234c7d3ad1042e5252b7eddb2c4669ee23f32c7dd0e9b7705f07ef591"
 dependencies = [
@@ -3908,20 +3727,7 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "url",
-]
-
-[[package]]
-name = "validator_derive"
-version = "0.16.0"
-dependencies = [
- "if_chain",
- "lazy_static",
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "regex",
- "syn",
- "validator_types 0.16.0",
+ "validator_derive",
 ]
 
 [[package]]
@@ -3937,15 +3743,7 @@ dependencies = [
  "quote",
  "regex",
  "syn",
- "validator_types 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "validator_types"
-version = "0.16.0"
-dependencies = [
- "proc-macro2",
- "syn",
+ "validator_types",
 ]
 
 [[package]]

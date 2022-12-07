@@ -44,7 +44,8 @@ criterion = "0.4.0"
 hyper-staticfile = { version = "0.9.1", path = "hyper-staticfile" }
 rust-shop-macro = { version = "0.1", path = "rust-shop-macro" }
 rust-shop-core = { version = "0.1", path = "rust-shop-core" }
-
+bytes = "1.3.0"
+futures-util = "0.3.25"
 
 rs-snowflake = "0.6.0"
 
@@ -52,7 +53,6 @@ anyhow = "1.0.65"
 thiserror = "1.0.37"
 
 ahash = "0.8.0"
-validator = "0.16.0"
 bcrypt = "0.13.0"
 uri-pattern-matcher = "0.1.4"
 once_cell = "1.16.0"
@@ -61,6 +61,10 @@ syn = { version = "1.0", features = ["full", "extra-traits"] }
 sonic-server = "1.3.5"
 #搜索客户端
 sonic-channel = "1.1.0"
+#验证
+validator = {version = "0.16.0",features = ["derive"]}
+validator_types = "0.16.0"
+validator_derive = "0.16.0"
 
 [dev-dependencies]
 tokio-test = "*"
@@ -69,11 +73,6 @@ tokio-test = "*"
 members = [
     "hyper-staticfile",
     "rust-shop-macro",
-    "validator",
-    "validator_derive",
-    "validator_types",
-    "test_macro",
-    "axum-route-master",
     "rust-shop-core"
 ]
 
