@@ -13,7 +13,7 @@ pub mod upload_controller {
     use rust_shop_core::response::into_response::IntoResponse;
     use rust_shop_core::response::Response;
 
-    use rust_shop_core::extract::multipart::{Multipart, MultipartError};
+    use rust_shop_core::extract::multipart::{Multipart};
 
     use crate::config::load_config::APP_CONFIG;
     use crate::{EndpointResult, RequestCtx, ResponseBuilder};
