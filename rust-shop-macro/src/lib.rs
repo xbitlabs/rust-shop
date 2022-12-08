@@ -687,173 +687,173 @@ pub fn route(args: TokenStream, input: TokenStream) -> TokenStream {
         if param.param_type == "&mut SqlCommandExecutor" {
             inject_sql_command_executor = true;
             sql_command_executor_param_name = param.param_name.clone();
-        }
-        if param.param_type == "&mut RequestCtx" {
+            original_fn_inputs.push(String::from("&mut ") + &*param.param_name.clone());
+        } else if param.param_type == "&mut RequestCtx" {
             original_fn_inputs.push(String::from("ctx"));
-        } else {
-            if param.param_type == "Json" {
+        } else if param.param_type == "Json" {
+            handler_proxy_fn_body = handler_proxy_fn_body
+                + "  let "
+                + &*param.param_name
+                + " = Json::from_request(ctx).await?;\r\n";
+            original_fn_inputs.push(param.param_name.clone());
+        } else if param.param_type == "Form" {
+            handler_proxy_fn_body = handler_proxy_fn_body
+                + "  let "
+                + &*param.param_name
+                + " = Form::from_request(ctx).await?;\r\n";
+            original_fn_inputs.push(param.param_name.clone());
+        } else if param.param_type == "Query" {
+            handler_proxy_fn_body = handler_proxy_fn_body
+                + "  let "
+                + &*param.param_name
+                + " = Query::from_request(ctx).await?;\r\n";
+            original_fn_inputs.push(param.param_name.clone());
+        } else if param.param_type == "Header" {
+            if param.param_option.eq("Option") {
+                let header_tmp_var = param.param_name.clone() + "_tmp_var";
                 handler_proxy_fn_body = handler_proxy_fn_body
-                    + "  let "
-                    + &*param.param_name
-                    + " = Json::from_request(ctx).await?;\r\n"
-            }
-            if param.param_type == "Form" {
-                handler_proxy_fn_body = handler_proxy_fn_body
-                    + "  let "
-                    + &*param.param_name
-                    + " = Form::from_request(ctx).await?;\r\n"
-            }
-            if param.param_type == "Query" {
-                handler_proxy_fn_body = handler_proxy_fn_body
-                    + "  let "
-                    + &*param.param_name
-                    + " = Query::from_request(ctx).await?;\r\n"
-            }
-            if param.param_type == "Header" {
-                if param.param_option.eq("Option") {
-                    let header_tmp_var = param.param_name.clone() + "_tmp_var";
-                    handler_proxy_fn_body = handler_proxy_fn_body
-                        + &*format!(
-                            "let mut {0}:Header<Option<String>> = Header(None);\r\n
-                        let {1} = ctx.headers.get(\"{0}\");\r\n
-                        if {1}.is_some() {{\r\n
-                            let {1} = {1}.unwrap();\r\n\
-                            let {1} = {1}.to_str();
-                            if {1}.is_ok() {{\r\n
-                                {0} = Header(Some({1}.unwrap().to_string()));\r\n
-                            }}\r\n
-                        }}\r\n",
-                            param.param_name.clone(),
-                            header_tmp_var
-                        );
-                } else {
-                    let msg = format!("header '{}' is None", param.param_name);
-                    let header_tmp_var_1 = param.param_name.clone() + "_tmp_var_1";
-                    let header_tmp_var_2 = param.param_name.clone() + "_tmp_var_2";
-                    handler_proxy_fn_body = handler_proxy_fn_body
-                        + &*format!(
-                            "let mut {0}:Option<Header<String>> = None;  \r\n
-                        let {1} = ctx.headers.get(\"{3}\");          \r\n
-                        if {1}.is_none() {{                           \r\n
-                            return Err(anyhow!(\"{2}\"));            \r\n
-                        }}else{{                                       \r\n
-                            let {1} = {1}.unwrap();                  \r\n\
-                            let {1} = {1}.to_str();                  \r\n
-                            if {1}.is_err() {{                       \r\n
-                                return Err(anyhow!(\"{2}\"));        \r\n
-                            }}else {{                                  \r\n
-                                {0} = Some(Header({1}.unwrap().to_string()));    \r\n
-                            }}                                        \r\n
-                        }}                                            \r\n
-                        let {3}:Header<String> = {0}.unwrap();       \r\n",
-                            header_tmp_var_1, header_tmp_var_2, msg, param.param_name
-                        );
-                }
-            }
-            if param.param_type == "PathVariable" {
-                //panic!("{}",param.2);
-                if param.param_option.eq("Option") {
-                    let header_tmp_var = param.param_name.clone() + "_tmp_var";
-                    let msg = format!("PathVariable '{}' is invalid", param.param_name.clone());
-                    handler_proxy_fn_body = handler_proxy_fn_body
-                        + &*format!(
-                            "let mut {0}:PathVariable<Option<{2}>> = PathVariable(None);
-                        let {1} = ctx.router_params.find(\"{0}\");
-                        if {1}.is_some() {{
-                            let {1} = {1}.unwrap().to_string();
-                            let {1} = {1}.parse::<{2}>();
-                            if {1}.is_err(){{
-                                return Err(anyhow!(\"{3}\"));
-                            }}else{{
-                                {0} = PathVariable(Some({1}.unwrap()));
-                            }}
-                        }}",
-                            param.param_name, header_tmp_var, param.param_option_type, msg
-                        );
-                } else {
-                    let msg_none = format!("PathVariable '{}' is None", param.param_name);
-                    let msg_invalid = format!("PathVariable '{}' is invalid", param.param_name);
-                    let header_tmp_var = param.param_name.clone() + "_tmp_var";
-                    handler_proxy_fn_body = handler_proxy_fn_body
-                        + &*format!(
-                            "let mut {0}:Option<PathVariable<{4}>> = None;\r\n
-                         let {1} = ctx.router_params.find(\"{0}\");\r\n
-                         if {1}.is_none() {{\r\n
-                            return Err(anyhow!(\"{2}\"));\r\n
-                         }}else {{\r\n
-                             let parse_result = {1}.unwrap().to_string().parse::<{4}>();\r\n
-                             if parse_result.is_err() {{\r\n
-                                return Err(anyhow!(\"{3}\"));\r\n
-                             }}else {{\r\n
-                                {0} = Some(PathVariable(parse_result.unwrap()));\r\n
-                             }}\r\n
+                    + &*format!(
+                    "let mut {0}:Header<Option<String>> = Header(None);\r\n
+                    let {1} = ctx.headers.get(\"{0}\");\r\n
+                    if {1}.is_some() {{\r\n
+                        let {1} = {1}.unwrap();\r\n\
+                        let {1} = {1}.to_str();
+                        if {1}.is_ok() {{\r\n
+                            {0} = Header(Some({1}.unwrap().to_string()));\r\n
                         }}\r\n
-                        let {0} = {0}.unwrap();\r\n",
-                            param.param_name,
-                            header_tmp_var,
-                            msg_none,
-                            msg_invalid,
-                            param.param_option
-                        );
-                }
-            }
-            if param.param_type == "RequestParam" {
-                if param.param_option.eq("Option") {
-                    let header_tmp_var = param.param_name.clone() + "_tmp_var";
-                    let msg = format!("RequestParam '{}' is invalid", param.param_name.clone());
-                    handler_proxy_fn_body = handler_proxy_fn_body
-                        + &*format!(
-                            "let mut {0}:RequestParam<Option<{2}>> = RequestParam(None);
-                        let {1} = ctx.query_params.get(\"{0}\");
-                        if {1}.is_some() {{
-                            let {1} = {1}.unwrap().to_string();
-                            let {1} = {1}.parse::<{2}>();
-                            if {1}.is_err(){{
-                                return Err(anyhow!(\"{3}\"));
-                            }}else{{
-                                {0} = RequestParam(Some({1}.unwrap()));
-                            }}
-                        }}",
-                            param.param_name, header_tmp_var, param.param_option_type, msg
-                        );
-                } else {
-                    let msg_none = format!("RequestParam '{}' is None", param.param_name);
-                    let msg_invalid = format!("RequestParam '{}' is invalid", param.param_name);
-
-                    let header_tmp_var = param.param_name.clone() + "_tmp_var";
-                    handler_proxy_fn_body = handler_proxy_fn_body
-                        + &*format!(
-                            "let mut {0}:Option<RequestParam<{4}>> = None;\r\n
-                        let {1} = ctx.query_params.get(\"{0}\");\r\n
-                        if {1}.is_none() {{\r\n
-                            return Err(anyhow!(\"{2}\"));\r\n
-                        }}else {{\r\n
-                            let parse_result = {1}.unwrap().to_string().parse::<{4}>();\r\n
-                            if parse_result.is_err() {{\r\n
-                                return Err(anyhow!(\"{3}\"));\r\n
-                            }}else {{\r\n
-                                {0} = Some(RequestParam(parse_result.unwrap()));\r\n
-                            }}\r\n
-                        }}\r\n
-                        let {0} = {0}.unwrap();\r\n",
-                            param.param_name,
-                            header_tmp_var,
-                            msg_none,
-                            msg_invalid,
-                            param.param_option
-                        );
-                }
-            }
-
-            if param.param_type == "&mut SqlCommandExecutor" {
-                original_fn_inputs.push(String::from("&mut ") + &*param.param_name.clone());
-            } else if param.param_type == "&mut RequestCtx" {
-                original_fn_inputs.push(String::from("&mut ") + &*param.param_name.clone());
+                    }}\r\n",
+                    param.param_name.clone(),
+                    header_tmp_var
+                );
             } else {
-                original_fn_inputs.push(String::from(param.param_name.clone()));
+                let msg = format!("header '{}' is None", param.param_name);
+                let header_tmp_var_1 = param.param_name.clone() + "_tmp_var_1";
+                let header_tmp_var_2 = param.param_name.clone() + "_tmp_var_2";
+                handler_proxy_fn_body = handler_proxy_fn_body
+                    + &*format!(
+                    "let mut {0}:Option<Header<String>> = None;  \r\n
+                    let {1} = ctx.headers.get(\"{3}\");          \r\n
+                    if {1}.is_none() {{                           \r\n
+                        return Err(anyhow!(\"{2}\"));            \r\n
+                    }}else{{                                       \r\n
+                        let {1} = {1}.unwrap();                  \r\n\
+                        let {1} = {1}.to_str();                  \r\n
+                        if {1}.is_err() {{                       \r\n
+                            return Err(anyhow!(\"{2}\"));        \r\n
+                        }}else {{                                  \r\n
+                            {0} = Some(Header({1}.unwrap().to_string()));    \r\n
+                        }}                                        \r\n
+                    }}                                            \r\n
+                    let {3}:Header<String> = {0}.unwrap();       \r\n",
+                    header_tmp_var_1, header_tmp_var_2, msg, param.param_name
+                );
             }
+            original_fn_inputs.push(param.param_name.clone());
+        } else if param.param_type == "PathVariable" {
+            //panic!("{}",param.2);
+            if param.param_option.eq("Option") {
+                let header_tmp_var = param.param_name.clone() + "_tmp_var";
+                let msg = format!("PathVariable '{}' is invalid", param.param_name.clone());
+                handler_proxy_fn_body = handler_proxy_fn_body
+                    + &*format!(
+                    "let mut {0}:PathVariable<Option<{2}>> = PathVariable(None);
+                    let {1} = ctx.router_params.find(\"{0}\");
+                    if {1}.is_some() {{
+                        let {1} = {1}.unwrap().to_string();
+                        let {1} = {1}.parse::<{2}>();
+                        if {1}.is_err(){{
+                            return Err(anyhow!(\"{3}\"));
+                        }}else{{
+                            {0} = PathVariable(Some({1}.unwrap()));
+                        }}
+                    }}",
+                    param.param_name, header_tmp_var, param.param_option_type, msg
+                );
+            } else {
+                let msg_none = format!("PathVariable '{}' is None", param.param_name);
+                let msg_invalid = format!("PathVariable '{}' is invalid", param.param_name);
+                let header_tmp_var = param.param_name.clone() + "_tmp_var";
+                handler_proxy_fn_body = handler_proxy_fn_body
+                    + &*format!(
+                    "let mut {0}:Option<PathVariable<{4}>> = None;\r\n
+                     let {1} = ctx.router_params.find(\"{0}\");\r\n
+                     if {1}.is_none() {{\r\n
+                        return Err(anyhow!(\"{2}\"));\r\n
+                     }}else {{\r\n
+                         let parse_result = {1}.unwrap().to_string().parse::<{4}>();\r\n
+                         if parse_result.is_err() {{\r\n
+                            return Err(anyhow!(\"{3}\"));\r\n
+                         }}else {{\r\n
+                            {0} = Some(PathVariable(parse_result.unwrap()));\r\n
+                         }}\r\n
+                    }}\r\n
+                    let {0} = {0}.unwrap();\r\n",
+                    param.param_name,
+                    header_tmp_var,
+                    msg_none,
+                    msg_invalid,
+                    param.param_option
+                );
+            }
+            original_fn_inputs.push(param.param_name.clone());
+        } else if param.param_type == "RequestParam" {
+            if param.param_option.eq("Option") {
+                let header_tmp_var = param.param_name.clone() + "_tmp_var";
+                let msg = format!("RequestParam '{}' is invalid", param.param_name.clone());
+                handler_proxy_fn_body = handler_proxy_fn_body
+                    + &*format!(
+                    "let mut {0}:RequestParam<Option<{2}>> = RequestParam(None);
+                    let {1} = ctx.query_params.get(\"{0}\");
+                    if {1}.is_some() {{
+                        let {1} = {1}.unwrap().to_string();
+                        let {1} = {1}.parse::<{2}>();
+                        if {1}.is_err(){{
+                            return Err(anyhow!(\"{3}\"));
+                        }}else{{
+                            {0} = RequestParam(Some({1}.unwrap()));
+                        }}
+                    }}",
+                    param.param_name, header_tmp_var, param.param_option_type, msg
+                );
+            } else {
+                let msg_none = format!("RequestParam '{}' is None", param.param_name);
+                let msg_invalid = format!("RequestParam '{}' is invalid", param.param_name);
+
+                let header_tmp_var = param.param_name.clone() + "_tmp_var";
+                handler_proxy_fn_body = handler_proxy_fn_body
+                    + &*format!(
+                    "let mut {0}:Option<RequestParam<{4}>> = None;\r\n
+                    let {1} = ctx.query_params.get(\"{0}\");\r\n
+                    if {1}.is_none() {{\r\n
+                        return Err(anyhow!(\"{2}\"));\r\n
+                    }}else {{\r\n
+                        let parse_result = {1}.unwrap().to_string().parse::<{4}>();\r\n
+                        if parse_result.is_err() {{\r\n
+                            return Err(anyhow!(\"{3}\"));\r\n
+                        }}else {{\r\n
+                            {0} = Some(RequestParam(parse_result.unwrap()));\r\n
+                        }}\r\n
+                    }}\r\n
+                    let {0} = {0}.unwrap();\r\n",
+                    param.param_name,
+                    header_tmp_var,
+                    msg_none,
+                    msg_invalid,
+                    param.param_option
+                );
+            }
+            original_fn_inputs.push(param.param_name.clone());
+        } else if param.param_type == "Multipart" {
+            handler_proxy_fn_body = handler_proxy_fn_body
+                + "  let "
+                + &*param.param_name
+                + " = Multipart::from_request(ctx).await?;\r\n";
+            original_fn_inputs.push(param.param_name.clone());
+        } else {
+            panic!("不支持的参数类型：{}", param.param_type);
         }
     }
+    //panic!("{:?}",original_fn_inputs);
     let mut inputs = String::from("");
     let mut i = 0;
     for original_fn_input in original_fn_inputs {

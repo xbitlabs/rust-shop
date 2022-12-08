@@ -33,6 +33,7 @@ pub mod demo_controller {
     use rust_shop_core::response::Response;
     use rust_shop_core::session::Session;
     use rust_shop_core::APP_EXTENSIONS;
+    use rust_shop_core::extract::multipart::Multipart;
 
     #[derive(serde::Serialize, serde::Deserialize, Debug)]
     pub struct User {
@@ -57,6 +58,7 @@ pub mod demo_controller {
         Form(user): Form<User>,
         Query(user1): Query<User>,
         sql_exe_with_tran: &mut SqlCommandExecutor<'_, '_>,
+        mut multipart:Multipart
     ) -> anyhow::Result<Json<User>> {
         let username = req
             .authentication

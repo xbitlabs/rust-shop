@@ -51,10 +51,11 @@ pub enum ExtractError {
 impl IntoResponse for ExtractError {
     fn into_response(self) -> Response {
         let mut builder = Response::builder().status(StatusCode::BAD_REQUEST);
-        error!("转换url参数/form表单为对象时异常");
+        error!("提取请求参数异常：{}",self);
         builder
             .body(Body::from("无效请求"))
             .unwrap()
             .into_response()
     }
 }
+
