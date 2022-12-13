@@ -1,7 +1,7 @@
 # rust-shop
 rust-shop是使用rust语言开发的微信商城（商城功能开发中），内含web开发框架，使用简单，可扩展。
 # web开发框架特性
-#### 1、注解式自动注册路由。自动提取参数，自动提取的参数包含：Header、PathVariable、RequestParam、Form、Query
+#### 1、注解式自动注册路由。自动提取参数，自动提取的参数包含：Header、PathVariable、RequestParam、Form、Query、Json等
 ```rust
     #[route("POST", "/hello")]
     pub async fn hello(RequestParam(user): RequestParam<String>)-> anyhow::Result<String>{
