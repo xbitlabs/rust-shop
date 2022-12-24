@@ -13,17 +13,17 @@ pub type BoxBody = http_body::combinators::UnsyncBoxBody<Bytes, crate::Error>;
 
 /// Convert a [`http_body::Body`] into a [`BoxBody`].
 pub fn boxed<B>(body: B) -> BoxBody
-where
-    B: http_body::Body<Data = Bytes> + Send + 'static,
-    B::Error: Into<BoxError>,
+    where
+        B: http_body::Body<Data = Bytes> + Send + 'static,
+        B::Error: Into<BoxError>,
 {
     try_downcast(body).unwrap_or_else(|body| body.map_err(crate::Error::new).boxed_unsync())
 }
 
 pub(crate) fn try_downcast<T, K>(k: K) -> Result<T, K>
-where
-    T: 'static,
-    K: Send + 'static,
+    where
+        T: 'static,
+        K: Send + 'static,
 {
     let mut k = Some(k);
     if let Some(k) = <dyn std::any::Any>::downcast_mut::<Option<T>>(&mut k) {
@@ -54,8 +54,8 @@ where
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 pub(crate) async fn to_bytes<T>(body: T) -> Result<Bytes, T::Error>
-where
-    T: Body,
+    where
+        T: Body,
 {
     futures_util::pin_mut!(body);
 

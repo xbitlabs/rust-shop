@@ -63,6 +63,7 @@ pub mod body;
 pub mod response;
 
 pub mod error;
+
 pub use self::error::Error;
 
 use crate::application_context::APPLICATION_CONTEXT;
