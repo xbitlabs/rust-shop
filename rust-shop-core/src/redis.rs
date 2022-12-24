@@ -3,7 +3,7 @@ use crate::app_config::load_mod_config;
 use lazy_static::lazy_static;
 use log::error;
 use redis::{
-    Commands, Connection, ConnectionAddr, ConnectionInfo, RedisConnectionInfo, RedisError,
+    Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo, RedisError,
     RedisResult,
 };
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,7 @@ pub extern crate redis;
 use std::error;
 use std::error::Error as _StdError;
 use std::fmt;
-use r2d2::PooledConnection;
+
 
 use redis::ConnectionLike;
 
