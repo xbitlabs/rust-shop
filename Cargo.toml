@@ -3,6 +3,14 @@ name = "rust-shop"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name ="rust_shop"
+path ="src/rust_shop.rs"
+
+[[bin]]
+name ="rust_shop_admin"
+path ="src/rust_shop_admin.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]

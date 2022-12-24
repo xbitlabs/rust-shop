@@ -18,9 +18,9 @@ use rust_shop_core::security::{
 use rust_shop_core::state::State;
 use rust_shop_core::{AccessLogFilter, EndpointResult, RequestCtx, ResponseBuilder, Server};
 
-use crate::api::demo_controller;
-use crate::api::static_file_controller;
-use crate::api::upload_controller;
+use crate::api::shop::demo_controller;
+use crate::api::shop::static_file_controller;
+use crate::api::shop::upload_controller;
 
 use crate::config::load_config::APP_CONFIG;
 
@@ -42,7 +42,7 @@ fn load_user_service_fn<'r, 'a, 'b>(
 //https://crates.io/crates/message-io#app-list
 //开源socket库
 #[tokio::main]
-#[rust_shop_macro::scan_route("/src")]
+#[rust_shop_macro::scan_route("/src/api/shop")]
 async fn main() -> anyhow::Result<()> {
     /*let mut file = File::open("D:\\项目\\rust-shop\\src\\api\\auth_controller.rs").expect("Unable to open file");
 

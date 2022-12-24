@@ -1,15 +1,7 @@
 
-
-
-
-use sqlx::{MySql, MySqlPool};
-
-
 use rust_shop_core::db::{mysql_connection_pool, SqlCommandExecutor, TransactionManager};
-
 use rust_shop_core::jwt::DefaultJwtService;
-
-use crate::entity::entity::ProductCategory;
+use crate::entity::ProductCategory;
 
 pub struct ProductCategoryService<'a, 'b> {
     sql_command_executor: &'b mut SqlCommandExecutor<'a, 'b>,
