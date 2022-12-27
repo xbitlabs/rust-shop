@@ -1,5 +1,7 @@
-
+use sqlx::Arguments;
+use sqlx::mysql::MySqlArguments;
 use rust_shop_core::db::{mysql_connection_pool, SqlCommandExecutor, TransactionManager};
+use rust_shop_core::id_generator::ID_GENERATOR;
 use rust_shop_core::jwt::DefaultJwtService;
 use crate::entity::ProductCategory;
 
@@ -18,22 +20,17 @@ impl<'a, 'b> ProductCategoryService<'a, 'b> {
             .sql_command_executor
             .find_all("SELECT * FROM product_category")
             .await?;
-        println!("查询到的数据有{}条", categories.len());
-
-        let jwt_service = DefaultJwtService::new(self.sql_command_executor);
-
         Ok(categories)
     }
-    pub async fn test_tran(&mut self) -> anyhow::Result<()> {
-        /*  let user_id = ID_GENERATOR.lock().unwrap().real_time_generate();
-        let wx_open_id = Uuid::new_v4().to_string();
-        let mut aag = self.mysql_pool_manager.tran();
-        let mut aa: &mut &TransactionManager<MySql> = aag.borrow_mut();
-
-        let  f = aa.tran();
-        let rows_affected = sqlx::query!("insert into `user`(id,wx_open_id,created_time,enable) values(?,?,?,?)",user_id,wx_open_id,Local::now(),1)
-            .execute(f).await?
-            .rows_affected();*/
-        Ok(())
+    pub async fn create(&mut self,category:&ProductCategory)->anyhow::Result<bool>{
+        let mut args = MySqlArguments::default();
+        let id: i64 = ID_GENERATOR.lock().unwrap().real_time_generate();
+        args.add(id);
+        args.add(category.name.clone());
+        args.add(category.icon.clone());
+        args.add(category.pic.clone());
+        args.add(category.sort_index);
+        let result = self.sql_command_executor.execute_with("INSERT INTO ProductCategory(id,name,icon,pic,sort_index) VALUES(?,?,?,?,?);",args).await?;
+        Ok(result > 0)
     }
 }

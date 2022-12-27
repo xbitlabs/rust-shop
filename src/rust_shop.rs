@@ -1,5 +1,3 @@
-#![feature(try_trait_v2)]
-
 use std::net::SocketAddr;
 use std::string::ToString;
 use log::info;
