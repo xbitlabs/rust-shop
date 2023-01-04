@@ -18,7 +18,7 @@ impl<'a, 'b> ProductCategoryService<'a, 'b> {
     pub async fn list_all_categories(&mut self) -> anyhow::Result<Vec<ProductCategory>> {
         let categories = self
             .sql_command_executor
-            .find_all("SELECT * FROM product_category")
+            .find_all("SELECT * FROM product_category ORDER BY sort_index ASC")
             .await?;
         Ok(categories)
     }
@@ -31,6 +31,22 @@ impl<'a, 'b> ProductCategoryService<'a, 'b> {
         args.add(category.pic.clone());
         args.add(category.sort_index);
         let result = self.sql_command_executor.execute_with("INSERT INTO ProductCategory(id,name,icon,pic,sort_index) VALUES(?,?,?,?,?);",args).await?;
+        Ok(result > 0)
+    }
+    pub async fn update(&mut self,category:&ProductCategory)->anyhow::Result<bool>{
+        let mut args = MySqlArguments::default();
+        args.add(category.name.clone());
+        args.add(category.icon.clone());
+        args.add(category.pic.clone());
+        args.add(category.sort_index);
+        args.add(category.id);
+        let result = self.sql_command_executor.execute_with("UPDATE ProductCategory SET name=?,icon=?,pic=?,sort_index=? WHERE id=?",args).await?;
+        Ok(result > 0)
+    }
+    pub async fn delete_by_id(&mut self,id:i64)->anyhow::Result<bool> {
+        let mut args = MySqlArguments::default();
+        args.add(id);
+        let result = self.sql_command_executor.execute_with("DELETE FROM ProductCategory WHERE id=?", args).await?;
         Ok(result > 0)
     }
 }
