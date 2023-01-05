@@ -1282,11 +1282,8 @@ fn build_sql_queries(config: &Config) -> TokenStream2 {
         config.quote_ident(&config.id_column_ident.to_string())
     );
 
-    let insert_bind_cnt = if config.external_id {
-        config.named.iter().count()
-    } else {
-        config.named.iter().count() - 1
-    };
+    let insert_bind_cnt = config.named.iter().count();
+
     let insert_sql_binds = (0..insert_bind_cnt)
         .map(|_| "?")
         .collect::<Vec<_>>()
@@ -1305,7 +1302,7 @@ fn build_sql_queries(config: &Config) -> TokenStream2 {
         .named
         .iter()
         .flat_map(|f| &f.ident)
-        .filter(|i| config.external_id || *i != &config.id_column_ident)
+        .filter(|i| config.external_id || (*i != &config.id_column_ident || *i == &config.id_column_ident))
         .map(|i| config.quote_ident(&i.to_string()))
         .collect::<Vec<_>>()
         .join(", ");
@@ -1319,16 +1316,16 @@ fn build_sql_queries(config: &Config) -> TokenStream2 {
 
     let select_sql = format!("SELECT {} FROM {}", column_list, table_name);
     let select_by_id_sql = format!(
-        "SELECT {} FROM {} WHERE {} = ? LIMIT 1",
+        "SELECT {} FROM {} WHERE {} = ? ",
         column_list, table_name, id_column
     );
     let insert_sql = format!(
-        "INSERT INTO {} ({}) VALUES ({}) RETURNING {}",
-        table_name, insert_column_list, insert_sql_binds, column_list
+        "INSERT INTO {} ({}) VALUES ({}) ",
+        table_name, insert_column_list, insert_sql_binds
     );
     let update_by_id_sql = format!(
-        "UPDATE {} SET {} WHERE {} = ? RETURNING {}",
-        table_name, update_sql_binds, id_column, column_list
+        "UPDATE {} SET {} WHERE {} = ? ",
+        table_name, update_sql_binds, id_column
     );
     let delete_by_id_sql = format!("DELETE FROM {} WHERE {} = ?", table_name, id_column);
 
@@ -1459,7 +1456,7 @@ impl<'a> Config<'a> {
         let model_schema_ident =
             format_ident!("{}_SCHEMA", ident.to_string().to_screaming_snake_case());
 
-        let table_name = ident.to_string().to_table_case();
+        let table_name = ident.to_string().to_snake_case();
 
         // Search for a field with the #[id] attribute
         let id_attr = &named
@@ -1543,11 +1540,11 @@ impl DbType {
 
     fn quote_ident(&self, ident: &str) -> String {
         match self {
-            Self::Any => format!(r#""{}""#, &ident),
-            Self::Mssql => format!(r#""{}""#, &ident),
+            Self::Any => format!(r#"{}"#, &ident),
+            Self::Mssql => format!(r#"{}"#, &ident),
             Self::MySql => format!("`{}`", &ident),
-            Self::Postgres => format!(r#""{}""#, &ident),
-            Self::Sqlite => format!(r#""{}""#, &ident),
+            Self::Postgres => format!(r#"{}"#, &ident),
+            Self::Sqlite => format!(r#"{}"#, &ident),
         }
     }
 }

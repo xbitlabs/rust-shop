@@ -33,7 +33,9 @@ pub mod demo_controller {
     use rust_shop_core::response::Response;
     use rust_shop_core::session::Session;
     use rust_shop_core::APP_EXTENSIONS;
+    use rust_shop_core::db::traits::Crud;
     use rust_shop_core::extract::multipart::Multipart;
+    use crate::entity::ProductCategory;
 
     #[derive(serde::Serialize, serde::Deserialize, Debug)]
     pub struct User {
@@ -125,8 +127,31 @@ pub mod demo_controller {
 
         Ok(Json(u))
     }
+    use inflector::Inflector;
     #[route("GET", "model_and_view")]
-    pub async fn model_and_view(ctx: &mut RequestCtx) -> anyhow::Result<ModelAndView> {
+    pub async fn model_and_view(ctx: &mut RequestCtx,sql_exe_with_tran: &mut SqlCommandExecutor<'_, '_>,) -> anyhow::Result<ModelAndView> {
+
+
+        let id = ID_GENERATOR.lock().unwrap().real_time_generate();
+
+        let mut category = ProductCategory{
+            id,
+            name: "test".to_string(),
+            icon: None,
+            pic: None,
+            sort_index: 0,
+        };
+        let result = category.create(sql_exe_with_tran).await?;
+        println!("{:?}",result);
+        let c = ProductCategory::select_by_id(sql_exe_with_tran,id).await?;
+        if c.is_some() {
+            println!("ProductCategory = {:?}",c.unwrap());
+        }
+        category.name = String::from("test1");
+        category.icon = Some(String::from("icon"));
+        let result = category.update(sql_exe_with_tran).await?;
+        let result = ProductCategory::delete_by_id(category.id,sql_exe_with_tran).await?;
+
         let mut model_and_view = ModelAndView::new("test.html".to_string());
         let user = User {
             id: 0,

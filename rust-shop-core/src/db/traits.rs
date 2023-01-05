@@ -7,14 +7,14 @@ use futures::Future;
 use futures::{future, TryFutureExt, TryStreamExt};
 use sqlx::database::HasArguments;
 use sqlx::query::QueryAs;
-use sqlx::{Arguments, Database, Encode, Executor, FromRow, IntoArguments, MySql, Type};
+use sqlx::{Arguments, Database, Encode, Execute, Executor, FromRow, IntoArguments, MySql, Type};
 use sqlx::mysql::{MySqlArguments, MySqlRow};
 use sqlx_crud::traits;
 use crate::db::SqlCommandExecutor;
 
 /// Type alias for methods returning a single element. The future resolves to and
 /// `Result<T, sqlx::Error>`.
-pub type CrudFut<'e, T> = Pin<Box<dyn Future<Output = Result<T, sqlx::Error>> + 'e>>;
+pub type CrudFut<'e, T> = Pin<Box<dyn Future<Output = Result<T, sqlx::Error>> + 'e + Send>>;
 
 /// Type alias for a [`Stream`] returning items of type `Result<T, sqlxError>`.
 pub type CrudStream<'e, T> =
@@ -246,24 +246,24 @@ where
     /// assert_eq!("test", user.name);
     /// # }}
     /// ```
-    fn create(&'e self, sql_exe: &'e mut SqlCommandExecutor<'_, '_>) -> CrudFut<'e, Self> where for<'r> Self: FromRow<'r, MySqlRow>{
+    fn create(&'e self, sql_exe: &'e mut SqlCommandExecutor<'_, '_>) -> CrudFut<'e, bool> where for<'r> Self: FromRow<'r, MySqlRow>, Self: Sync{
         match sql_exe {
             SqlCommandExecutor::WithTransaction(tran) => {
                 Box::pin(async move {
                     let query = sqlx::query_as::<MySql, Self>(<Self as Schema>::insert_sql());
                     let query = self.insert_binds(query);
-                    let r = query.fetch_one(tran.transaction()).await?;
-
-                    Ok(r)
+                    //let r = query.statement(tran.transaction()).await?;
+                    let result = tran.transaction().execute(query).await?;
+                    Ok(result.rows_affected() > 0)
                 })
             }
             SqlCommandExecutor::WithoutTransaction(exe) => {
                 Box::pin(async move {
                     let query = sqlx::query_as::<MySql, Self>(<Self as Schema>::insert_sql());
                     let query = self.insert_binds(query);
-                    let r = query.fetch_one(*exe).await?;
-
-                    Ok(r)
+                    //let r = query.fetch_one(*exe).await?;
+                    let result = exe.execute(query).await?;
+                    Ok(result.rows_affected() > 0)
                 })
             }
         }
@@ -320,7 +320,7 @@ where
     /// assert!(user.is_some());
     /// # }}
     /// ```
-    fn by_id(sql_exe: &'e mut SqlCommandExecutor<'_, '_>, id: <Self as Schema>::Id) -> CrudFut<'e, Option<Self>> where for<'r> Self: FromRow<'r, MySqlRow>, <Self as Schema>::Id: Encode<'e, MySql>, Self: sqlx_crud::Schema, <Self as Schema>::Id: Type<MySql>{
+    fn select_by_id(sql_exe: &'e mut SqlCommandExecutor<'_, '_>, id: <Self as Schema>::Id) -> CrudFut<'e, Option<Self>> where for<'r> Self: FromRow<'r, MySqlRow>, <Self as Schema>::Id: Encode<'e, MySql>, Self: Schema, <Self as Schema>::Id: Type<MySql>{
         match sql_exe {
             SqlCommandExecutor::WithTransaction(tran) => {
                 Box::pin(
@@ -356,24 +356,25 @@ where
     /// }
     /// # }}
     /// ```
-    fn update(&'e self, sql_exe: &'e mut SqlCommandExecutor<'_, '_>) -> CrudFut<'e, Self> where for<'r> Self: FromRow<'r, MySqlRow>{
+    fn update(&'e self, sql_exe: &'e mut SqlCommandExecutor<'_, '_>) -> CrudFut<'e, bool> where for<'r> Self: FromRow<'r, MySqlRow>, Self: Sync{
         match sql_exe {
             SqlCommandExecutor::WithTransaction(tran) => {
                 Box::pin(async move {
                     let query = sqlx::query_as::<MySql, Self>(<Self as Schema>::update_by_id_sql());
                     let query = self.update_binds(query);
-                    let r = query.fetch_one(tran.transaction()).await?;
-
-                    Ok(r)
+                    //let r = query.fetch_one(tran.transaction()).await?;
+                    let result = tran.transaction().execute(query).await?;
+                    Ok(result.rows_affected() > 0)
                 })
             }
             SqlCommandExecutor::WithoutTransaction(pool) => {
                 Box::pin(async move {
                     let query = sqlx::query_as::<MySql, Self>(<Self as Schema>::update_by_id_sql());
                     let query = self.update_binds(query);
-                    let r = query.fetch_one(*pool).await?;
+                    //let r = query.fetch_one(*pool).await?;
 
-                    Ok(r)
+                    let result = pool.execute(query).await?;
+                    Ok(result.rows_affected() > 0)
                 })
             }
         }
@@ -395,21 +396,21 @@ where
     /// assert!(User::by_id(&pool, 1).await?.is_none());
     /// # }}
     /// ```
-    fn delete(self,  sql_exe: &'e mut SqlCommandExecutor<'_, '_>) -> CrudFut<'e, ()> where <Self as Schema>::Id: Encode<'e, MySql>, <Self as Schema>::Id: Type<MySql>{
+    fn delete_by_id(id:Self::Id,  sql_exe: &'e mut SqlCommandExecutor<'_, '_>) -> CrudFut<'e, bool> where <Self as Schema>::Id: Encode<'e, MySql>, <Self as Schema>::Id: Type<MySql>{
         Box::pin(async move {
             let sql = <Self as Schema>::delete_by_id_sql();
             let mut args = MySqlArguments::default();
-            args.add(self.id());
+            args.add(id);
             return match sql_exe {
                 SqlCommandExecutor::WithTransaction(ref mut tran_manager) => {
                     let result = sqlx::query_with(sql, args)
                         .execute(tran_manager.transaction())
                         .await?;
-                    Ok(())
+                    Ok(result.rows_affected() > 0)
                 }
                 SqlCommandExecutor::WithoutTransaction(pool) => {
                     let result = sqlx::query_with(sql, args).execute(*pool).await?;
-                    Ok(())
+                    Ok(result.rows_affected() > 0)
                 }
             };
         })

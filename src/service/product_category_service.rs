@@ -1,6 +1,7 @@
 use sqlx::Arguments;
 use sqlx::mysql::MySqlArguments;
 use rust_shop_core::db::{mysql_connection_pool, SqlCommandExecutor, TransactionManager};
+use rust_shop_core::db::traits::Crud;
 use rust_shop_core::id_generator::ID_GENERATOR;
 use rust_shop_core::jwt::DefaultJwtService;
 use crate::entity::ProductCategory;
@@ -23,30 +24,15 @@ impl<'a, 'b> ProductCategoryService<'a, 'b> {
         Ok(categories)
     }
     pub async fn create(&mut self,category:&ProductCategory)->anyhow::Result<bool>{
-        let mut args = MySqlArguments::default();
-        let id: i64 = ID_GENERATOR.lock().unwrap().real_time_generate();
-        args.add(id);
-        args.add(category.name.clone());
-        args.add(category.icon.clone());
-        args.add(category.pic.clone());
-        args.add(category.sort_index);
-        let result = self.sql_command_executor.execute_with("INSERT INTO ProductCategory(id,name,icon,pic,sort_index) VALUES(?,?,?,?,?);",args).await?;
-        Ok(result > 0)
+        let result =  category.create(self.sql_command_executor).await?;
+        Ok(result)
     }
     pub async fn update(&mut self,category:&ProductCategory)->anyhow::Result<bool>{
-        let mut args = MySqlArguments::default();
-        args.add(category.name.clone());
-        args.add(category.icon.clone());
-        args.add(category.pic.clone());
-        args.add(category.sort_index);
-        args.add(category.id);
-        let result = self.sql_command_executor.execute_with("UPDATE ProductCategory SET name=?,icon=?,pic=?,sort_index=? WHERE id=?",args).await?;
-        Ok(result > 0)
+        let result = category.update(self.sql_command_executor).await?;
+        Ok(result)
     }
     pub async fn delete_by_id(&mut self,id:i64)->anyhow::Result<bool> {
-        let mut args = MySqlArguments::default();
-        args.add(id);
-        let result = self.sql_command_executor.execute_with("DELETE FROM ProductCategory WHERE id=?", args).await?;
-        Ok(result > 0)
+        let result = ProductCategory::delete_by_id(id, self.sql_command_executor).await?;
+        Ok(result)
     }
 }

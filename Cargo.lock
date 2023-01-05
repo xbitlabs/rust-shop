@@ -2441,6 +2441,7 @@ dependencies = [
 name = "rust-shop"
 version = "0.1.0"
 dependencies = [
+ "Inflector",
  "ahash 0.8.0",
  "anyhow",
  "async-trait",
