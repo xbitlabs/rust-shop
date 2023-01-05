@@ -644,7 +644,15 @@ impl Server {
                                 Ok::<_, anyhow::Error>(resp)
                             }
                             Err(error) => {
-                                error!("处理请求异常{}：{}", url, error);
+                                let mut error_details = String::from(format!("Error: {}\r\n", error));
+
+                                let mut cause = error.source();
+                                while let Some(e) = cause {
+                                    error_details = error_details + &*format!("Reason: {}\r\n", e);
+                                    cause = e.source();
+                                }
+                                error!("处理请求异常{}：{}", url, error_details);
+
                                 let endpoint_result: EndpointResult<String> =
                                     EndpointResult::server_error("内部服务器错误");
                                 Ok::<_, anyhow::Error>(ResponseBuilder::with_endpoint_result(
