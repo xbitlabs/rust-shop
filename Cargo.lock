@@ -2546,17 +2546,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust-shop-db"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "lazy_static",
- "rust-shop-core",
- "sqlx",
- "thiserror",
-]
-
-[[package]]
 name = "rust-shop-macro"
 version = "0.1.0"
 dependencies = [

@@ -82,7 +82,6 @@ members = [
     "hyper-staticfile",
     "rust-shop-macro",
     "rust-shop-core",
-    "rust-shop-db"
 ]
 
 #rust版本：stable（稳定版），beta（测试版），nightly（每日构建版）
