@@ -31,14 +31,13 @@ use serde::Serialize;
 use crate::extensions::Extensions;
 
 use crate::router::{get_routers, register_route, Router};
-use crate::security::{req_matches, Authentication, DefaultAuthentication};
+use crate::security::{Authentication, DefaultAuthentication, req_matches};
 use crate::security::{AuthenticationProcessingFilter, WebSecurityConfigurer};
 use crate::state::State;
-use crate::EndpointResultCode::{AccessDenied, ClientError, ServerError, Unauthorized, SUCCESS};
+use crate::EndpointResultCode::{AccessDenied, ClientError, ServerError, SUCCESS, Unauthorized};
 
 pub mod app_config;
 mod application_context;
-pub mod db;
 mod dispatcher;
 pub mod entity;
 pub mod extensions;
@@ -63,6 +62,7 @@ pub mod body;
 pub mod response;
 
 pub mod error;
+pub mod db;
 
 pub use self::error::Error;
 

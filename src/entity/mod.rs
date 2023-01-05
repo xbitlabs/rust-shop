@@ -1,6 +1,9 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
+use rust_shop_macro::SqlxCrud;
+use sqlx::MySql;
+use sqlx::mysql::MySqlArguments;
 
-#[derive(sqlx::FromRow, serde::Serialize, serde::Deserialize, Debug)]
+#[derive(sqlx::FromRow, serde::Serialize, serde::Deserialize, Debug,SqlxCrud)]
 pub struct ProductCategory {
     pub id: i64,
     pub name: String,

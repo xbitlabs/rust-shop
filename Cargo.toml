@@ -40,7 +40,7 @@ uuid = { version = "1.1.2", features = [
 ] }
 #orm
 sqlx = { version = "0.6", features = ["runtime-tokio-rustls", "mysql", "chrono"] }
-sqlx-crud = {version = "0.3.2",features = ["runtime-tokio-rustls"]}
+#sqlx-crud = {version = "0.3.2",features = ["runtime-tokio-rustls"]}
 tokio = { version = "1.21.1", features = ["full"] }
 log4rs = "1.1.1"
 log = "0.4.17"
@@ -81,7 +81,8 @@ tokio-test = "*"
 members = [
     "hyper-staticfile",
     "rust-shop-macro",
-    "rust-shop-core"
+    "rust-shop-core",
+    "rust-shop-db"
 ]
 
 #rust版本：stable（稳定版），beta（测试版），nightly（每日构建版）

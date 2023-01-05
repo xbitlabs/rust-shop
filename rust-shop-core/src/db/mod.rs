@@ -1,3 +1,6 @@
+pub mod schema;
+pub mod traits;
+
 use std::borrow::BorrowMut;
 
 use std::time::Duration;
@@ -8,8 +11,8 @@ use lazy_static::lazy_static;
 use sqlx::mysql::{MySqlArguments, MySqlPoolOptions, MySqlRow};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{Error, MySql, MySqlPool, PgPool, Pool, Postgres, Transaction};
-
 use crate::app_config::load_mod_config;
+
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct DbConfig {
@@ -140,10 +143,10 @@ impl<'db, 'a> SqlCommandExecutor<'db, 'a> {
         };
     }
     pub async fn find_one<T>(&mut self, query: &str) -> anyhow::Result<T>
-    where
-        T: for<'r> sqlx::FromRow<'r, MySqlRow>,
-        T: Send,
-        T: Unpin,
+        where
+            T: for<'r> sqlx::FromRow<'r, MySqlRow>,
+            T: Send,
+            T: Unpin,
     {
         return match self {
             Self::WithTransaction(ref mut tran_manager) => {
@@ -159,10 +162,10 @@ impl<'db, 'a> SqlCommandExecutor<'db, 'a> {
         };
     }
     pub async fn find_one_with<T>(&mut self, query: &str, args: MySqlArguments) -> anyhow::Result<T>
-    where
-        T: for<'r> sqlx::FromRow<'r, MySqlRow>,
-        T: Send,
-        T: Unpin,
+        where
+            T: for<'r> sqlx::FromRow<'r, MySqlRow>,
+            T: Send,
+            T: Unpin,
     {
         return match self {
             Self::WithTransaction(ref mut tran_manager) => {
@@ -178,10 +181,10 @@ impl<'db, 'a> SqlCommandExecutor<'db, 'a> {
         };
     }
     pub async fn find_option<T>(&mut self, query: &str) -> anyhow::Result<Option<T>>
-    where
-        T: for<'r> sqlx::FromRow<'r, MySqlRow>,
-        T: Send,
-        T: Unpin,
+        where
+            T: for<'r> sqlx::FromRow<'r, MySqlRow>,
+            T: Send,
+            T: Unpin,
     {
         return match self {
             Self::WithTransaction(ref mut tran_manager) => {
@@ -201,10 +204,10 @@ impl<'db, 'a> SqlCommandExecutor<'db, 'a> {
         query: &str,
         args: MySqlArguments,
     ) -> anyhow::Result<Option<T>>
-    where
-        T: for<'r> sqlx::FromRow<'r, MySqlRow>,
-        T: Send,
-        T: Unpin,
+        where
+            T: for<'r> sqlx::FromRow<'r, MySqlRow>,
+            T: Send,
+            T: Unpin,
     {
         return match self {
             Self::WithTransaction(ref mut tran_manager) => {
@@ -222,10 +225,10 @@ impl<'db, 'a> SqlCommandExecutor<'db, 'a> {
         };
     }
     pub async fn find_all<T>(&mut self, query: &str) -> anyhow::Result<Vec<T>>
-    where
-        T: for<'r> sqlx::FromRow<'r, MySqlRow>,
-        T: Send,
-        T: Unpin,
+        where
+            T: for<'r> sqlx::FromRow<'r, MySqlRow>,
+            T: Send,
+            T: Unpin,
     {
         return match self {
             Self::WithTransaction(ref mut tran_manager) => {
@@ -245,10 +248,10 @@ impl<'db, 'a> SqlCommandExecutor<'db, 'a> {
         query: &str,
         args: MySqlArguments,
     ) -> anyhow::Result<Vec<T>>
-    where
-        T: for<'r> sqlx::FromRow<'r, MySqlRow>,
-        T: Send,
-        T: Unpin,
+        where
+            T: for<'r> sqlx::FromRow<'r, MySqlRow>,
+            T: Send,
+            T: Unpin,
     {
         return match self {
             Self::WithTransaction(ref mut tran_manager) => {
@@ -264,10 +267,10 @@ impl<'db, 'a> SqlCommandExecutor<'db, 'a> {
         };
     }
     pub async fn scalar_one<T>(&mut self, query: &str) -> anyhow::Result<T>
-    where
-        T: sqlx::Type<sqlx::MySql> + for<'r> sqlx::Decode<'r, sqlx::MySql>,
-        T: Send,
-        T: Unpin,
+        where
+            T: sqlx::Type<sqlx::MySql> + for<'r> sqlx::Decode<'r, sqlx::MySql>,
+            T: Send,
+            T: Unpin,
     {
         return match self {
             Self::WithTransaction(ref mut tran_manager) => {
@@ -287,10 +290,10 @@ impl<'db, 'a> SqlCommandExecutor<'db, 'a> {
         query: &str,
         args: MySqlArguments,
     ) -> anyhow::Result<T>
-    where
-        T: sqlx::Type<sqlx::MySql> + for<'r> sqlx::Decode<'r, sqlx::MySql>,
-        T: Send,
-        T: Unpin,
+        where
+            T: sqlx::Type<sqlx::MySql> + for<'r> sqlx::Decode<'r, sqlx::MySql>,
+            T: Send,
+            T: Unpin,
     {
         return match self {
             Self::WithTransaction(ref mut tran_manager) => {
@@ -308,10 +311,10 @@ impl<'db, 'a> SqlCommandExecutor<'db, 'a> {
         };
     }
     pub async fn scalar_option<T>(&mut self, query: &str) -> anyhow::Result<Option<T>>
-    where
-        T: sqlx::Type<sqlx::MySql> + for<'r> sqlx::Decode<'r, sqlx::MySql>,
-        T: Send,
-        T: Unpin,
+        where
+            T: sqlx::Type<sqlx::MySql> + for<'r> sqlx::Decode<'r, sqlx::MySql>,
+            T: Send,
+            T: Unpin,
     {
         return match self {
             Self::WithTransaction(ref mut tran_manager) => {
@@ -331,10 +334,10 @@ impl<'db, 'a> SqlCommandExecutor<'db, 'a> {
         query: &str,
         args: MySqlArguments,
     ) -> anyhow::Result<Option<T>>
-    where
-        T: sqlx::Type<sqlx::MySql> + for<'r> sqlx::Decode<'r, sqlx::MySql>,
-        T: Send,
-        T: Unpin,
+        where
+            T: sqlx::Type<sqlx::MySql> + for<'r> sqlx::Decode<'r, sqlx::MySql>,
+            T: Send,
+            T: Unpin,
     {
         return match self {
             Self::WithTransaction(ref mut tran_manager) => {
@@ -352,10 +355,10 @@ impl<'db, 'a> SqlCommandExecutor<'db, 'a> {
         };
     }
     pub async fn scalar_all<T>(&mut self, query: &str) -> anyhow::Result<Vec<T>>
-    where
-        T: sqlx::Type<sqlx::MySql> + for<'r> sqlx::Decode<'r, sqlx::MySql>,
-        T: Send,
-        T: Unpin,
+        where
+            T: sqlx::Type<sqlx::MySql> + for<'r> sqlx::Decode<'r, sqlx::MySql>,
+            T: Send,
+            T: Unpin,
     {
         return match self {
             Self::WithTransaction(ref mut tran_manager) => {
@@ -375,10 +378,10 @@ impl<'db, 'a> SqlCommandExecutor<'db, 'a> {
         query: &str,
         args: MySqlArguments,
     ) -> anyhow::Result<Vec<T>>
-    where
-        T: sqlx::Type<sqlx::MySql> + for<'r> sqlx::Decode<'r, sqlx::MySql>,
-        T: Send,
-        T: Unpin,
+        where
+            T: sqlx::Type<sqlx::MySql> + for<'r> sqlx::Decode<'r, sqlx::MySql>,
+            T: Send,
+            T: Unpin,
     {
         return match self {
             Self::WithTransaction(ref mut tran_manager) => {
@@ -396,12 +399,3 @@ impl<'db, 'a> SqlCommandExecutor<'db, 'a> {
         };
     }
 }
-
-/*pub struct MysqlPoolStateProvider;
-
-impl <'a> RequestStateProvider for  MysqlPoolStateProvider{
-    fn get_state(&self, extensions: &Arc<Extensions>, req: &Request<Body>) -> Box<dyn Any + Send + Sync> {
-        let pool_state : &State<Pool<MySql>> = extensions.get().unwrap();
-        Box::new(State::new(DbPoolManager::new(pool_state.clone())))
-    }
-}*/

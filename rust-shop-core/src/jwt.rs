@@ -1,5 +1,4 @@
 use crate::app_config::load_mod_config;
-use crate::db::SqlCommandExecutor;
 use crate::entity::UserJwt;
 use crate::id_generator::ID_GENERATOR;
 use anyhow::anyhow;
@@ -16,6 +15,7 @@ use std::thread;
 use time::Duration;
 use time::OffsetDateTime;
 use uuid::Uuid;
+use crate::db::SqlCommandExecutor;
 
 pub mod jwt_date_format {
     //! Custom serialization of OffsetDateTime to conform with the JWT spec (RFC 7519 section 2, "Numeric Date")

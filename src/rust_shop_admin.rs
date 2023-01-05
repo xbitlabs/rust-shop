@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use std::string::ToString;
 use log::info;
 
-use rust_shop_core::db::{mysql_connection_pool, SqlCommandExecutor};
+use rust_shop_db::db::{mysql_connection_pool, SqlCommandExecutor};
 
 use rust_shop_core::router::register_route;
 use rust_shop_core::security::{

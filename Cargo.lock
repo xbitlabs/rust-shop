@@ -2471,7 +2471,6 @@ dependencies = [
  "sonic-channel",
  "sonic-server",
  "sqlx",
- "sqlx-crud",
  "syn",
  "thiserror",
  "time 0.3.14",
@@ -2547,9 +2546,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust-shop-db"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "lazy_static",
+ "rust-shop-core",
+ "sqlx",
+ "thiserror",
+]
+
+[[package]]
 name = "rust-shop-macro"
 version = "0.1.0"
 dependencies = [
+ "Inflector",
  "anyhow",
  "chrono",
  "proc-macro2",
