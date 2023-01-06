@@ -316,11 +316,11 @@ where
     /// # sqlx_crud::doctest_setup! { |pool| {
     /// use sqlx_crud::Crud;
     ///
-    /// let user: Option<User> = User::by_id(&pool, 1).await?;
+    /// let user: Option<User> = User::select_by_id(1,&pool).await?;
     /// assert!(user.is_some());
     /// # }}
     /// ```
-    fn select_by_id(sql_exe: &'e mut SqlCommandExecutor<'_, '_>, id: <Self as Schema>::Id) -> CrudFut<'e, Option<Self>> where for<'r> Self: FromRow<'r, MySqlRow>, <Self as Schema>::Id: Encode<'e, MySql>, Self: Schema, <Self as Schema>::Id: Type<MySql>{
+    fn select_by_id(id: <Self as Schema>::Id,sql_exe: &'e mut SqlCommandExecutor<'_, '_>) -> CrudFut<'e, Option<Self>> where for<'r> Self: FromRow<'r, MySqlRow>, <Self as Schema>::Id: Encode<'e, MySql>, Self: Schema, <Self as Schema>::Id: Type<MySql>{
         match sql_exe {
             SqlCommandExecutor::WithTransaction(tran) => {
                 Box::pin(

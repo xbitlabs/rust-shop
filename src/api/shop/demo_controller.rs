@@ -137,13 +137,16 @@ pub mod demo_controller {
         let mut category = ProductCategory{
             id,
             name: "test".to_string(),
+            parent_id: None,
             icon: None,
             pic: None,
             sort_index: 0,
+            created_time: Default::default(),
+            is_deleted: false,
         };
         let result = category.create(sql_exe_with_tran).await?;
         println!("{:?}",result);
-        let c = ProductCategory::select_by_id(sql_exe_with_tran,id).await?;
+        let c = ProductCategory::select_by_id(id,sql_exe_with_tran).await?;
         if c.is_some() {
             println!("ProductCategory = {:?}",c.unwrap());
         }

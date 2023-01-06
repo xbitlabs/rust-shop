@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use crate::entity;
 use crate::entity::Sku;
 
 pub struct Product{
@@ -9,9 +10,6 @@ pub struct Product{
     pub video:Option<String>,
     pub description: String,
     pub status: String,
-    pub created_time: DateTime<Utc>,
-    pub last_modified_time: Option<DateTime<Utc>>,
-    pub is_deleted:bool,
-    pub product_category_ids:Vec<i64>,
+    pub category_ids:Vec<i64>,
     pub skus:Vec<Sku>,
 }

@@ -7,24 +7,34 @@ use sqlx::mysql::MySqlArguments;
 pub struct ProductCategory {
     pub id: i64,
     pub name: String,
+    pub parent_id:Option<i64>,
     pub icon: Option<String>,
     pub pic: Option<String>,
     pub sort_index: i32,
+    #[serde(with = "rust_shop_core::serde_utils::date_format")]
+    pub created_time: DateTime<Utc>,
+    pub is_deleted:bool,
 }
 
-#[derive(sqlx::FromRow, serde::Serialize)]
+#[derive(sqlx::FromRow, serde::Serialize, serde::Deserialize,Debug,SqlxCrud)]
 pub struct Product {
     pub id: i64,
     pub name: String,
     pub cover_image: String,
-    pub category_id: i64,
-    pub pics_and_video: String,
+    pub pics: String,
+    pub video:Option<String>,
     pub description: String,
     pub status: String,
     #[serde(with = "rust_shop_core::serde_utils::date_format")]
     pub created_time: DateTime<Utc>,
-    #[serde(with = "rust_shop_core::serde_utils::date_format")]
-    pub last_modified_time: DateTime<Utc>,
+    pub last_modified_time: Option<DateTime<Utc>>,
+    pub is_deleted:bool,
+}
+
+#[derive(sqlx::FromRow, serde::Serialize, serde::Deserialize,Debug)]
+pub struct ProductCategoryMapping{
+    pub product_id:i64,
+    pub product_category_id:i64
 }
 
 #[derive(sqlx::FromRow, serde::Serialize)]
@@ -74,7 +84,7 @@ pub struct ShoppingCart {
     pub add_time: DateTime<Utc>,
 }
 
-#[derive(sqlx::FromRow, serde::Serialize)]
+#[derive(sqlx::FromRow, serde::Serialize,Debug,SqlxCrud)]
 pub struct Sku {
     pub id: i64,
     pub title: String,
