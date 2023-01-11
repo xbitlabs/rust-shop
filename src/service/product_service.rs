@@ -76,9 +76,14 @@ impl <'a, 'b> ProductService<'a, 'b> {
                 }
             }
             let deleted_sku = db_exists_skus.iter().filter(|item|{
-                let items = product.skus.iter().filter(|i|{i.id == item.id}).
+                for sku in &product.skus {
+                    if sku.id == item.id {
+                        return false;
+                    }
+                }
+                return true;
             }).collect();
-
+            
             Ok(result)
         }else {
             Err(anyhow!(format!("not found product by id {},update failed!",product.id)))
