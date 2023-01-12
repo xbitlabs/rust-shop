@@ -1,2 +1,2 @@
 pub mod product_category_service;
-mod product_service;
+pub mod product_service;

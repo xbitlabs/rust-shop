@@ -84,7 +84,7 @@ pub struct ShoppingCart {
     pub add_time: DateTime<Utc>,
 }
 
-#[derive(sqlx::FromRow, serde::Serialize,Debug,SqlxCrud)]
+#[derive(sqlx::FromRow, serde::Serialize, serde::Deserialize,Debug,SqlxCrud)]
 pub struct Sku {
     pub id: i64,
     pub title: String,

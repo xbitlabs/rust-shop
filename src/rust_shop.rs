@@ -31,6 +31,7 @@ pub mod service;
 pub mod utils;
 mod vo;
 mod dto;
+mod qo;
 
 fn load_user_service_fn<'r, 'a, 'b>(
     sql_command_executor: &'r mut SqlCommandExecutor<'a, 'b>,

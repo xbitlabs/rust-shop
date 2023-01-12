@@ -44,7 +44,18 @@ pub mod demo_controller {
         pub is_auth: bool,
     }
     #[route("POST", "/hello")]
-    pub async fn hello(RequestParam(user): RequestParam<String>)-> anyhow::Result<String>{
+    pub async fn hello<'db,'a>(RequestParam(user): RequestParam<String>,sql_exe: &'a mut SqlCommandExecutor<'db, 'a>,)-> anyhow::Result<String>{
+        let mut product_service = ProductService::new(sql_exe);
+        let page_query = ProductPageQueryRequest{
+            page_size: 10,
+            page_index: 1,
+            keyword: None,
+            category_id: None,
+            status: None,
+            sort: None,
+        };
+        let page = product_service.page(&page_query).await?;
+        println!("{:?}",page);
         let u = user.clone();
         Ok(format!("hello {}",u))
     }
@@ -128,6 +139,9 @@ pub mod demo_controller {
         Ok(Json(u))
     }
     use inflector::Inflector;
+    use crate::qo::ProductPageQueryRequest;
+    use crate::service::product_service::ProductService;
+
     #[route("GET", "model_and_view")]
     pub async fn model_and_view(ctx: &mut RequestCtx,sql_exe_with_tran: &mut SqlCommandExecutor<'_, '_>,) -> anyhow::Result<ModelAndView> {
 
