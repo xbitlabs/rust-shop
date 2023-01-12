@@ -1,4 +1,5 @@
 
+#[derive( serde::Serialize, serde::Deserialize,Debug)]
 pub struct ProductPageQueryRequest{
     pub page_size:i64,
     pub page_index:i64,

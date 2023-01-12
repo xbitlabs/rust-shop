@@ -1,11 +1,7 @@
-#![feature(try_trait_v2)]
 
 use std::net::SocketAddr;
 use std::string::ToString;
 use log::info;
-
-use rust_shop_db::db::{mysql_connection_pool, SqlCommandExecutor};
-
 use rust_shop_core::router::register_route;
 use rust_shop_core::security::{
     AdminUserLoadService, AuthenticationFilter, AuthenticationProcessingFilter,
@@ -17,10 +13,10 @@ use rust_shop_core::security::{
 };
 use rust_shop_core::state::State;
 use rust_shop_core::{AccessLogFilter, EndpointResult, RequestCtx, ResponseBuilder, Server};
+use rust_shop_core::db::{mysql_connection_pool, SqlCommandExecutor};
 
-use crate::api::shop::demo_controller;
-use crate::api::shop::static_file_controller;
-use crate::api::shop::upload_controller;
+
+use crate::api::admin::product_controller;
 
 use crate::config::load_config::APP_CONFIG;
 
@@ -32,6 +28,8 @@ mod request;
 pub mod service;
 pub mod utils;
 mod vo;
+mod qo;
+mod dto;
 
 fn load_user_service_fn<'r, 'a, 'b>(
     sql_command_executor: &'r mut SqlCommandExecutor<'a, 'b>,

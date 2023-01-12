@@ -91,6 +91,7 @@ pub struct Sku {
     pub product_id: i64,
     pub price: f64,
     pub is_default: bool,
+    pub is_deleted:bool,
 }
 
 #[derive(sqlx::FromRow, serde::Serialize)]

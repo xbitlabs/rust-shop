@@ -260,6 +260,12 @@ impl<T: Serialize> EndpointResult<T> {
     }
 }
 
+impl <T> IntoResponse for EndpointResult<T> where T:Serialize {
+    fn into_response(self) -> Response {
+        ResponseBuilder::with_endpoint_result(self)
+    }
+}
+
 pub struct ResponseBuilder;
 
 impl ResponseBuilder {
