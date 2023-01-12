@@ -35,3 +35,75 @@ pub mod date_format {
             .map_err(serde::de::Error::custom)
     }
 }
+pub mod long_format{
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    // The signature of a serialize_with function must follow the pattern:
+    //
+    //    fn serialize<S>(&T, S) -> Result<S::Ok, S::Error>
+    //    where
+    //        S: Serializer
+    //
+    // although it may also be generic over the input types T.
+    pub fn serialize<S>(number: &i64, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+    {
+        let s = number.to_string();
+        serializer.serialize_str(&s)
+    }
+
+    // The signature of a deserialize_with function must follow the pattern:
+    //
+    //    fn deserialize<'de, D>(D) -> Result<T, D::Error>
+    //    where
+    //        D: Deserializer<'de>
+    //
+    // although it may also be generic over the output types T.
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<i64, D::Error>
+        where
+            D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        s.parse()
+            .map_err(serde::de::Error::custom)
+    }
+}
+pub mod long_vec_format{
+    use serde::{Deserialize, Deserializer, Serializer};
+    use serde::ser::SerializeTuple;
+
+    // The signature of a serialize_with function must follow the pattern:
+    //
+    //    fn serialize<S>(&T, S) -> Result<S::Ok, S::Error>
+    //    where
+    //        S: Serializer
+    //
+    // although it may also be generic over the input types T.
+    pub fn serialize<S>(number: &Vec<i64>, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+    {
+        let mut seq = serializer.serialize_tuple(number.len())?;
+        for e in number.iter() {
+            seq.serialize_element(e.to_string().as_str())?;
+        }
+        seq.end()
+    }
+
+    // The signature of a deserialize_with function must follow the pattern:
+    //
+    //    fn deserialize<'de, D>(D) -> Result<T, D::Error>
+    //    where
+    //        D: Deserializer<'de>
+    //
+    // although it may also be generic over the output types T.
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<i64>, D::Error>
+        where
+            D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        serde_json::from_str(s.as_str())
+            .map_err(serde::de::Error::custom)
+    }
+}

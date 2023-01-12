@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use chrono::Utc;
+use chrono::{Local, Utc};
 use sqlx::Arguments;
 use sqlx::mysql::MySqlArguments;
 use rust_shop_core::db::SqlCommandExecutor;
@@ -9,7 +9,7 @@ use crate::{dto, vo};
 use crate::entity::{Product, ProductCategoryMapping, Sku};
 use std::vec::Vec;
 use crate::qo::ProductPageQueryRequest;
-use crate::utils::{page_count, page_offset};
+use crate::utils::{datetime, page_count, page_offset};
 use crate::vo::Page;
 
 pub struct ProductService<'a, 'b>{
@@ -32,7 +32,7 @@ impl <'a, 'b> ProductService<'a, 'b> {
             video: product.video.clone(),
             description: product.description.clone(),
             status: product.status.clone(),
-            created_time: Utc::now(),
+            created_time: datetime::now(),
             last_modified_time: None,
             is_deleted: false,
         };
@@ -208,7 +208,7 @@ impl <'a, 'b> ProductService<'a, 'b> {
 
         let record_count:i64 = self.sql_command_executor.scalar_one_with(count_sql.as_str(),count_args).await?;
 
-        if page_query.sort.is_some() {
+        if page_query.sort.is_none() {
             sql = sql + " ORDER BY id DESC ";
         }
         sql = sql + " LIMIT " + &*page_offset(page_query.page_size, page_query.page_index).to_string() + ",10";

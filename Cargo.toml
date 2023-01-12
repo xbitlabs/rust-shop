@@ -39,7 +39,7 @@ uuid = { version = "1.1.2", features = [
     "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
 ] }
 #orm
-sqlx = { version = "0.6", features = ["runtime-tokio-rustls", "mysql", "chrono"] }
+sqlx = { version = "0.6", features = ["runtime-tokio-rustls", "mysql", "chrono","bigdecimal"] }
 #sqlx-crud = {version = "0.3.2",features = ["runtime-tokio-rustls"]}
 tokio = { version = "1.21.1", features = ["full"] }
 log4rs = "1.1.1"
@@ -74,6 +74,7 @@ validator = {version = "0.16.0",features = ["derive"]}
 validator_types = "0.16.0"
 validator_derive = "0.16.0"
 Inflector = "0.11"
+bigdecimal = {version ="0.3.0",features = ["serde"]}
 
 [dev-dependencies]
 tokio-test = "*"

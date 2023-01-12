@@ -189,6 +189,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "bigdecimal"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6aaf33151a6429fe9211d1b276eafdf70cdff28b071e76c0b0e1503221ea3744"
+dependencies = [
+ "num-bigint",
+ "num-integer",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "bindgen"
 version = "0.59.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2446,6 +2458,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bcrypt",
+ "bigdecimal",
  "bytes",
  "chrono",
  "criterion",
@@ -2529,7 +2542,6 @@ dependencies = [
  "serde_yaml 0.9.13",
  "sha2",
  "sqlx",
- "sqlx-crud",
  "substring",
  "tera",
  "thiserror",
@@ -3012,6 +3024,7 @@ dependencies = [
  "ahash 0.7.6",
  "atoi",
  "base64",
+ "bigdecimal",
  "bitflags",
  "byteorder",
  "bytes",
@@ -3059,30 +3072,6 @@ dependencies = [
  "url",
  "webpki-roots",
  "whoami",
-]
-
-[[package]]
-name = "sqlx-crud"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "612f8f69c2d5655fc50b3d081169b8e8bcfe7cdd9c300d1e7605a2c00a0e3b73"
-dependencies = [
- "futures",
- "sqlx",
- "sqlx-crud-macros",
- "thiserror",
-]
-
-[[package]]
-name = "sqlx-crud-macros"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75b4d450c43e653e143b5abfd6e1d82c41993d04f905b0da98af03594cd13c35"
-dependencies = [
- "Inflector",
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]

@@ -9,7 +9,6 @@ use sqlx::database::HasArguments;
 use sqlx::query::QueryAs;
 use sqlx::{Arguments, Database, Encode, Execute, Executor, FromRow, IntoArguments, MySql, Type};
 use sqlx::mysql::{MySqlArguments, MySqlRow};
-use sqlx_crud::traits;
 use crate::db::SqlCommandExecutor;
 
 /// Type alias for methods returning a single element. The future resolves to and

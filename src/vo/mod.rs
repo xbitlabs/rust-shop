@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use crate::entity::Sku;
 
 #[derive( serde::Serialize, serde::Deserialize,Debug)]
@@ -12,6 +12,7 @@ pub struct Page<T> where T : serde::Serialize{
 
 #[derive( serde::Serialize, serde::Deserialize,Debug)]
 pub struct Product{
+    #[serde(with = "rust_shop_core::serde_utils::long_format")]
     pub id: i64,
     pub name: String,
     pub cover_image: String,
@@ -22,6 +23,8 @@ pub struct Product{
     pub created_time: DateTime<Utc>,
     pub last_modified_time: Option<DateTime<Utc>>,
     pub is_deleted:bool,
+
+    #[serde(with = "rust_shop_core::serde_utils::long_vec_format")]
     pub product_category_ids:Vec<i64>,
     pub skus:Vec<Sku>,
 }

@@ -1,5 +1,6 @@
 pub mod product_controller{
     use anyhow::anyhow;
+    use chrono::{Local, TimeZone, Utc};
     use rust_shop_core::db::SqlCommandExecutor;
     use rust_shop_core::EndpointResult;
     use rust_shop_core::extract::json::Json;
@@ -19,10 +20,13 @@ pub mod product_controller{
 
     #[route("POST", "/product")]
     pub async fn create<'db,'a>(Json(mut product):Json<dto::Product>, sql_exe: &'a mut SqlCommandExecutor<'db, 'a>,) -> anyhow::Result<EndpointResult<&'static str>>{
+        if product.name.is_empty() {
+            return Err(anyhow!("商品名称不能为空"));
+        }
         let mut product_service = ProductService::new(sql_exe);
         let result = product_service.create(&mut product).await?;
         if result {
-            Ok(EndpointResult::ok_with_payload("新增商品成功",""))
+            Ok(EndpointResult::ok("新增商品成功"))
         }else {
             Err(anyhow!("新增商品失败"))
         }

@@ -1,4 +1,5 @@
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Local, NaiveDateTime, Utc};
+use serde::{Deserializer, Serializer};
 use rust_shop_macro::SqlxCrud;
 use sqlx::MySql;
 use sqlx::mysql::MySqlArguments;
@@ -86,13 +87,16 @@ pub struct ShoppingCart {
 
 #[derive(sqlx::FromRow, serde::Serialize, serde::Deserialize,Debug,SqlxCrud)]
 pub struct Sku {
+    #[serde(with = "rust_shop_core::serde_utils::long_format")]
     pub id: i64,
     pub title: String,
+    #[serde(with = "rust_shop_core::serde_utils::long_format")]
     pub product_id: i64,
-    pub price: f64,
+    pub price: bigdecimal::BigDecimal,
     pub is_default: bool,
     pub is_deleted:bool,
 }
+
 
 #[derive(sqlx::FromRow, serde::Serialize)]
 pub struct UserShippingAddress {
