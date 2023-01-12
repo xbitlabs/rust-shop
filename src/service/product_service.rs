@@ -211,7 +211,7 @@ impl <'a, 'b> ProductService<'a, 'b> {
         if page_query.sort.is_none() {
             sql = sql + " ORDER BY id DESC ";
         }
-        sql = sql + " LIMIT " + &*page_offset(page_query.page_size, page_query.page_index).to_string() + ",10";
+        sql = sql + " LIMIT " + &*page_offset(page_query.page_size, page_query.page_index).to_string() + "," + &*page_query.page_size.to_string();
         let products:Vec<Product> = self.sql_command_executor.find_all_with(sql.as_str(),args).await?;
 
         let mut vos:Vec<vo::Product> = vec![];
