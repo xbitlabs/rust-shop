@@ -309,6 +309,7 @@ impl ResponseBuilder {
             ClientError => status = StatusCode::BAD_REQUEST,
             AccessDenied => status = StatusCode::FORBIDDEN,
             Unauthorized => status = StatusCode::UNAUTHORIZED,
+            NotFound=> status = StatusCode::NOT_FOUND
         }
         hyper::Response::builder()
             .header(

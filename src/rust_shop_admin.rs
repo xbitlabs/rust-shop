@@ -17,6 +17,7 @@ use rust_shop_core::db::{mysql_connection_pool, SqlCommandExecutor};
 
 
 use crate::api::admin::product_controller;
+use crate::api::admin::category_controller;
 
 use crate::config::load_config::APP_CONFIG;
 

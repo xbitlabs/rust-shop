@@ -43,7 +43,7 @@ impl <'a, 'b> ProductService<'a, 'b> {
             let mut args = MySqlArguments::default();
             args.add(product_id);
             args.add(category_id);
-            result = self.sql_command_executor.execute_with("INSERT INTO product_category_mapping(product_id,product_category_id) VALUES(?,?)",args).await? > 0;
+            result = self.sql_command_executor.execute_with("INSERT INTO product_category_mapping(product_id,category_id) VALUES(?,?)",args).await? > 0;
         }
         let mut skus = &mut product.skus;
         for mut sku in skus {
@@ -112,7 +112,7 @@ impl <'a, 'b> ProductService<'a, 'b> {
                 let mut args = MySqlArguments::default();
                 args.add(product.id);
                 args.add(category_id);
-                result = self.sql_command_executor.execute_with("INSERT INTO product_category_mapping(product_id,product_category_id) VALUES(?,?)",args).await? > 0;
+                result = self.sql_command_executor.execute_with("INSERT INTO product_category_mapping(product_id,category_id) VALUES(?,?)",args).await? > 0;
             }
             Ok(result)
         }else {
@@ -177,7 +177,7 @@ impl <'a, 'b> ProductService<'a, 'b> {
         if page_query.category_id.is_some() {
             sql = sql + " JOIN product_category_mapping m ON p.id = m.product_id ";
             count_sql = count_sql + " JOIN product_category_mapping m ON p.id = m.product_id ";
-            sql_where.push(String::from(" m.product_category_id = ? "));
+            sql_where.push(String::from(" m.category_id = ? "));
             args.add(page_query.category_id.unwrap());
             count_args.add(page_query.category_id.unwrap());
         }

@@ -35,7 +35,7 @@ pub mod demo_controller {
     use rust_shop_core::APP_EXTENSIONS;
     use rust_shop_core::db::traits::Crud;
     use rust_shop_core::extract::multipart::Multipart;
-    use crate::entity::ProductCategory;
+    use crate::entity::Category;
 
     #[derive(serde::Serialize, serde::Deserialize, Debug)]
     pub struct User {
@@ -148,7 +148,7 @@ pub mod demo_controller {
 
         let id = ID_GENERATOR.lock().unwrap().real_time_generate();
 
-        let mut category = ProductCategory{
+        let mut category = Category {
             id,
             name: "test".to_string(),
             parent_id: None,
@@ -160,14 +160,14 @@ pub mod demo_controller {
         };
         let result = category.create(sql_exe_with_tran).await?;
         println!("{:?}",result);
-        let c = ProductCategory::select_by_id(id,sql_exe_with_tran).await?;
+        let c = Category::select_by_id(id, sql_exe_with_tran).await?;
         if c.is_some() {
             println!("ProductCategory = {:?}",c.unwrap());
         }
         category.name = String::from("test1");
         category.icon = Some(String::from("icon"));
         let result = category.update(sql_exe_with_tran).await?;
-        let result = ProductCategory::delete_by_id(category.id,sql_exe_with_tran).await?;
+        let result = Category::delete_by_id(category.id, sql_exe_with_tran).await?;
 
         let mut model_and_view = ModelAndView::new("test.html".to_string());
         let user = User {

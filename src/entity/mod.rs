@@ -5,9 +5,11 @@ use sqlx::MySql;
 use sqlx::mysql::MySqlArguments;
 
 #[derive(sqlx::FromRow, serde::Serialize, serde::Deserialize, Debug,SqlxCrud)]
-pub struct ProductCategory {
+pub struct Category {
+    #[serde(with = "rust_shop_core::serde_utils::long_format")]
     pub id: i64,
     pub name: String,
+    #[serde(with = "rust_shop_core::serde_utils::option_long_format")]
     pub parent_id:Option<i64>,
     pub icon: Option<String>,
     pub pic: Option<String>,
