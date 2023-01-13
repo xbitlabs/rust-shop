@@ -26,7 +26,6 @@ pub mod api;
 mod config;
 pub mod entity;
 mod filter;
-mod request;
 pub mod service;
 pub mod utils;
 mod vo;

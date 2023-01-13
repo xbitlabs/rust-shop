@@ -68,7 +68,7 @@ impl <'a, 'b> ProductService<'a, 'b> {
 
             let mut args = MySqlArguments::default();
             args.add(product.id);
-            let db_exists_skus:Vec<Sku> = self.sql_command_executor.find_all_with("SELECT * FROM sku WHERE product_id=?",args).await?;
+            let db_exists_skus:Vec<Sku> = self.sql_command_executor.find_all_with("SELECT * FROM sku WHERE product_id=? AND is_deleted = 0",args).await?;
             let mut new_skus = vec![];
             let mut modified_skus = vec![];
             for mut sku in &mut product.skus {
@@ -232,7 +232,7 @@ impl <'a, 'b> ProductService<'a, 'b> {
             };
             let mut args = MySqlArguments::default();
             args.add(product.id);
-            let skus:Vec<Sku> = self.sql_command_executor.find_all_with("SELECT * FROM sku where product_id=?",args).await?;
+            let skus:Vec<Sku> = self.sql_command_executor.find_all_with("SELECT * FROM sku where product_id=? WHERE is_deleted = 0",args).await?;
             vo.skus = skus;
 
             let mut args = MySqlArguments::default();

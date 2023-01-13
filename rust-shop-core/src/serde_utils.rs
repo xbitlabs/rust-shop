@@ -80,12 +80,12 @@ pub mod long_vec_format{
     //        S: Serializer
     //
     // although it may also be generic over the input types T.
-    pub fn serialize<S>(number: &Vec<i64>, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(numbers: &Vec<i64>, serializer: S) -> Result<S::Ok, S::Error>
         where
             S: Serializer,
     {
-        let mut seq = serializer.serialize_tuple(number.len())?;
-        for e in number.iter() {
+        let mut seq = serializer.serialize_tuple(numbers.len())?;
+        for e in numbers.iter() {
             seq.serialize_element(e.to_string().as_str())?;
         }
         seq.end()
