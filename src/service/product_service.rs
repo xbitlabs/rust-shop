@@ -251,4 +251,34 @@ impl <'a, 'b> ProductService<'a, 'b> {
         };
         Ok(page)
     }
+    pub async fn put_product_on_sale(&mut self,id:i64)->anyhow::Result<bool>{
+        let product = Product::select_by_id(id,self.sql_command_executor).await?;
+        if product.is_some() {
+            let mut product = product.unwrap();
+            product.status = String::from("ON_SALE");
+            let result = product.update(self.sql_command_executor).await?;
+            if result {
+                Ok(true)
+            }else {
+                Err(anyhow!("商品上架失败"))
+            }
+        }else {
+            Err(anyhow!("not found product by id：{}",id))
+        }
+    }
+    pub async fn remove_from_shelves(&mut self,id:i64)->anyhow::Result<bool>{
+        let product = Product::select_by_id(id,self.sql_command_executor).await?;
+        if product.is_some() {
+            let mut product = product.unwrap();
+            product.status = String::from("REMOVED_FROM_SHELVES");
+            let result = product.update(self.sql_command_executor).await?;
+            if result {
+                Ok(true)
+            }else {
+                Err(anyhow!("商品下架失败"))
+            }
+        }else {
+            Err(anyhow!("not found product by id：{}",id))
+        }
+    }
 }

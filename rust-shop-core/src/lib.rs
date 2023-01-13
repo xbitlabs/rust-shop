@@ -159,6 +159,7 @@ pub enum EndpointResultCode {
     ClientError,
     AccessDenied,
     Unauthorized,
+    NotFound
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
