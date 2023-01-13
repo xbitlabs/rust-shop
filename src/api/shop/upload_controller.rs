@@ -21,7 +21,7 @@ pub mod upload_controller {
     use rust_shop_macro::route;
 
     #[route("POST", "/upload")]
-    pub async fn upload1(mut multipart: Multipart) -> anyhow::Result<Response> {
+    pub async fn upload(mut multipart: Multipart) -> anyhow::Result<Response> {
         return match multipart.next_field().await {
             Ok(f) => {
                 match f {
